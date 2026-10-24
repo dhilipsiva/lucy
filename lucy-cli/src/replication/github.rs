@@ -351,6 +351,20 @@ fn legacy(root: &Path, api: &Github, peer: &Peer) -> Result<Value> {
     )
 }
 
+fn public_enrollment(peer: &Peer) -> Result<()> {
+    peer.validate()?;
+    if !peer.public
+        || peer.upload
+        || peer.local_path.is_some()
+        || peer.credential_env.is_some()
+        || peer.credential_file.is_some()
+        || !peer.record_origins.is_empty()
+    {
+        return Err("registry contains a nonpublic enrollment".into());
+    }
+    Ok(())
+}
+
 /// Refresh public discovery only. No remote field can enable upload, select a
 /// local path, add credentials, or enroll private data.
 pub fn discover(root: &Path) -> Result<Value> {
@@ -372,10 +386,7 @@ pub fn discover(root: &Path) -> Result<Value> {
         .ok_or("registry peers required")?
     {
         let peer: Peer = serde_json::from_value(value.clone()).map_err(err)?;
-        if !peer.public || peer.upload || peer.local_path.is_some() || peer.credential_env.is_some()
-        {
-            return Err("registry contains a nonpublic enrollment".into());
-        }
+        public_enrollment(&peer)?;
         // Existing private/write registrations and pinned keys remain local decisions.
         if !config.peers.contains_key(&peer.name) {
             replica.enroll(peer)?;

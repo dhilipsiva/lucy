@@ -120,7 +120,7 @@ with source attribution, channel and timestamps. The local source files remain
 the repair path: `lucy store sync` reconstructs the index from originals and peers.
 Do not delete source records or backups as part of index maintenance.
 
-Run `just test-lucy`, `just clippy-lucy` and `just verify-lucy-plugin` inside the
-Nix release shell; use the `.#lucy` shell for `just test-lucy-desktop`. Tests cover exact recovery,
+Run `nix develop --command just ci`; use
+`nix develop .#desktop --command just ci-desktop` for the desktop feature. Tests cover exact recovery,
 conflicts, corruption, peer edits/deletions, independent writers, vector validation
 and app activation/approval boundaries.

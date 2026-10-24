@@ -2,7 +2,7 @@
 
 The service, agent engine, GTK window, HTTP client, memory store and protocol
 adapters are Rust modules in `lucy-cli/src/desktop/`. Build the window with
-`nix develop .#lucy --command just build-lucy-desktop`; the default CLI build
+`nix develop .#desktop --command cargo build --release --features desktop-ui`; the default CLI build
 also includes the service and terminal agent, without GTK. No Lucy application
 Python runtime is required. Browser and VS Code extension entry points remain
 JavaScript because those hosts require it.
@@ -167,9 +167,8 @@ Local key files work for terminal and desktop without changing service environme
 Configuration is in `~/.config/lucy/providers.json`. There is no automatic
 provider selection, paid fallback or key discovery outside these explicit locations.
 
-Run `just test-lucy`, `just clippy-lucy`, `just verify-lucy-plugin` and the Lucy
-constitution checks in Nibli's release shell. Use `nix develop .#lucy` for
-`just test-lucy-desktop clippy-lucy-desktop build-lucy-desktop`. Desktop tests use
+Run `nix develop --command just ci` and `nix develop --command just verify-pins`.
+Use `nix develop .#desktop --command just ci-desktop` for the GTK feature. Desktop tests use
 scripted model replies and real local HTTP fixtures; hosted inference still needs
 an account key and a compatible model. Build/test success does not establish app
 trust or physical acceptance.

@@ -294,3 +294,19 @@ fn concurrent_non_force_push_refetches_and_preserves_both_writers() {
     .unwrap();
     assert_eq!(published, log);
 }
+
+#[test]
+fn public_discovery_cannot_name_local_credentials_or_origin_routes() {
+    let registry: Value = serde_json::from_str(include_str!("../../../peers.json")).unwrap();
+    let peer: Peer = serde_json::from_value(registry["peers"][0].clone()).unwrap();
+    public_enrollment(&peer).unwrap();
+    let mut planted = peer.clone();
+    planted.credential_file = Some("/private/local-token".into());
+    assert!(public_enrollment(&planted).is_err());
+    let mut planted = peer.clone();
+    planted.record_origins.insert("conversation:local".into());
+    assert!(public_enrollment(&planted).is_err());
+    let mut planted = peer;
+    planted.credential_env = Some("LOCAL_SECRET".into());
+    assert!(public_enrollment(&planted).is_err());
+}

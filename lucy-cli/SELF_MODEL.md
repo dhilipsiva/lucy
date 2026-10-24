@@ -119,5 +119,5 @@ not copied into source files. See [STORE.md](STORE.md). A source build does not
 upgrade an already running packaged service; the checkout binary can be used
 directly until the normal package update deploys this version.
 
-Validation: `just test-lucy`, `just clippy-lucy`, and
-`cargo test -p nibli-verify --test self_check` inside `nix develop`.
+Validation: `nix develop --command just ci` and
+`nix develop --command cargo test --test static_check`.
