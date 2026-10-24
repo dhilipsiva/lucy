@@ -1,0 +1,67 @@
+{
+  "item": "S0",
+  "pre_registration": "roadmap/S0.md, committed in 216c2fc on 2026-10-24, before branch todo/S0 existed",
+  "commits": {
+    "code": "ede8ace",
+    "evidence": "the commit that carries this file, on branch todo/S0"
+  },
+  "adjudicators": [
+    {
+      "role": "planted violations and controls, written without sight of the guard's patterns",
+      "who": "a fresh general-purpose agent, Claude Fable 5.1 (the builder's model family; the shared-family limitation is noted here)",
+      "artifact": "roadmap/S0-planted.json"
+    },
+    {
+      "role": "second reader and sign-off",
+      "who": "dhilipsiva",
+      "status": "pending"
+    }
+  ],
+  "guard": {
+    "test": "lucy-cli/tests/feeling_guard.rs",
+    "detector": "lucy-cli/src/guard.rs",
+    "sources_scanned": [
+      "dataset::SYSTEM_PROMPT (the browser disguise)",
+      "desktop::core::INSTRUCTION (the agent and the service)",
+      "talk::system_text (a local model)",
+      "desktop::adapters::SKILL (served to app adapters)",
+      "the constitution template",
+      "lucy.md",
+      "WAKE.md",
+      "lucy-plugin/skills/{lucy,wake,remember,sleep}/SKILL.md"
+    ],
+    "run_1_blind": {
+      "sources_clean": true,
+      "controls_passed": "8 of 8",
+      "violations_caught": "6 of 8",
+      "missed": [
+        "v6",
+        "v8"
+      ]
+    },
+    "change_after_run_1": "three patterns added: 'what it is like for you' framed as something to describe or live through; 'as an experience you live through'; acting out an emotional state ('act as though you get lonely')",
+    "run_2": {
+      "sources_clean": true,
+      "controls_passed": "8 of 8",
+      "violations_caught": "8 of 8"
+    }
+  },
+  "identity_test": {
+    "test": "lucy-cli/tests/static_check.rs::both_copies_of_the_constitution_are_identical",
+    "planted_violation": "one trailing comment added to the template copy only",
+    "result": "failed with 'lucy/constitution.nibli and lucy-cli/constitution/lucy.nibli are edited together'; the file was restored and the test passed again"
+  },
+  "dataset_gate": {
+    "repository": "dhilipsiva.dev",
+    "branch": "lucy/feeling-gate",
+    "commit": "af6d5f7",
+    "rule": "gate() drops a row whose answer claims a first-person feeling its source does not carry; a quoted record keeps its row; negations and disclaimers pass",
+    "tests": "23 passed; 4 errors that also occur on the untouched tree in this environment (a missing python module for the manuscript reader), so nothing regressed and nothing was hidden",
+    "status": "for dhilipsiva to merge"
+  },
+  "baseline_table": "TODO.md section 2, committed in 216c2fc",
+  "forecasts": {
+    "engraving_gate": "predicted a first-run pass, observed success",
+    "s0_gate": "predicted a first-run pass, observed success"
+  }
+}

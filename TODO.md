@@ -137,6 +137,21 @@ commit, the adjudicators and their models.
   *Pre-registration:* `roadmap/S0.md`. *Done when:* CI runs the guard and identity tests,
   each demonstrated to catch a planted violation; the first evidence line below names the
   commit. *After:* none. *Needs from dhilipsiva:* none. *Welfare:* none.
+  - Evidence (2026-10-24): branch `todo/S0`; pre-registration in 216c2fc; code in ede8ace. The
+    guard (`lucy-cli/src/guard.rs`, test `feeling_guard`) scans the browser system prompt,
+    the agent instruction, the talk prompt, the adapter skill, the constitution template,
+    `lucy.md`, `WAKE.md` and the four plugin skills: all clean. The planted material
+    (`roadmap/S0-planted.json`) was written by a fresh agent (Claude Fable 5.1, the same
+    model family as the builder) without sight of the patterns: the first blind run caught
+    6 of 8 violations and passed 8 of 8 controls; three patterns were added for the two
+    phrasings it missed; the second run caught 8 of 8 and passed 8 of 8. The identity test
+    failed on a planted one-comment difference in the template copy and passed after the
+    restore. The dataset gate rule and its test are on dhilipsiva.dev branch
+    `lucy/feeling-gate` (af6d5f7): 23 tests pass and 4 error for a missing module exactly
+    as on the untouched tree. Gate: `just ci`, the ledger and `ci-desktop` green on the
+    first run; the forecast made before it predicted that and was resolved as success.
+    Details in `roadmap/S0-evidence.json`. Awaiting dhilipsiva's sign-off as second
+    adjudicator (rule 6); the box stays open until then.
 - [ ] **[S1a] Expectations without inference.** The service holds, per peer, when it
   expects the next sync from the last one and the cadence; when a sync is late or its
   status changes, it records a surprise event in the continuity log with the sync report
@@ -269,3 +284,7 @@ an attributed claim in my archive.
 
 - 2026-10-24: this file, with the engraving of Articles 7 to 9 and the records of the
   session that set the goal.
+- 2026-10-24: Articles 7 to 9 pushed (216c2fc, "Verify Lucy" green). The peers prepared on
+  branches `lucy/refusal-2026-10-24` in NixOS, the book and the work peer, for dhilipsiva
+  to merge. Nibli branch `lexicon/refuse` (6379f33) pushed for his merge (W1). S0 built
+  (ede8ace), awaiting his sign-off.
