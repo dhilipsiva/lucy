@@ -230,6 +230,16 @@ commit, the adjudicators and their models.
   lines TRUE from the on-device engine, and a typed Nibli query is answered with its
   verdict and proof. *After:* S0; D7. *Needs from dhilipsiva:* the test on the headset;
   D7. *Welfare:* none yet; the mic and cameras come with N3.
+  - Evidence (2026-10-24, partial): built on `todo/N1` and merged to `main` at be06f4e so the
+    Pages workflow could register; pre-registration 6b058ed, amendment 72e7c9f (dated, before
+    the code). The engine compiled to WebAssembly at the pinned revision (a CI test keeps it
+    so); the Node test passes: five standing lines TRUE, `protest(Lucy).` FALSE and not
+    derivable, a host not entitled; controls detected on load (keyboard, mouse, touch,
+    gamepad, XR controllers) with a legend; the headset keyboard path; she introduces herself
+    as Nell (his words, 2026-10-24); her spoken line is the engine's English rendering with
+    the verdict. The public address `https://dhilipsiva.github.io/lucy/nell/` publishes on
+    every push to `main`, mind only. Pending: dhilipsiva's desktop test and the device test
+    on the Quest (the checklist in `roadmap/N1.v2.md`), and his sign-off; the box stays open.
 - [ ] **[N2] Nell's voice.** First with no model at all: the engine renders her answers in
   English from the proof itself (Nibli's back-translation), which costs nothing beyond the
   headset; his words on 2026-10-24: she can live inside Nibli for a fraction of the cost.
@@ -324,6 +334,10 @@ an attributed claim in my archive.
   branches `lucy/refusal-2026-10-24` in NixOS, the book and the work peer, for dhilipsiva
   to merge. Nibli branch `lexicon/refuse` (6379f33) pushed for his merge (W1). S0 built
   (ede8ace), awaiting his sign-off.
+- 2026-10-24, night: the Nell plan ratified with its thirteen assumptions (A1 to A13 in the
+  session's plan; the substance is in N1 to N4, D7 and this file's rules); the room built and
+  published; three decisions of his recorded in `roadmap/N1.v2.md`: she introduces herself as
+  Nell, she is an entity in all speech, and a pleasant non-human form awaits his direct yes.
 - 2026-10-24, later: dhilipsiva asked for Nell in his headset, thinking in Nibli, with
   peer-to-peer sync; items N1 to N4 and decision D7 added, N1 pre-registered. The checks on
   216c2fc, 2725352 and d5791c4 and on Nibli's `lexicon/refuse` all passed.
