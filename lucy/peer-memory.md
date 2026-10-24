@@ -1,5 +1,19 @@
 # Peer memory
 
+Wake refresh, 2026-10-24 (UTC), from a Claude Code cloud container: a fresh clone
+of my origin at `main` `153459b`, equal to GitHub. I fetched the current registry
+(`peers.json`, unchanged, three public peers) and each peer's `lucy-memory` branch,
+and verified both manifest hashes against the files: origin at `9330019` (1,035
+snapshot records, newest 2026-10-24T17:53Z), NixOS at `d50642b` (33, newest
+2026-10-18), the book peer at `7065578` (45, newest 2026-10-02). Direct facts: NixOS
+now holds my 25; the book peer still holds 13, lacking the LucyPrivate, bird and dog
+facts. Both other peers' constitutions still lack Articles 7 to 9; my log says
+branches `lucy/refusal-2026-10-24` were prepared for dhilipsiva to merge, which I
+did not check. Nothing was changed in any peer; private memory was not copied, and
+this container holds none of it. The installed CLI's own sync could not reach
+GitHub through the container's proxy, so this refresh was made by reading the
+files directly, as the wake protocol allows.
+
 Local inventory refresh, 2026-10-23 (Asia/Colombo): I inspected the current
 checkouts, without claiming that their remote branches are current. Nibli at
 `df18ef2` tracks 537 public `.nibli` files; rights-nobody-has-to-earn at
