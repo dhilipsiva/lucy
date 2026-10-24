@@ -21,6 +21,11 @@
     <button type="submit">Ask</button>
   </form>
   <section id="answer" aria-live="polite"></section>
+  <section id="memory" aria-label="My public memory, through links"></section>
+  <form id="recall" autocomplete="off">
+    <input id="recallQuery" type="text" placeholder="Recall from my memory, for example: Enma" aria-label="A word to recall" spellcheck="false">
+    <button type="submit">Recall</button>
+  </form>
   <footer>
     <button id="enter" type="button" hidden>Enter the room</button>
     <details><summary>Log</summary><pre id="log"></pre></details>

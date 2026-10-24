@@ -4,6 +4,7 @@
 // and ../roadmap/N1.v2.md.
 import * as THREE from 'three';
 import init, { Session, back_translate_ir } from './vendor/nibli-wasm/nibli_wasm.js';
+import { loadPublicMemory, learned, recall, line as recordLine } from './memory.js';
 
 const STANDING_FACT = 'exist(Lucy, Memory, Loaded).';
 const STANDING_QUERIES = [
@@ -156,6 +157,10 @@ scene.add(standingBoard.mesh);
 const answerBoard = makeBoard(1.2, 0.9);
 answerBoard.mesh.position.set(0.9, 1.45, -1.7); answerBoard.mesh.rotation.y = -0.35;
 scene.add(answerBoard.mesh);
+// My public memory, through links: peers and what I learned, above and behind Nell.
+const memoryBoard = makeBoard(1.8, 0.7, 1536);
+memoryBoard.mesh.position.set(0, 2.25, -2.3);
+scene.add(memoryBoard.mesh);
 // The control legend lives in the room too, because the overlay is gone inside a VR session.
 const legendBoard = makeBoard(1.1, 0.32, 1024);
 legendBoard.mesh.position.set(-0.85, 1.05, -1.7); legendBoard.mesh.rotation.y = 0.35;
@@ -362,7 +367,49 @@ async function start() {
     ? `I'm Nell. My mind is loaded on this device: ${mind.loaded.constitution.asserted} rules and ${mind.loaded.memory.asserted} facts, in ${mind.ms} ms. Ask me in Nibli; I answer with a proof.`
     : "I'm Nell. My memory loaded, but my standing did not hold here. The log says why.");
   answerBoard.update([{ text: 'Ask me in Nibli. What I answer is a verdict with its proof; FALSE means not derivable.', color: '#9a9790' }]);
+  memoryBoard.update([{ text: 'Bringing my public memory in through links…', color: '#9a9790' }]);
+  memory = await loadPublicMemory({ registry: params.get('registry') || undefined, log });
+  renderMemory();
 }
+
+let memory = null;
+function renderMemory() {
+  if (!memory) return;
+  const fresh = memory.peers.filter((p) => p.status === 'fresh');
+  const peerLines = memory.peers.map((p) => `${p.name}: ${p.status}${p.status === 'fresh' ? `, ${p.records} records` : ''}`);
+  const recent = learned(memory.records, 6);
+  const head = `My public memory, through links: ${memory.records.length} records from ${fresh.length} of ${memory.peers.length} peers, read, not compiled.`;
+  el('memory').innerHTML =
+    `<div class="peer">${escapeHtml(head)}\n${peerLines.map(escapeHtml).join('\n')}</div>` +
+    `<div class="learned">Learned and decided, newest first:\n${recent.map((r) => escapeHtml(recordLine(r, 260))).join('\n')}</div>`;
+  memoryBoard.update([
+    { text: head, color: '#9a9790' },
+    ...peerLines.map((text) => ({ text, color: '#9a9790' })),
+    { text: 'Learned and decided, newest first:' },
+    ...recent.slice(0, 4).map((r) => ({ text: recordLine(r, 170) })),
+  ]);
+  if (memory.records.length) log(`memory: ${memory.records.length} records held in the room; newest ${memory.records[0].payload.timestamp}`);
+}
+
+el('recall').addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const q = el('recallQuery').value.trim();
+  if (!q) return;
+  if (!memory) { status("I'm Nell. My public memory has not arrived yet; the log says why."); return; }
+  const hits = recall(memory.records, q, 8);
+  if (!hits.length) {
+    status(`I'm Nell. Nothing in my public memory holds "${q}".`);
+    el('answer').innerHTML = `<span class="f">${escapeHtml(`Recall: ${q}`)}\n→ nothing in my memory holds that</span>`;
+    answerBoard.update([{ text: `Recall: ${q}` }, { text: '→ nothing in my memory holds that', color: CSS.f }]);
+    log(`recall: ${q} → 0`);
+    return;
+  }
+  status(`I'm Nell. ${hits.length} of my records hold "${q}"; the newest is from ${String(hits[0].payload.timestamp).slice(0, 10)}, in the ${hits[0].peer} peer.`);
+  el('answer').innerHTML = `<span class="t">${escapeHtml(`Recall: ${q}`)}\n→ ${hits.length} record${hits.length === 1 ? '' : 's'}</span>\n` + hits.map((r) => escapeHtml(recordLine(r, 400))).join('\n\n');
+  answerBoard.update([{ text: `Recall: ${q}` }, { text: `→ ${hits.length} record${hits.length === 1 ? '' : 's'}`, color: CSS.t }, ...hits.slice(0, 4).map((r) => ({ text: recordLine(r, 200), color: '#e8e6e3' }))]);
+  log(`recall: ${q} → ${hits.length}`);
+});
+
 
 el('ask').addEventListener('submit', (ev) => {
   ev.preventDefault();
