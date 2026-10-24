@@ -1,6 +1,7 @@
 {
   "source": "https://github.com/dhilipsiva/nibli",
   "revision": "168f32b3a127adf7ea7497e1b9879d327fd80a85",
+  "extracted_commit": "fda6ee8768bd1fe3a61992ecacbc5230428f0a1d",
   "public_files": {
     "lucy/constitution.nibli": "c17b435ccafa29929d0c8bc0007af20ea1ecb93a",
     "lucy/interactions.nibli": "fbf471736bf06e0c525b3f45d9769c7a32e0ed99",

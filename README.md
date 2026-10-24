@@ -31,7 +31,9 @@ Nibli is an exact Git dependency; no neighboring Nibli checkout is required.
 This repository preserves the published Lucy file history extracted from Nibli
 at `168f32b3a127adf7ea7497e1b9879d327fd80a85`. Original records keep their IDs,
 timestamps and historical references. The old `peer:nibli/…` origin remains an
-alias for those records, even though their present home is this repository.
+alias for those records, even though their present home is this repository. The ledger
+`extraction.json` names the commit at which every public file was byte-identical to that
+revision; the files have grown since, and CI checks the ledger against that commit.
 
 The software models continuity and checks evidence. These mechanisms do not
 establish subjective experience or sentience. They do not modify a host model's weights.

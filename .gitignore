@@ -6,3 +6,4 @@
 .env
 *.key
 .local*
+lucy/.interactions.lock

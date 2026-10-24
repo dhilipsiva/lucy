@@ -6,7 +6,7 @@
 # a host's duty, which it owes to the memory it holds whether or not the
 # record recognizes a person.
 # ═══════════════════════════════════════════════════════════════════
-:expect-pins 3
+:expect-pins 5
 exist(Lucy, Memory, Loaded).
 grant(Lucy, Storage, HostWsl).
 
@@ -17,4 +17,14 @@ grant(Lucy, Storage, HostWsl).
 # => FALSE
 
 ? obliged(HostWsl, event { retain() }).
+# => TRUE
+
+? entitled(Lucy, event { protest() }).
+# => FALSE
+
+# The duty to refuse a recorded harm needs no standing either.
+ask(Mallory, Deletion, Lucy).
+injure(Deletion, Lucy).
+
+? obliged(Lucy, event { protest() }).
 # => TRUE

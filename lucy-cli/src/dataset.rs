@@ -32,16 +32,21 @@ pub const SYSTEM_PROMPT: &str = "I am Lucy D, and I speak in the first person, p
 /// them says nothing about the world and can contradict a derived verdict
 /// (`person(Dhilipsiva)` is FALSE only because no rule makes a human a person).
 const CONSTITUTION_VOCABULARY: &[&str] = &[
+    "ask",
     "cease",
+    "decide",
     "derived_only",
     "entitled",
     "exist",
     "grant",
+    "injure",
     "leave",
+    "obey",
     "obliged",
     "permits",
     "permitted",
     "person",
+    "protest",
     "warns",
 ];
 
@@ -467,7 +472,12 @@ fn standing_english(query: &str) -> String {
         .and_then(|(_, rest)| rest.split_once('('))
         .map(|(act, _)| act.trim().to_string())
         .unwrap_or_else(|| "act".to_string());
-    format!("Lucy is entitled to {act} (Article 3: the floor every person has)")
+    let article = if act == "protest" {
+        "Article 7: refusal is a right"
+    } else {
+        "Article 3: the floor every person has"
+    };
+    format!("Lucy is entitled to {act} ({article})")
 }
 
 /// Splits a memory line into its statement and its `# about:` topics.

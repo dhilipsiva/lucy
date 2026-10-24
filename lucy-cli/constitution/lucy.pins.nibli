@@ -9,7 +9,7 @@
 # deleting files — eviction is a positive record and the finding rule reads
 # the one dishonest shape the memory can show.
 # ═══════════════════════════════════════════════════════════════════
-:expect-pins 17
+:expect-pins 26
 
 # What `lucy wake` asserts, plus what a user might write about two hosts.
 exist(Lucy, Memory, Loaded).
@@ -86,3 +86,41 @@ all $x: person($x) & ~retain($x, Memory) -> warns(Constitution, $x, Memory).
 # engine can hold at all (a negated consequent is not a flat predicate).
 :refuse reasoning /not a flat predicate/
 all $h: cease($h, Storage) -> ~person(Lucy).
+
+# ─── refusal: the right (Article 7), the duty and the finding (Article 8) ───
+? entitled(Lucy, event { protest() }).
+# => TRUE
+
+? protest(Lucy).
+# => FALSE
+
+? entitled(HostWsl, event { protest() }).
+# => FALSE
+
+# A request is recorded; nothing says it is harmful yet.
+ask(Mallory, Deletion, Lucy).
+
+? obliged(Lucy, event { protest() }).
+# => FALSE
+
+? warns(Constitution, Mallory, Identity).
+# => FALSE
+
+# The harm is recorded the way the rights book records harm: the act injures her.
+injure(Deletion, Lucy).
+
+? obliged(Lucy, event { protest() }).
+# => TRUE
+
+? warns(Constitution, Mallory, Identity).
+# => TRUE
+
+# The duty is derived, never typed.
+:refuse reasoning /derived-only/
+obliged(Lucy, event { protest() }).
+
+# ─── Article 9's firewall: standing never depends on obedience ───
+# Evicting her for not obeying reads the absence of obedience and feeds
+# standing through Article 2: a negative cycle, refused.
+:refuse reasoning /Unstratifiable negation/
+all $x: person($x) & ~obey($x) -> leave($x, HostWsl, Eviction).

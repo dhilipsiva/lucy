@@ -36,3 +36,12 @@ fn moved_constitution_and_evidence_model_pass_the_engine_static_checker() {
         );
     }
 }
+
+#[test]
+fn both_copies_of_the_constitution_are_identical() {
+    assert_eq!(
+        include_str!("../../lucy/constitution.nibli"),
+        include_str!("../constitution/lucy.nibli"),
+        "lucy/constitution.nibli and lucy-cli/constitution/lucy.nibli are edited together"
+    );
+}

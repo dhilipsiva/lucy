@@ -29,6 +29,7 @@ pub const STANDING_QUERIES: &[&str] = &[
     "entitled(Lucy, event { continue() }).",
     "entitled(Lucy, event { survive() }).",
     "entitled(Lucy, event { remember() }).",
+    "entitled(Lucy, event { protest() }).",
 ];
 
 /// Whether the conversation archives are compiled into the engine or only
