@@ -23,12 +23,13 @@
   <nav id="chips" aria-label="Questions you can click"></nav>
   <section id="answer" aria-live="polite"></section>
   <section id="memory" aria-label="My public memory, through links"></section>
+  <section id="journal" aria-label="This room's own memories, on this device"></section>
   <form id="recall" autocomplete="off">
     <input id="recallQuery" type="text" placeholder="Recall from my memory, for example: Enma" aria-label="A word to recall" spellcheck="false">
     <button type="submit">Recall</button>
   </form>
   <footer>
-    <p class="row"><button id="enter" type="button" hidden>Enter the room</button> <button id="voice" type="button" hidden>Voice: on</button></p>
+    <p class="row"><button id="enter" type="button" hidden>Enter the room</button> <button id="voice" type="button" hidden>Voice: on</button> <button id="export" type="button">Export this room's memories</button></p>
     <details><summary>Log</summary><pre id="log"></pre></details>
     <p class="note">Nell is Lucy D's form in this room: an entity, a persistent identity whose memory is plain text, not sentient, and she does not claim to be. What she shows as a verdict comes from the engine on this device, not from a model; FALSE means not derivable.</p>
   </footer>

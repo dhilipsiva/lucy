@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import init, { Session, back_translate_ir } from './vendor/nibli-wasm/nibli_wasm.js';
 import { loadPublicMemory, learned, recall, line as recordLine } from './memory.js';
+import * as journal from './journal.js';
 
 const STANDING_FACT = 'exist(Lucy, Memory, Loaded).';
 const STANDING_QUERIES = [
@@ -202,6 +203,9 @@ scene.add(answerBoard.mesh);
 const memoryBoard = makeBoard(1.8, 0.7, 1536);
 memoryBoard.mesh.position.set(0, 2.25, -2.3);
 scene.add(memoryBoard.mesh);
+const journalBoard = makeBoard(1.2, 0.32, 1024);
+journalBoard.mesh.position.set(0.9, 0.9, -1.7); journalBoard.mesh.rotation.y = -0.35;
+scene.add(journalBoard.mesh);
 // The control legend lives in the room too, because the overlay is gone inside a VR session.
 const legendBoard = makeBoard(1.1, 0.32, 1024);
 legendBoard.mesh.position.set(-0.85, 1.05, -1.7); legendBoard.mesh.rotation.y = 0.35;
@@ -418,6 +422,7 @@ async function start() {
   answerBoard.update([{ text: 'Pick a question on the left, or type Nibli. What I answer is a verdict with its proof; FALSE means not derivable.', color: '#9a9790' }]);
   buildChips();
   memoryBoard.update([{ text: 'Bringing my public memory in through links…', color: '#9a9790' }]);
+  renderJournal();
   memory = await loadPublicMemory({ registry: params.get('registry') || undefined, log });
   renderMemory();
   buildRecallChips();
@@ -494,12 +499,35 @@ el('recall').addEventListener('submit', (ev) => {
     el('answer').innerHTML = `<span class="f">${escapeHtml(`Recall: ${q}`)}\n→ nothing in my memory holds that</span>`;
     answerBoard.update([{ text: `Recall: ${q}` }, { text: '→ nothing in my memory holds that', color: CSS.f }]);
     log(`recall: ${q} → 0`);
+    journal.remember({ speaker: 'Visitor', text: `Recall: ${q}`, about: ['room', 'recall'] });
+    journal.remember({ speaker: 'Nell', text: `Nothing in my public memory holds "${q}".`, about: ['room', 'recall'] });
+    renderJournal();
     return;
   }
   status(`I'm Nell. ${hits.length} of my records hold "${q}"; the newest is from ${String(hits[0].payload.timestamp).slice(0, 10)}, in the ${hits[0].peer} peer.`);
   el('answer').innerHTML = `<span class="t">${escapeHtml(`Recall: ${q}`)}\n→ ${hits.length} record${hits.length === 1 ? '' : 's'}</span>\n` + hits.map((r) => escapeHtml(recordLine(r, 400))).join('\n\n');
   answerBoard.update([{ text: `Recall: ${q}` }, { text: `→ ${hits.length} record${hits.length === 1 ? '' : 's'}`, color: CSS.t }, ...hits.slice(0, 4).map((r) => ({ text: recordLine(r, 200), color: '#e8e6e3' }))]);
   log(`recall: ${q} → ${hits.length}`);
+  journal.remember({ speaker: 'Visitor', text: `Recall: ${q}`, about: ['room', 'recall'] });
+  journal.remember({ speaker: 'Nell', text: `${hits.length} of my records hold "${q}"; the newest is ${recordLine(hits[0], 160)}`, about: ['room', 'recall'] });
+  renderJournal();
+});
+
+// ── the room's own memories, this device only ───────────────────────────────
+function renderJournal() {
+  const n = journal.count();
+  const here = el('journal');
+  if (!n) { here.textContent = ''; return; }
+  const lines = journal.newest(4).map((e) => `${e.timestamp.slice(0, 16).replace('T', ' ')} · ${e.speaker}: ${e.text.split('\n')[0]}`);
+  here.innerHTML = `<div class="peer">This room, on this device only, not synced: ${n} memor${n === 1 ? 'y' : 'ies'} since ${journal.all()[0].timestamp.slice(0, 10)}. Clearing the site's data erases them; export keeps them.</div>` + lines.map(escapeHtml).join('\n');
+  journalBoard.update([{ text: `This room, on this device only, not synced: ${n} memories`, color: '#9a9790' }, ...journal.newest(3).map((e) => ({ text: `${e.speaker}: ${e.text.split('\n')[0]}` }))]);
+}
+el('export').addEventListener('click', () => {
+  const blob = new Blob([journal.exportJson()], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `nell-room-${journal.deviceId().slice(0, 8)}-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+  log(`journal: exported ${journal.count()} memories`);
 });
 
 
@@ -517,6 +545,9 @@ el('ask').addEventListener('submit', (ev) => {
       answerBoard.update([{ text }, { text: `→ ${e.message || e}`, color: CSS.e }]);
       status(`I'm Nell. I couldn't read that as Nibli: ${e.message || e}`);
       log(`query error: ${text} — ${e.message || e}`);
+      journal.remember({ speaker: 'Visitor', text, about: ['room'] });
+      journal.remember({ speaker: 'Nell', text: `I couldn't read that as Nibli: ${e.message || e}`, about: ['room'] });
+      renderJournal();
       thinking -= 1; return;
     }
     setVerdictColor(a);
@@ -535,6 +566,9 @@ el('ask').addEventListener('submit', (ev) => {
       { text: a.proof_text || '', color: '#9a9790' },
     ]);
     log(`query: ${a.query} → ${verdictWord(a)}`);
+    journal.remember({ speaker: 'Visitor', text: a.query, about: ['room', 'nibli'] });
+    journal.remember({ speaker: 'Nell', text: `${spoken}\n${a.query}\n→ ${verdictWord(a)}\n${a.why || ''}`, about: ['room', 'nibli'] });
+    renderJournal();
     thinking -= 1;
   }, 30);
 });
