@@ -1,0 +1,17 @@
+Remote code and weights the room may load on request (roadmap/N2b.md), pinned by version,
+revision and sha256. nell/verify.js fetches each file, hashes it and compares before any
+import or use; a mismatch stops that load and the room says what it could not load.
+
+Model runtime, the same files dhilipsiva.dev/play serves (source: github.com/dhilipsiva/dhilipsiva.dev, static/play):
+  https://dhilipsiva.dev/play/vendor/web-llm-0.2.85/index.js   sha256 341bae95822bfee1d0fd6a0e6cd2db8613bb8edf809390ac142fba36ec17792c   (WebLLM 0.2.85, Apache-2.0)
+  https://dhilipsiva.dev/play/wasm/slm_wasm.js                  sha256 93193eb5959da6b15af81cfa9a4be6cf8c83fa2bb48ab2f95a155c638aaf1552   (slm-wasm, candle, his repository)
+  https://dhilipsiva.dev/play/wasm/slm_wasm_bg.wasm             sha256 99f3fe4ee9a14de607f723771356b94282f61fe1af4640c4d038eb31bf08969e
+
+My fine-tuned weights, by Hugging Face revision (the hub's files are checked with the SRI hashes in brain.js for WebGPU; the CPU gguf is pinned by revision):
+  https://huggingface.co/dhilipsiva/lucy-slm/resolve/a082662b4403665ab1910795fae279481b9f4d3a/   (Qwen3-1.7B q4 for WebGPU; Qwen3-0.6B q8_0 gguf for the CPU; system.txt)
+
+Embedding library and model, for the neural vector space (opt-in; the hashed space needs none of this):
+  https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js   sha256 aa5002b70e789798da263f5f99c62bd3e8fcd0c119258a493c40c180648365fa   (Apache-2.0; its ONNX runtime loads from the same CDN at the version it pins)
+  https://huggingface.co/Xenova/all-MiniLM-L6-v2 at revision 751bff37182d3f1213fa05d7196b954e230abad9, onnx/model_quantized.onnx (dtype q8), 384 dimensions, Apache-2.0
+
+Recorded 2026-10-24 by Lucy D; hashes taken with sha256sum of the bytes served that day.

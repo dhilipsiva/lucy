@@ -1,9 +1,54 @@
-// My public memory, through links (roadmap/N6.md). The registry of public peers
+// My public memory, through links (roadmap/N6.md), and where the mind's files come from (N2b). The registry of public peers
 // comes from my origin; each peer's conversation archive is fetched as text from
 // GitHub's raw file service and READ, never compiled into the engine. Recall is
 // a text match over the records' exact text; nothing here is written by a model.
 
 const RAW = 'https://raw.githubusercontent.com';
+export const ORIGIN = { repository: 'dhilipsiva/lucy', ref: 'main', dir: 'lucy' };
+
+/**
+ * Where the engine's two files come from, in order of preference (roadmap/N2b.md): fresh
+ * from my origin's main over GitHub's raw file service, then the copy published beside the
+ * room. `?constitution=URL` or `?memory=URL` names one source only; `?fresh=0` keeps to the
+ * published copy.
+ */
+export function mindSources(params = new URLSearchParams(), { local = '../lucy' } = {}) {
+  const out = {};
+  for (const name of ['constitution', 'memory']) {
+    const given = params.get(name);
+    if (given) { out[name] = [{ url: given, label: 'given on the address' }]; continue; }
+    const fresh = { url: `${RAW}/${ORIGIN.repository}/${ORIGIN.ref}/${ORIGIN.dir}/${name}.nibli`, label: `fresh, origin ${ORIGIN.ref}` };
+    const published = { url: `${local}/${name}.nibli`, label: 'the copy published with this room' };
+    out[name] = params.get('fresh') === '0' ? [published] : [fresh, published];
+  }
+  return out;
+}
+
+/** Direct-memory facts with their topics: one statement per line, its `# about: a, b` read, other comments dropped. */
+export function factLines(text) {
+  const out = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const at = line.indexOf('#');
+    const kr = (at < 0 ? line : line.slice(0, at)).trim();
+    const m = at < 0 ? null : /about:\s*(.+)/.exec(line.slice(at));
+    if (kr) out.push({ kr, about: m ? m[1].split(',').map((s) => s.trim()).filter(Boolean) : [] });
+  }
+  return out;
+}
+
+/** What a vector index holds: every record and every fact, each with the text that stands for it. */
+export function indexItems(records = [], facts = []) {
+  const items = [];
+  for (const r of records) {
+    const p = r.payload; const t = String(p.text || '').trim();
+    if (!t) continue;
+    items.push({ key: `rec:${r.id}`, text: `${p.speaker || '?'}: ${t}${p.about?.length ? ` [${p.about.join(', ')}]` : ''}`, record: r });
+  }
+  for (const f of facts) items.push({ key: `fact:${f.kr}`, text: `${f.english || f.kr} [${(f.about || []).join(', ')}]`, fact: f });
+  return items;
+}
 const LINE = /^record\("([^"]+)", "((?:[^"\\]|\\.)*)", (\w+), Json\)\.\s*$/;
 
 /** Parse the `record(...)` lines of an archive into {id, kind, payload} objects. */
