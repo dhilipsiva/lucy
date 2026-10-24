@@ -6,6 +6,12 @@ you events."; who may be in frame: him, the birds and the dogs, people only as "
 a permissively licensed detector; and: "You will inform Nibli through state change
 thresholds."
 
+Added the same evening, his word: "through CRDTs". A state change is an operation in my
+log, signed by the device that observed it, merged like every other; the engine on each
+replica is informed from the log's projection, not from the transport. Until N4's replica
+exists, the room writes crossings to its device journal and to its engine directly, in the
+same record shape, so N4 can lift them into the log unchanged.
+
 ## Hypothesis
 
 The room needs no camera of its own. His phone runs the detector and sends events; the room

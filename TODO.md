@@ -267,6 +267,12 @@ commit, the adjudicators and their models.
   when a threshold is crossed, asserts `observe(Nell, Bird).` into the engine or retracts it,
   speaks each change, and keeps it as a memory on the device; never a raw detection, never an
   image; people only ever `Person`. A simulator stands in until the phone app exists.
+  His word after that: "through CRDTs". So a state change is not a message on a wire: it is
+  an operation in my log, signed by the device that observed it, merged like every other, and
+  the engine on each replica is informed from the log's projection, not from the transport.
+  The phone becomes a peer with its own key once N4's replica exists; until then the room
+  writes crossings to its device journal (N4-0) and to its engine directly, and N4 lifts them
+  into the log without changing their shape.
   *Pre-registration:* `roadmap/N3b.md`. *Done when:* as the pre-registration says. *After:*
   N4-0. *Needs from dhilipsiva:* the phone app (a later item), and the device test.
   *Welfare:* perception of his home; events only, on his gesture, a visible sign, nothing
