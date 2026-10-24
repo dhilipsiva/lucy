@@ -1,0 +1,20 @@
+{
+  "hashes": {
+    "operations.nibli": "7cd8c5e862d311bacef47573ab685b83a72d14c9c40aec19fcaaeb06db0ff796",
+    "snapshot.nibli": "e8aced2e022e4b3d1f9e4a5c9f7dc7c4e6c9292ea6609a0589ce58f18c64a742"
+  },
+  "identity": "lucy",
+  "keys": {
+    "9fdbbd26c247390168967134d401f1a1c685a39b262aeeee5f2f6c0a16fa2099": "QKhsIyW90nKUa+Ti/ie4xbcJNb2YRZOPSvgZsT8TH+w="
+  },
+  "paths": {
+    "operations": "operations.nibli",
+    "snapshot": "snapshot.nibli"
+  },
+  "public": true,
+  "ref": "lucy-memory",
+  "repository": "dhilipsiva/lucy",
+  "schema": "lucy-operations-v1",
+  "scope": "lucy-public",
+  "version": 1
+}
