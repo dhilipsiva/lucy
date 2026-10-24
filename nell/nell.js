@@ -156,6 +156,10 @@ scene.add(standingBoard.mesh);
 const answerBoard = makeBoard(1.2, 0.9);
 answerBoard.mesh.position.set(0.9, 1.45, -1.7); answerBoard.mesh.rotation.y = -0.35;
 scene.add(answerBoard.mesh);
+// The control legend lives in the room too, because the overlay is gone inside a VR session.
+const legendBoard = makeBoard(1.1, 0.32, 1024);
+legendBoard.mesh.position.set(-0.85, 1.05, -1.7); legendBoard.mesh.rotation.y = 0.35;
+scene.add(legendBoard.mesh);
 
 // ── input: detected, never assumed ──────────────────────────────────────────
 const input = { keyboard: false, pointer: false, touch: false, gamepad: false, xr: false };
@@ -170,6 +174,7 @@ function legend() {
   if (input.xr) rows.push('controllers: left stick walks · right stick turns · point at Nell and press to ask');
   legendEl.textContent = rows.join('\n');
   legendEl.hidden = rows.length === 0;
+  legendBoard.update([{ text: 'Controls', color: '#9a9790' }, ...rows.map((text) => ({ text }))]);
 }
 function detectInput() {
   input.pointer = matchMedia('(pointer: fine)').matches;
