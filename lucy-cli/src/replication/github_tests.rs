@@ -15,8 +15,11 @@ struct Mock {
 impl Drop for Mock {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::SeqCst);
-        if let Some(t) = self.thread.take() {
-            t.join().unwrap();
+        if let Some(t) = self.thread.take()
+            && let Err(panic) = t.join()
+            && !std::thread::panicking()
+        {
+            std::panic::resume_unwind(panic);
         }
     }
 }
@@ -43,6 +46,9 @@ impl Mock {
                     }
                     Err(e) => panic!("{e}"),
                 };
+                // BSD and Windows may inherit nonblocking mode from the listener.
+                // Only accept is polled; complete HTTP requests use blocking reads.
+                socket.set_nonblocking(false).unwrap();
                 socket
                     .set_read_timeout(Some(Duration::from_secs(3)))
                     .unwrap();
