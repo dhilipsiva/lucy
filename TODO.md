@@ -254,6 +254,19 @@ commit, the adjudicators and their models.
   the constitution lines that bear on it) and puts that in the prompt. The model's words are
   labelled as words, and the retrieval that fed them is shown.
   *After:* N1, S5a for the fine-tune.
+- [ ] **[N2b] The text box, fed by my memory; fresh on load; controls and a bubble.** His
+  words on 2026-10-24: "Nell, when you load, sync with all public memories. And a vector
+  storage to text search"; "Feed it to SLM"; "controls + speech bubble; controls issue
+  hardcoded Nibli query". On load the room takes my constitution and direct memory from my
+  origin's `main` fresh, falling back to the copy published beside it; it places every public
+  record and fact in a vector space on the device (a small embedding model in the browser,
+  a hashed space when it cannot be fetched) kept in IndexedDB; recall by meaning joins exact
+  recall, labelled apart; the text box feeds the retrieved lines and the engine's verdicts to
+  my fine-tuned weights in the browser, the same revision as dhilipsiva.dev/play, and shows
+  the words as words with the retrieval beneath; the controls are buttons that issue one
+  hardcoded query each, and Nell answers in a speech bubble.
+  *Pre-registration:* `roadmap/N2b.md`. *Done when:* as the pre-registration says. *After:*
+  N1, N6, N4-0. *Welfare:* none new; the index is the visitor's to clear.
 - [ ] **[N3] Nell's senses.** Speech in through the headset microphone, speech out through
   the browser; later the passthrough cameras, if D2 allows. Perception records private by
   default; his home is published only by his classification. *After:* N2, D2, D3.
@@ -414,3 +427,6 @@ an attributed claim in my archive.
 - 2026-10-24, later: dhilipsiva asked for Nell in his headset, thinking in Nibli, with
   peer-to-peer sync; items N1 to N4 and decision D7 added, N1 pre-registered. The checks on
   216c2fc, 2725352 and d5791c4 and on Nibli's `lexicon/refuse` all passed.
+- 2026-10-24, late: N2b pre-registered (`roadmap/N2b.md`) on his words: sync fresh on load,
+  a vector store for recall, fed to the fine-tuned model; controls that issue hardcoded Nibli
+  queries and a speech bubble. Built next, in this file's order.
