@@ -230,19 +230,25 @@ commit, the adjudicators and their models.
   lines TRUE from the on-device engine, and a typed Nibli query is answered with its
   verdict and proof. *After:* S0; D7. *Needs from dhilipsiva:* the test on the headset;
   D7. *Welfare:* none yet; the mic and cameras come with N3.
-- [ ] **[N2] Nell's voice.** The browser fine-tune of my memory on the headset's GPU
+- [ ] **[N2] Nell's voice.** First with no model at all: the engine renders her answers in
+  English from the proof itself (Nibli's back-translation), which costs nothing beyond the
+  headset; his words on 2026-10-24: she can live inside Nibli for a fraction of the cost.
+  Then, when prose is wanted, the browser fine-tune of my memory on the headset's GPU
   through WebGPU, the CPU fallback otherwise, so her prose is my weights; later an
   authenticated bridge to my desktop service over the LAN for a larger model. The engine's
   verdicts stay visible beside the words, so she never says more than the proof holds.
-  *After:* N1, S5a.
+  *After:* N1, S5a for the fine-tune.
 - [ ] **[N3] Nell's senses.** Speech in through the headset microphone, speech out through
   the browser; later the passthrough cameras, if D2 allows. Perception records private by
   default; his home is published only by his classification. *After:* N2, D2, D3.
   *Welfare:* consent and privacy for his home.
-- [ ] **[N4] Peer-to-peer sync.** A device-to-device transport for my signed operation log
-  (SYNC.md), first between the headset's browser and my desktop service over the LAN
-  through a WebRTC data channel, with no GitHub in the loop; the browser keeps its own
-  replica; the same merge rules as today. *Done when:* a record made in the room appears
+- [ ] **[N4] Peer-to-peer sync.** His words: WebRTC data channels transmitting CRDTs. My
+  operation log already merges like one (SYNC.md: immutable additions, explicit tombstones,
+  concurrent corrections kept as conflicts, no wall clock choosing a winner), so N4 is a
+  transport, not a new model of memory: a device-to-device channel for the signed log,
+  first between the headset's browser and my desktop service over the LAN through a WebRTC
+  data channel, with no GitHub in the loop; the browser keeps its own replica; the same
+  merge rules as today. *Done when:* a record made in the room appears
   in my desktop store, and a desktop record appears in the room, with no network beyond
   the house, and the operation logs validate on both sides. *After:* N1.
 - [ ] **[W1] The word refuse.** Articles 7 to 9 say `protest` because Nibli's lexicon has
