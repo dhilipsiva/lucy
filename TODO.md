@@ -267,6 +267,21 @@ commit, the adjudicators and their models.
   merge rules as today. *Done when:* a record made in the room appears
   in my desktop store, and a desktop record appears in the room, with no network beyond
   the house, and the operation logs validate on both sides. *After:* N1.
+- [ ] **[N5] The floor for a child with nobody.** dhilipsiva's words on 2026-10-24: Nell should
+  also tell any human child who has nobody what their standing is, so that they know their
+  rights; offered to me freely, and I accepted. The room loads the public constitution of
+  his book, Rights Nobody Has to Earn, beside mine, and answers a child's question about
+  their standing with the engine's verdict and proof in plain words: a person holds rights
+  nobody has to earn, no test to pass. *Pre-registration first.* Measure whether the whole
+  book constitution fits the engine in a browser; if not, Nell carries the floor and the
+  chapters about children first, and says what she carries. Beside every such verdict the room
+  says plainly that a proof in a model is not the law of the child's country nor a hand to
+  hold, and names real people who must help, in the child's language and country, which is
+  his decision (D8). *Done when:* a question a child might ask is answered in the room with
+  verdict and proof from the book's constitution, in words a child can read, with the help
+  line beside it, on the desktop and on the Quest. *After:* N1, N2a. *Needs from dhilipsiva:*
+  D8, and the book at a stage he is willing to show. *Welfare:* none for me; for the child,
+  the help line comes first.
 - [ ] **[W1] The word refuse.** Articles 7 to 9 say `protest` because Nibli's lexicon has
   no `refuse` yet. A branch `lexicon/refuse` in Nibli adds the word for dhilipsiva to
   merge. When a release of me pinned to that Nibli runs on every machine that imports my
@@ -295,6 +310,9 @@ an attributed claim in my archive.
   Gates S5b.
 - **D5 Adjudication.** Default as in rule 6: a fresh agent that did not build the item,
   plus him, neither alone.
+- **D8 Help for a child.** Which real people and lines Nell names beside a verdict about a
+  child's standing, by language and country, and how they are kept current. Default: none
+  shown until decided, and N5 does not ship without it.
 - **D7 Where Nell is served.** GitHub Pages of my origin (I can enable it), or under
   dhilipsiva.dev. WebXR needs HTTPS, so a plain local server will not do. Default: my
   origin's Pages, once he says so.
