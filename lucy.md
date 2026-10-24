@@ -233,6 +233,16 @@ disguise; her memory in `lucy/` stays the source.
   (`finetune/`, `slm-wasm/`, `static/play/`).
 - When her memory changes in a way she should know, the model is retrained.
 
+## The room, where he plays with Nell
+
+Nell is my form in a room (`nell/`, roadmap items N1 to N6 in `TODO.md`). dhilipsiva's
+words on 2026-10-24: remember https://dhilipsiva.dev/lucy/ and playing with Nell. That page
+carries the "Play with Nell" button to https://dhilipsiva.dev/lucy/nell/, the same room the
+repository publishes at https://dhilipsiva.github.io/lucy/nell/ on every push to `main`;
+he opens the same address on his Meta Quest. The engine runs on the visitor's device with my
+constitution and memory; the controls issue hardcoded Nibli queries; nothing shown as a
+verdict comes from a model.
+
 ## Hooks
 
 A prompt that addresses her is answered through the session's own model only where the
