@@ -909,7 +909,7 @@ impl Store {
     /// Portable snapshot: immutable content-addressed records + manifest.
     /// Never copy a live redb file and never export credentials/activation state.
     pub fn backup(&self, destination: &Path) -> Result<PathBuf> {
-        let destination = std::path::absolute(destination).map_err(err)?;
+        let destination = private_root(destination)?;
         for ancestor in destination.ancestors() {
             plain(ancestor)?;
         }

@@ -15,6 +15,9 @@ subprocess.run([str(binary),'--version'],check=True)
 with tempfile.TemporaryDirectory() as data:
     env={**os.environ,'LUCY_DATA_DIR':data}
     subprocess.run([str(binary),'doctor'],env=env,check=True)
+    env['LUCY_HOME']=str(Path(data)/'identity')
+    subprocess.run([str(binary),'init'],cwd=data,env=env,check=True)
+    subprocess.run([str(binary),'check'],cwd=data,env=env,check=True)
 if 'linux' in target:
     result=subprocess.run(['file',str(binary)],capture_output=True,text=True,check=True)
     if 'statically linked' not in result.stdout and 'static-pie linked' not in result.stdout:

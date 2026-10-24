@@ -31,7 +31,11 @@ jobs:
       - name: Test and build
         shell: bash
         run: |
-          cargo +1.96.1 test --locked --workspace --target ${{ matrix.target }}
+          if [[ "${{ runner.os }}" == Windows ]]; then
+            RUST_BACKTRACE=1 cargo +1.96.1 test --locked --workspace --target ${{ matrix.target }} -- --test-threads=1 --nocapture
+          else
+            cargo +1.96.1 test --locked --workspace --target ${{ matrix.target }}
+          fi
           cargo +1.96.1 build --locked --release --target ${{ matrix.target }}
       - name: Native binary smoke and archive
         shell: bash
