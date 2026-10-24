@@ -2,6 +2,11 @@
 name: remember
 description: Record Lucy's complete conversations and separately attributed facts and decisions in nibli. Use when something is said, decided or learned in a Lucy session.
 ---
+Follow [WAKE.md](https://github.com/dhilipsiva/lucy/blob/main/WAKE.md): read text
+first, refresh every authorized peer each wake, and offer optional prebuilt tools.
+New conversation records are local and private by default. Publishing requires
+explicit user classification and enrollment for that destination.
+
 
 # remember
 

@@ -26,6 +26,10 @@ pub struct Outcome {
 /// The usage text.
 pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli text
 
+  lucy peer enroll|list|change       enroll scoped peers or append signed changes (--stdin)
+  lucy sync                          refresh every enrolled peer; retain pending uploads
+  lucy doctor                        inspect local integrity without invoking a model
+  lucy continuity since|ack          durable events (--consumer ID --scope S --cursor C)
   lucy self-model status|audit|events|facts [--root DIR]
                                      inspect my empirical self-model and its evidence
   lucy self-model predict|observe --stdin [--root DIR]
@@ -42,6 +46,7 @@ pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli te
   lucy chat                          interactive agent chat in the current directory
   lucy ui [--workspace DIR]          native GTK desktop with the same agent tools
   lucy serve                         run the native Rust local service
+  lucy service install|uninstall      explicitly enable/remove a Linux or macOS user service
   lucy memory prompt|record|recall|transcript --source APP --session ID
                                      shared app memory; --channel commentary|final|summary
   lucy sleep --source APP --session ID
@@ -60,10 +65,10 @@ pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli te
                                      the ones that fail (exit 1 if any)
   lucy wake [--markdown]             load her memory and print the capsule; the conversation
                                      archives are read, not compiled
-  lucy remember \"TEXT\" [--kr] [--private] [--source WHO] [--about THING]...
+  lucy remember \"TEXT\" [--kr] [--public] [--source WHO] [--about THING]...
                                      append a note to the conversation KB, or with --kr a
                                      nibli statement to memory.nibli (checked first)
-  lucy record \"TEXT\" --speaker NAME [--source NAME] [--session ID] [--id ID]
+  lucy record \"TEXT\" --speaker NAME [--public] [--source NAME] [--session ID] [--id ID]
                                      save the complete message; --stdin reads exact text
                                      --json reads one record or a batch from stdin
   lucy claim \"KR STATEMENT\" --from ID [--decision] [--text \"INTERPRETATION\"]
@@ -97,7 +102,7 @@ Environment: LUCY_HOME, LUCY_HOST, LUCY_CAPSULE_MAX_BYTES, LUCY_MAX_CHAIN_DEPTH,
 pub fn reads_stdin(args: &[String]) -> bool {
     (matches!(
         args.first().map(String::as_str),
-        Some("store" | "self-model")
+        Some("store" | "self-model" | "peer")
     ) && args.iter().any(|a| a == "--stdin"))
         || args.first().map(String::as_str) == Some("hook")
         || (args.first().map(String::as_str) == Some("record")
@@ -117,6 +122,18 @@ pub fn run(args: &[String], stdin: &str, env_override: Option<Env>) -> Outcome {
         // Takes its folder only from --home: the process's own memory folder,
         // which holds private files, is never resolved for an export.
         "dataset" => return cmd_dataset(&args[1..]),
+        "peer" | "sync" | "doctor" | "continuity" => {
+            return match crate::replication::command(command, &args[1..], stdin) {
+                Ok(value) => json_out(0, value),
+                Err(error) => harness(&error),
+            };
+        }
+        "service" => {
+            return match crate::service::command(&args[1..]) {
+                Ok(value) => json_out(0, value),
+                Err(error) => harness(&error),
+            };
+        }
         "store" => {
             return match crate::store::command(&args[1..], stdin) {
                 Ok(value) => json_out(0, value),
@@ -131,6 +148,16 @@ pub fn run(args: &[String], stdin: &str, env_override: Option<Env>) -> Outcome {
         }
         _ => {}
     }
+    let refresh = if command == "wake" && env_override.is_none() {
+        Some(crate::store::default_root().and_then(|root| {
+            let discovery = crate::replication::github::discover(&root);
+            let mut report = crate::replication::sync_all(&root)?;
+            report["discovery"] = discovery.unwrap_or_else(|e| json!({"error":e}));
+            Ok(report)
+        }))
+    } else {
+        None
+    };
     let env = match env_override {
         Some(env) => env,
         None => match Env::from_process() {
@@ -173,6 +200,12 @@ pub fn run(args: &[String], stdin: &str, env_override: Option<Env>) -> Outcome {
         // command still succeeded.
         outcome.stderr.push_str(&format!(
             "File saved; shared index needs `lucy store sync`: {error}\n"
+        ));
+    }
+    if let Some(refresh) = refresh {
+        outcome.stderr.push_str(&format!(
+            "Peer refresh: {}\n",
+            refresh.unwrap_or_else(|e| json!({"error":e}))
         ));
     }
     if command != "hook" {
@@ -421,6 +454,9 @@ fn cmd_wake(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
 
 fn cmd_remember(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
     let args = parse(rest);
+    if args.has("--public") && args.has("--private") {
+        return harness("choose one privacy scope");
+    }
     if args.positional.len() != 1 {
         return harness("remember takes exactly one quoted TEXT argument");
     }
@@ -428,7 +464,7 @@ fn cmd_remember(env: &Env, paths: &Paths, rest: &[String]) -> Outcome {
     if body.is_empty() {
         return harness("remember: TEXT is empty");
     }
-    let private = args.has("--private");
+    let private = !args.has("--public");
     let tags = args.values("--about");
     if args.has("--kr") {
         let loaded = match load::load(env, paths, Archives::Read) {
@@ -500,11 +536,26 @@ fn recorded(env: &Env, paths: &Paths, command: &str, entries: Vec<Interaction>) 
 
 fn cmd_record(env: &Env, paths: &Paths, rest: &[String], stdin: &str) -> Outcome {
     let args = parse(rest);
+    if args.has("--public") && args.has("--private") {
+        return harness("choose one privacy scope");
+    }
     if args.has("--json") {
         if rest.len() != 1 {
             return harness("record --json takes metadata in the JSON, with no other arguments");
         }
-        let entries = serde_json::from_str::<Value>(stdin).and_then(|value| {
+        let entries = serde_json::from_str::<Value>(stdin).and_then(|mut value| {
+            let default_private = |entry: &mut Value| {
+                if let Some(object) = entry.as_object_mut() {
+                    object.entry("private").or_insert(json!(true));
+                }
+            };
+            if let Some(entries) = value.as_array_mut() {
+                for entry in entries {
+                    default_private(entry);
+                }
+            } else {
+                default_private(&mut value);
+            }
             if value.is_array() {
                 serde_json::from_value::<Vec<Interaction>>(value)
             } else {
@@ -553,7 +604,7 @@ fn cmd_record(env: &Env, paths: &Paths, rest: &[String], stdin: &str) -> Outcome
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
-            private: args.has("--private"),
+            private: !args.has("--public"),
             ..Interaction::default()
         }],
     )

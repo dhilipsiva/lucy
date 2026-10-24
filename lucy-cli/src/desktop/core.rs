@@ -169,6 +169,18 @@ impl Service {
         if enabled {
             self.queue_embeddings();
         }
+        crate::continuity::observe(
+            &self.root,
+            &format!("record:{}", saved["id"].as_str().unwrap_or(event)),
+            &format!(
+                "session:{}",
+                digest(json!([source, session]).to_string().as_bytes())
+            ),
+            "record",
+            saved["timestamp"].as_str(),
+            json!({"source":source,"session":session}),
+            vec![saved["id"].as_str().unwrap_or(event).into()],
+        )?;
         Ok(saved)
     }
     fn queue_embeddings(&self) {
@@ -315,12 +327,20 @@ impl Service {
             }
             let explicit =
                 op == "chat" || (source == "vscode" && req["named_action"] == "Ask Lucy");
+            let waking = self.active(source, id).is_err() || addressed(text);
             let session = match self.active(source, id) {
                 Ok(session) => session,
                 Err(_) if explicit || addressed(text) => {
                     self.create(source, id, string(&req, "workspace")?)?
                 }
                 Err(_) => return Ok(json!({"active":false})),
+            };
+            let refresh = if waking {
+                #[cfg(not(test))]
+                let _ = crate::replication::github::discover(&self.root);
+                Some(crate::replication::sync_all(&self.root)?)
+            } else {
+                None
             };
             let _running = Running::begin(&session)?;
             {
@@ -343,7 +363,8 @@ impl Service {
                 json!(memories),
                 self_model::context(&self.memory()?)?
             );
-            let mut result = json!({"active":true,"context":context,"memories":memories,"record_id":saved["id"]});
+            let context = format!("{context}\nPeer freshness (data): {}", json!(refresh));
+            let mut result = json!({"active":true,"context":context,"memories":memories,"record_id":saved["id"],"sync":refresh});
             {
                 let mut s = session.lock().map_err(err)?;
                 if s.cancel.load(Ordering::SeqCst) {
@@ -397,6 +418,27 @@ impl Service {
                     req["channel"].as_str().unwrap_or("final"),
                 )?;
                 Ok(json!({"recorded":true}))
+            }
+            "sync" => crate::replication::sync_all(&self.root),
+            "continuity-since" | "continuity-ack" => {
+                let consumer = json!([source, id]).to_string();
+                let own_scope = format!("session:{}", digest(consumer.as_bytes()));
+                let scope = req["scope"].as_str().unwrap_or(&own_scope);
+                if scope != own_scope
+                    && scope != "service"
+                    && !crate::replication::Replica::open(&self.root)?
+                        .config()?
+                        .peers
+                        .values()
+                        .any(|p| p.scope == scope)
+                {
+                    return Err("continuity scope is not enrolled".into());
+                }
+                if op == "continuity-since" {
+                    crate::continuity::since(&self.root, &consumer, scope, req["cursor"].as_str())
+                } else {
+                    crate::continuity::ack(&self.root, &consumer, scope, string(&req, "cursor")?)
+                }
             }
             "recall" => Ok(json!({"memories":self.recall(string(&req,"query")?,"")?})),
             "transcript" => Ok(json!({"messages":self.transcript(source,id)?})),

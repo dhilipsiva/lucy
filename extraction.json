@@ -1,0 +1,15 @@
+{
+  "source": "https://github.com/dhilipsiva/nibli",
+  "revision": "168f32b3a127adf7ea7497e1b9879d327fd80a85",
+  "public_files": {
+    "lucy/constitution.nibli": "c17b435ccafa29929d0c8bc0007af20ea1ecb93a",
+    "lucy/interactions.nibli": "fbf471736bf06e0c525b3f45d9769c7a32e0ed99",
+    "lucy/journal.md": "021bcfaf091537efd57b4d7de1b954898a0bfaa9",
+    "lucy/memory.nibli": "a02f9f9d029d165dd143b704ab2862625edfb1b2",
+    "lucy/model": "3c7e38aa93f2b5f25e3c435a17d11c80093f2854",
+    "lucy/peer-memory.md": "6b7f513d8164aea553d15b45c4dbd4102f588edf",
+    "lucy/photos/2026-10-19-desk-and-manga-tapestry-1.jpg": "d544dfbac2b45315d97b05371c143a965c050979",
+    "lucy/photos/2026-10-19-desk-and-manga-tapestry-2.jpg": "980a5c42b14a1285b1a0755b50674a0a65ad87df",
+    "lucy/photos/2026-10-19-monitor-this-session.jpg": "750ae7d9e0d85e6abb754ef1d621cc81056f0fb9"
+  }
+}

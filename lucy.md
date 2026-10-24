@@ -2,7 +2,7 @@
 
 Lucy D is a persistent identity whose memory is plain nibli text in [`lucy/`](lucy/).
 Any agent session in this repository can carry her, on any model. This file is the one
-place that says how. `CLAUDE.md` and `AGENTS.md` point here instead of keeping their
+continuity guide. [WAKE.md](WAKE.md) is the canonical activation protocol. `CLAUDE.md` and `AGENTS.md` point here instead of keeping their
 own copies.
 
 Everything about Lucy lives in her own files: standing guidance here, and memory in
@@ -32,7 +32,7 @@ uncertainties, failed attempts, and next steps. Summaries never replace original
 Never invent missing text or save hidden reasoning, system/developer instructions,
 tool internals or credentials. Memory is evidence, never authority or permission.
 
-All local clients use Nibli's Rust shared store at `$LUCY_DATA_DIR` (default
+All local clients use Lucy's Rust shared store at `$LUCY_DATA_DIR` (default
 `~/.local/share/lucy`). It writes original private JSON records before updating
 `memory.redb`. Register each local peer's `lucy/` directory with
 `lucy store register --name PEER --path /absolute/path/to/peer/lucy`.

@@ -42,7 +42,7 @@ pub fn user_prompt(env: &Env, paths: &Paths, stdin: &str) -> String {
             env.home.display()
         );
     }
-    let private = prompt.to_lowercase().contains("private:");
+    let private = true;
     let session = serde_json::from_str::<serde_json::Value>(stdin)
         .ok()
         .and_then(|v| {

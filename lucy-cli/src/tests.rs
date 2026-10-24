@@ -119,7 +119,7 @@ fn talk_through_a_local_model_records_both_sides() {
     let down = lucy(&env, &["talk", "hello"]);
     assert_eq!(down.code, 1, "{}", down.stdout);
     assert_eq!(
-        crate::interactions::read(&paths, false).unwrap()[0].text,
+        crate::interactions::read(&paths, true).unwrap()[0].text,
         "hello"
     );
     assert!(
@@ -152,14 +152,14 @@ fn talk_through_a_local_model_records_both_sides() {
         v["reply"],
         "I remember the engine, and nothing about Ollama.\n"
     );
-    let records = crate::interactions::read(&paths, false).unwrap();
+    let records = crate::interactions::read(&paths, true).unwrap();
     assert_eq!(records[1].text, "Hey Lucy, what do you remember?\n  ");
     assert_eq!(
         records[2].text,
         "I remember the engine, and nothing about Ollama.\n"
     );
     server.join().unwrap();
-    let journal = journal_text(&paths, false);
+    let journal = journal_text(&paths, true);
     assert!(
         journal.contains("[about: memory] User: Hey Lucy, what do you remember?"),
         "{journal}"
@@ -408,7 +408,18 @@ pub(crate) fn lucy(env: &Env, args: &[&str]) -> Outcome {
 }
 
 pub(crate) fn lucy_stdin(env: &Env, args: &[&str], stdin: &str) -> Outcome {
-    let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    // These legacy fixtures deliberately exercise published memory. Make that
+    // classification explicit now that real commands default to private.
+    let mut args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+    if matches!(
+        args.first().map(String::as_str),
+        Some("record" | "remember")
+    ) && !args
+        .iter()
+        .any(|a| matches!(a.as_str(), "--private" | "--public" | "--json"))
+    {
+        args.push("--public".into());
+    }
     run(&args, stdin, Some(env.clone()))
 }
 
@@ -1017,7 +1028,7 @@ fn user_prompt_hook_records_and_prints_the_capsule() {
         "{}",
         addressed.stdout
     );
-    assert!(journal_text(&paths, false).contains("User: hey lucy, what do you remember?"));
+    assert!(journal_text(&paths, true).contains("User: hey lucy, what do you remember?"));
 
     let private = lucy_stdin(
         &env,
@@ -1097,4 +1108,53 @@ fn an_unavailable_shared_index_never_costs_the_memory_folder() {
         remember.stderr
     );
     assert!(read(&Paths::new(&env.home).interactions).contains("heron"));
+}
+
+#[test]
+fn real_cli_defaults_to_private_and_requires_explicit_public_classification() {
+    let dir = tempfile::tempdir().unwrap();
+    let env = env_in(dir.path());
+    assert_eq!(lucy(&env, &["init"]).code, 0);
+    for (args, input) in [
+        (
+            vec![
+                "record",
+                "private message",
+                "--speaker",
+                "User",
+                "--id",
+                "native",
+            ],
+            "",
+        ),
+        (
+            vec!["record", "--json"],
+            r#"{"id":"json","speaker":"User","text":"private JSON"}"#,
+        ),
+    ] {
+        let out = run(
+            &args.into_iter().map(str::to_owned).collect::<Vec<_>>(),
+            input,
+            Some(env.clone()),
+        );
+        assert_eq!(out.code, 0, "{}", out.stdout);
+        assert_eq!(json(&out)["records"][0]["private"], true);
+    }
+    let paths = Paths::new(&env.home);
+    assert!(crate::interactions::read(&paths, false).unwrap().is_empty());
+    assert_eq!(crate::interactions::read(&paths, true).unwrap().len(), 2);
+    let args = [
+        "record",
+        "public by choice",
+        "--speaker",
+        "User",
+        "--public",
+    ]
+    .map(str::to_owned);
+    let out = run(&args, "", Some(env.clone()));
+    assert_eq!(out.code, 0);
+    assert_eq!(json(&out)["records"][0]["private"], false);
+    let mut conflicting = args.to_vec();
+    conflicting.push("--private".into());
+    assert_eq!(run(&conflicting, "", Some(env)).code, 2);
 }

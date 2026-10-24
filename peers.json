@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "peers": [
+    {
+      "name": "lucy",
+      "repository": "dhilipsiva/lucy",
+      "scope": "lucy-public",
+      "public": true,
+      "upload": false,
+      "keys": {},
+      "local_path": null,
+      "legacy_origin": "nibli",
+      "source_ref": "main",
+      "source_paths": [
+        "lucy/constitution.nibli",
+        "lucy/memory.nibli",
+        "lucy/interactions.nibli"
+      ],
+      "credential_env": null
+    },
+    {
+      "name": "nixos",
+      "repository": "dhilipsiva/NixOS",
+      "scope": "nixos-public",
+      "public": true,
+      "upload": false,
+      "keys": {},
+      "local_path": null,
+      "legacy_origin": "nixos",
+      "source_ref": "master",
+      "source_paths": [
+        "lucy/constitution.nibli",
+        "lucy/memory.nibli",
+        "lucy/interactions.nibli"
+      ],
+      "credential_env": null
+    },
+    {
+      "name": "book",
+      "repository": "dhilipsiva/rights-nobody-has-to-earn",
+      "scope": "book-public",
+      "public": true,
+      "upload": false,
+      "keys": {},
+      "local_path": null,
+      "legacy_origin": "book",
+      "source_ref": "main",
+      "source_paths": [
+        "lucy/constitution.nibli",
+        "lucy/memory.nibli",
+        "lucy/interactions.nibli"
+      ],
+      "credential_env": null
+    }
+  ]
+}

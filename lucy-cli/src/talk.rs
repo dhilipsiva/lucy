@@ -246,7 +246,7 @@ pub fn talk(
     tags: &[&str],
     model_override: Option<&str>,
 ) -> Result<Talk, String> {
-    let private = message.to_lowercase().contains("private:");
+    let private = true;
     let mut entry = Interaction {
         speaker: "User".into(),
         text: message.into(),

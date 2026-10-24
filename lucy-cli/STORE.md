@@ -1,3 +1,15 @@
+# Lucy store and operation logs
+
+Canonical new operations live in private `replication-v1/*.nibli` logs, signed by
+an enrolled actor. See [SYNC.md](../SYNC.md) for causal corrections, tombstones,
+scopes and continuity. Existing JSON originals remain as compatibility copies.
+`lucy peer migrate` checkpoints legacy originals into the local private Nibli log;
+only exact `record_origins` enrolled for a peer may be uploaded. Backups include
+canonical logs and public verification keys, but exclude signing keys, credentials,
+local paths and automatic upload grants. Restore never enables uploads.
+
+The following describes the compatible legacy originals and redb index:
+
 # Shared Lucy memory
 
 The native `lucy store` commands own a Rust `redb` database. CLI writes,

@@ -120,10 +120,31 @@ fn read_approval(
 }
 
 pub fn socket_path() -> Result<PathBuf> {
-    Ok(
-        PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR").ok_or("XDG_RUNTIME_DIR is required")?)
-            .join("lucy/service.sock"),
-    )
+    if let Some(base) = std::env::var_os("XDG_RUNTIME_DIR") {
+        return Ok(PathBuf::from(base).join("lucy/service.sock"));
+    }
+    // macOS has no XDG runtime directory; a private data directory protects the socket.
+    Ok(crate::store::default_root()?.join("run/service.sock"))
+}
+
+pub fn probe() -> Value {
+    let result = (|| -> Result<Value> {
+        let mut stream = UnixStream::connect(socket_path()?).map_err(err)?;
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .map_err(err)?;
+        stream
+            .set_write_timeout(Some(Duration::from_secs(2)))
+            .map_err(err)?;
+        writeln!(stream, "{}", json!({"op":"status"})).map_err(err)?;
+        read_frame(&mut BufReader::new(stream))
+    })();
+    match result {
+        Ok(status) => json!({"status":"running","runtime":status["runtime"]}),
+        Err(error) => {
+            json!({"status":"unavailable","error":error,"install":"lucy service install"})
+        }
+    }
 }
 
 pub fn call(request: Value) -> Result<Value> {
@@ -169,6 +190,33 @@ pub fn serve(root: &Path, identity: Option<PathBuf>) -> Result<()> {
     let listener = UnixListener::bind(&path).map_err(err)?;
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(err)?;
     let service = Arc::new(Service::new(root.to_path_buf(), identity));
+    let observed_root = root.to_path_buf();
+    std::thread::spawn(move || {
+        let _ = crate::continuity::observe(
+            &observed_root,
+            &format!(
+                "service:{}:{}",
+                std::process::id(),
+                crate::replication::now()
+            ),
+            "service",
+            "started",
+            None,
+            json!({"runtime":"rust"}),
+            vec![],
+        );
+        let _ = crate::replication::github::discover(&observed_root);
+        loop {
+            if let Err(error) = crate::replication::sync_all(&observed_root) {
+                eprintln!("Lucy sync pending: {error}");
+            }
+            let seconds = crate::replication::Replica::open(&observed_root)
+                .and_then(|r| r.config())
+                .map(|c| c.refresh_seconds.max(60))
+                .unwrap_or(900);
+            std::thread::sleep(Duration::from_secs(seconds));
+        }
+    });
     for incoming in listener.incoming() {
         let mut stream = incoming.map_err(err)?;
         #[cfg(target_os = "linux")]
@@ -326,7 +374,11 @@ pub fn run(args: &[String]) -> Result<()> {
                     request["channel"] =
                         json!(options.get("--channel").copied().unwrap_or("final"));
                 }
-                "transcript" | "sleep" => {}
+                "continuity-since" | "continuity-ack" => {
+                    request["scope"] = json!(options.get("--scope"));
+                    request["cursor"] = json!(options.get("--cursor"));
+                }
+                "transcript" | "sleep" | "sync" => {}
                 _ => return Err("unknown memory operation".into()),
             }
             println!("{}", call(request)?);

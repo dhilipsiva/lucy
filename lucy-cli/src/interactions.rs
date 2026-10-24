@@ -150,7 +150,7 @@ fn render(entries: &[Interaction]) -> Result<String, String> {
 /// Decode using the actual KR parser; never parse quotes or escapes by regex.
 /// Metadata must agree with the payload, so an edited index cannot tell the
 /// engine a different story from the transcript shown to a reader.
-fn decode(text: &str, private: bool) -> Result<Vec<Interaction>, String> {
+pub(crate) fn decode(text: &str, private: bool) -> Result<Vec<Interaction>, String> {
     let ast = nibli_kr::parse_checked(text).map_err(|e| e.to_string())?;
     let mut entries = Vec::new();
     let mut seen = std::collections::HashSet::new();

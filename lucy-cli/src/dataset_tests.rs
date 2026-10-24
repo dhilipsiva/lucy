@@ -27,8 +27,8 @@ fn public_home(dir: &Path) -> std::path::PathBuf {
     )
     .unwrap();
     let records = r#"[
-      {"id":"T-1","speaker":"Dhilipsiva","text":"Lucy, which model do you speak through?","source":"test","session":"s1","channel":"terminal","about":["lucy"]},
-      {"id":"T-2","speaker":"Lucy","text":"Saved at /home/someone/projects/x and mailed to someone@example.org from DESKTOP-ABC123 in session 3dc463c8-a9bf-4662-8463-bc1f300161a2.","kind":"note","source":"test","about":["lucy"]}
+      {"id":"T-1","private":false,"speaker":"Dhilipsiva","text":"Lucy, which model do you speak through?","source":"test","session":"s1","channel":"terminal","about":["lucy"]},
+      {"id":"T-2","private":false,"speaker":"Lucy","text":"Saved at /home/someone/projects/x and mailed to someone@example.org from DESKTOP-ABC123 in session 3dc463c8-a9bf-4662-8463-bc1f300161a2.","kind":"note","source":"test","about":["lucy"]}
     ]"#;
     let out = lucy_stdin(&env, &["record", "--json"], records);
     assert_eq!(out.code, 0, "{}", out.stdout);

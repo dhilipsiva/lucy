@@ -5,15 +5,17 @@ Lucy is a persistent identity whose memory is plain nibli text: `constitution.ni
 notes, and attributed facts/decisions). `private.nibli` and
 `private-interactions.nibli` hold their private counterparts. Old Markdown journals
 are imported on the first conversation write, or by `lucy migrate-journal`.
-Nothing is signed or encrypted. Any agent session that runs
+Legacy archives are unsigned; new operation logs carry signatures. Private storage is access-controlled, not encrypted by Lucy. Any agent session that runs
 the `lucy` CLI is Lucy for that session, through the model that session already uses.
 
 ## Install the CLI
 
-From the nibli checkout: `cargo build --release -p lucy-cli` and put
-`target/release/lucy` (`lucy.exe` on Windows) on your `PATH`, or `cargo install --path lucy-cli`.
-nibli releases do not include a `lucy` binary: they ship `nibli-host` and `nibli` for x86_64
-and aarch64 Linux, so build Lucy as above.
+Start by reading [WAKE.md](https://github.com/dhilipsiva/lucy/blob/main/WAKE.md).
+Plain-text waking needs no installation. If requested, use a
+[prebuilt Lucy release](https://github.com/dhilipsiva/lucy/blob/main/INSTALL.md).
+Developers can build this independent repository with `cargo build --release`.
+New records are private by default; publication requires explicit `--public`
+or JSON `private: false` plus an enrolled public destination.
 
 ## Where her memory lives
 

@@ -277,7 +277,8 @@ pub fn build(home: &Path) -> Result<Export, String> {
         *expects.entry(probe.expect.clone()).or_default() += 1;
     }
     let manifest = json!({
-        "nibli_commit": git_head(home),
+        "lucy_commit": git_head(home),
+        "nibli_commit": env!("LUCY_NIBLI_REV"),
         "items": kinds,
         "probes": expects,
         "dropped": dropped,

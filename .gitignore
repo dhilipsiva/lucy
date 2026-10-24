@@ -1,0 +1,8 @@
+/target/
+/result*
+/private*
+**/private.nibli
+**/private-interactions.nibli
+.env
+*.key
+.local*

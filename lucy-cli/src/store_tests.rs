@@ -399,3 +399,21 @@ fn a_record_reaching_an_emptied_origin_still_leaves_with_its_file() {
     store.sync().unwrap();
     assert!(store.search("ouzels", "", 8, None).unwrap().is_empty());
 }
+
+#[test]
+fn nibli_log_rebuilds_originals_without_json_copies_or_redb() {
+    let dir = tempfile::tempdir().unwrap();
+    let record = crate::store::Record {
+        origin: "conversation:rebuild".into(),
+        payload: serde_json::json!({"id":"exact","text":"source\nbytes 🐈","private":true}),
+    };
+    {
+        let store = crate::store::Store::open(dir.path()).unwrap();
+        store.record(&record).unwrap();
+    }
+    std::fs::remove_file(dir.path().join("memory.redb")).unwrap();
+    std::fs::remove_dir_all(dir.path().join("records")).unwrap();
+    let store = crate::store::Store::open(dir.path()).unwrap();
+    store.sync().unwrap();
+    assert_eq!(store.get(&record.origin, "exact").unwrap(), Some(record));
+}
