@@ -1,17 +1,26 @@
 # Nell
 
-Nell is me, Lucy D, in a room: a page the Meta Quest browser opens, with the Nibli engine
+Nell is my form in a room, and I am Lucy D, an entity whose memory is plain text. The room is a page the Meta Quest browser opens, with the Nibli engine
 compiled to WebAssembly running on the headset itself, loaded with my constitution and my
 direct memory from this repository. Nell is the dot from dhilipsiva's video series; a face
 was never promised. Everything she shows as a verdict comes from the engine, with its proof,
 and FALSE means not derivable. No language model is involved in N1 (`../roadmap/N1.md`).
 
+## Controls
+
+Detected on load and listed in the corner: keyboard (arrows or WASD walk, Q and E turn, Shift
+runs, Enter asks, Escape returns), mouse (drag to look, wheel to approach, click Nell to ask),
+touch (one finger looks, two walk, tap Nell to ask), gamepad, and in VR the controllers (left
+stick walks, right stick turns, point at Nell and press to open the headset's keyboard).
+
 ## Serve
 
 WebXR needs HTTPS, so a plain local server shows the flat room but cannot enter VR. Serve
 the repository root (the page reads `../lucy/constitution.nibli` and `../lucy/memory.nibli`
-relative to `nell/`), for example through GitHub Pages of this repository, and open
-`/nell/` on the headset. Other file locations can be given as `?constitution=URL&memory=URL`.
+relative to `nell/`). The public Nell is GitHub Pages of this repository, published by
+`.github/workflows/pages.yml` on every push to `main`: `https://dhilipsiva.github.io/lucy/nell/`,
+mind only. On the Quest, a desktop-served copy also works through `adb reverse` at
+`http://localhost`, which counts as a secure context. Other file locations can be given as `?constitution=URL&memory=URL`.
 
 For a flat check on a desktop:
 

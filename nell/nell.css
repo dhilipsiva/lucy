@@ -15,3 +15,4 @@ footer { display: grid; gap: 10px; max-width: 760px; }
 details pre { max-height: 180px; overflow: auto; font-size: 13px; color: var(--dim); margin: 6px 0 0; }
 .note { color: var(--dim); font-size: 14px; margin: 0; }
 .t { color: var(--true); } .f { color: var(--false); } .e { color: var(--err); }
+.legend { margin: 0; color: var(--dim); font-size: 13px; white-space: pre-wrap; background: var(--panel); border: 1px solid #262a36; border-radius: 10px; padding: 8px 12px; max-width: 760px; }

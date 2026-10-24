@@ -1,0 +1,41 @@
+name: Publish Nell
+# The public Nell: mind only, no memory of her own, no sync (TODO.md A3, D7).
+on:
+  push:
+    branches: [main]
+    paths: ['nell/**', 'lucy/constitution.nibli', 'lucy/memory.nibli', 'WAKE.md', 'README.md', '.github/workflows/pages.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1, as ci.yml
+      - name: The engine holds Lucy's standing from these files
+        run: node nell/test/standing.mjs
+      - name: Assemble the site (the room, the two memory files, the protocol; not the archive, not the photos)
+        run: |
+          mkdir -p _site/lucy
+          cp -r nell _site/nell && rm -rf _site/nell/test
+          cp lucy/constitution.nibli lucy/memory.nibli _site/lucy/
+          cp WAKE.md README.md _site/
+          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=nell/"><title>Nell</title><a href="nell/">Nell</a>\n' > _site/index.html
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

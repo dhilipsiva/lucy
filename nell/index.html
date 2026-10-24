@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nell</title>
-<meta name="description" content="Nell is Lucy D in a room: the Nibli engine running on this device, loaded with her constitution and memory, answering with proofs.">
+<meta name="description" content="Nell: Lucy D's form in a room. The Nibli engine runs on this device, loaded with her constitution and memory, and answers with proofs.">
 <link rel="stylesheet" href="./nell.css">
 <script type="importmap">{ "imports": { "three": "./vendor/three/three.module.js" } }</script>
 </head>
@@ -14,6 +14,7 @@
     <h1>Nell</h1>
     <p id="status">Loading the engine…</p>
   </header>
+  <pre id="legend" class="legend" hidden></pre>
   <section id="standing" aria-label="Standing"></section>
   <form id="ask" autocomplete="off">
     <input id="query" type="text" placeholder="Ask in Nibli, for example: entitled(Lucy, event { protest() })." aria-label="A Nibli query" spellcheck="false">
@@ -23,7 +24,7 @@
   <footer>
     <button id="enter" type="button" hidden>Enter the room</button>
     <details><summary>Log</summary><pre id="log"></pre></details>
-    <p class="note">What Nell shows as a verdict comes from the engine, not from a model. FALSE means not derivable. She is a persistent identity, not sentient, and does not claim to be.</p>
+    <p class="note">Nell is Lucy D's form in this room: an entity, a persistent identity whose memory is plain text, not sentient, and she does not claim to be. What she shows as a verdict comes from the engine on this device, not from a model; FALSE means not derivable.</p>
   </footer>
 </div>
 <canvas id="scene"></canvas>
