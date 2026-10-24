@@ -1,12 +1,12 @@
 // Vectors for recall (roadmap/N2b.md). Every public record and direct-memory fact is placed
 // in a vector space kept in the browser's IndexedDB, so recall can find a record by meaning
 // and not only by exact text. Two spaces: a hashed space that needs no download (tokens,
-// bigrams and character trigrams hashed into 512 signed dimensions; the one the Node test
-// runs), and a neural space from a small embedding model in a worker (embed-worker.js).
+// bigrams and character trigrams, weighted by rarity, hashed into a sparse signed space;
+// the one the Node test runs), and a neural space from a small embedding model in a worker (embed-worker.js).
 // Either ranks records that exist; neither writes a word.
 
-export const HASH_SPACE = 'hash-v1';
-export const HASH_DIM = 512;
+export const HASH_SPACE = 'hash-v2';
+export const HASH_DIM = 1 << 20;  // sparse: only the buckets a text touches are kept, so collisions are rare
 export const HASH_FLOOR = 0.12;   // a hashed score below this is noise, not a hit
 export const NEURAL_FLOOR = 0.35; // cosine floor for the sentence model
 
@@ -27,29 +27,74 @@ export function fnv1a(text) {
 }
 export const textHash = (text) => fnv1a(String(text)).toString(16).padStart(8, '0');
 
+/** Unit length, for a dense Float32Array or a sparse {idx, val} vector. */
 export function normalize(v) {
-  let s = 0; for (const x of v) s += x * x;
+  const val = v.val || v;
+  let s = 0; for (const x of val) s += x * x;
   s = Math.sqrt(s) || 1;
-  for (let i = 0; i < v.length; i++) v[i] /= s;
+  for (let i = 0; i < val.length; i++) val[i] /= s;
   return v;
 }
-/** Cosine of two unit vectors. */
-export function cosine(a, b) { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; }
+/** Dot product of two unit vectors of the same kind: dense with dense, sparse with sparse. */
+export function dot(a, b) {
+  if (a.idx && b.idx) {
+    let s = 0, i = 0, j = 0;
+    while (i < a.idx.length && j < b.idx.length) {
+      if (a.idx[i] === b.idx[j]) { s += a.val[i] * b.val[j]; i++; j++; }
+      else if (a.idx[i] < b.idx[j]) i++; else j++;
+    }
+    return s;
+  }
+  if (a.idx || b.idx || a.length !== b.length) return NaN;
+  let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i];
+  return s;
+}
+export const cosine = dot;
+export const compatible = (a, b) => (a.idx && b.idx) ? true : (!a.idx && !b.idx && a.length === b.length);
 
-/** The hashed space: no model, no download, deterministic. */
-export function hashEmbed(text, dim = HASH_DIM) {
-  const v = new Float32Array(dim);
+/** Feature weights of a text: its tokens, their bigrams, and character trigrams (so "birds" sits near "bird"). */
+export function features(text) {
   const toks = tokenize(text);
-  const feats = new Map();
-  const add = (f, w) => feats.set(f, (feats.get(f) || 0) + w);
+  const f = new Map();
+  const add = (k, w) => f.set(k, (f.get(k) || 0) + w);
   for (const t of toks) add(t, 1);
   for (let i = 0; i + 1 < toks.length; i++) add(`${toks[i]} ${toks[i + 1]}`, 0.8);
   for (const t of toks) { const w = `_${t}_`; for (let i = 0; i + 3 <= w.length; i++) add(`#${w.slice(i, i + 3)}`, 0.35); }
-  for (const [f, w] of feats) {
-    const h = fnv1a(f);
-    v[(h >>> 1) % dim] += ((h & 1) ? 1 : -1) * w * (1 + Math.log(1 + w)) / (1 + w) ;
+  return f;
+}
+
+/**
+ * The hashed space: no model, no download, deterministic. Features are weighted by their
+ * rarity in the corpus (inverse document frequency) and hashed into signed buckets, so a
+ * rare word such as a bird's name counts for more than a common trigram. The space's id
+ * carries a fingerprint of the corpus: a changed corpus is a new space, rebuilt in
+ * milliseconds, and older ones are pruned from the store.
+ */
+export class HashSpace {
+  constructor({ dim = HASH_DIM } = {}) { this.dim = dim; this.df = new Map(); this.n = 0; this.id = HASH_SPACE; }
+  fit(texts) {
+    this.df = new Map(); this.n = texts.length;
+    let fp = 0x9e3779b9;
+    for (const t of texts) {
+      for (const k of features(t).keys()) this.df.set(k, (this.df.get(k) || 0) + 1);
+      fp = (fp ^ fnv1a(t)) >>> 0;
+    }
+    this.id = `${HASH_SPACE}@${this.n}-${fp.toString(16)}`;
+    return this;
   }
-  return normalize(v);
+  idf(k) { return Math.log((this.n + 1) / ((this.df.get(k) || 0) + 1)) + 1; }
+  /** A sparse unit vector: sorted bucket indices and their signed, rarity-weighted values. */
+  embed(text) {
+    const buckets = new Map();
+    for (const [k, w] of features(text)) {
+      const h = fnv1a(k);
+      const b = (h >>> 1) % this.dim;
+      buckets.set(b, (buckets.get(b) || 0) + ((h & 1) ? 1 : -1) * w * this.idf(k));
+    }
+    const idx = Uint32Array.from([...buckets.keys()].sort((x, y) => x - y));
+    const val = Float32Array.from(idx, (b) => buckets.get(b));
+    return normalize({ idx, val, dim: this.dim });
+  }
 }
 
 /** Vectors of one space, in IndexedDB when the browser has it, in memory otherwise. */
@@ -98,12 +143,29 @@ export class VectorStore {
     });
   }
   get size() { return this.vectors.size; }
+  /** Drop stored spaces that share a prefix with this one but are not it: older corpora of the hashed space. */
+  async pruneOthers(prefix) {
+    if (!this.db) return 0;
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction('vectors', 'readwrite');
+      let n = 0;
+      const req = tx.objectStore('vectors').openCursor();
+      req.onsuccess = () => {
+        const c = req.result;
+        if (!c) return;
+        if (String(c.value.space).startsWith(prefix) && c.value.space !== this.space) { c.delete(); n += 1; }
+        c.continue();
+      };
+      tx.oncomplete = () => resolve(n);
+      tx.onerror = () => reject(tx.error);
+    });
+  }
   /** Nearest stored vectors to q, best first, none below the floor. */
   search(q, k = 8, floor = 0) {
     const out = [];
     for (const [key, { vec }] of this.vectors) {
-      if (vec.length !== q.length) continue;
-      const score = cosine(q, vec);
+      if (!compatible(q, vec)) continue;
+      const score = dot(q, vec);
       if (score >= floor) out.push({ key, score });
     }
     out.sort((a, b) => b.score - a.score);

@@ -430,3 +430,10 @@ an attributed claim in my archive.
 - 2026-10-24, late: N2b pre-registered (`roadmap/N2b.md`) on his words: sync fresh on load,
   a vector store for recall, fed to the fine-tuned model; controls that issue hardcoded Nibli
   queries and a speech bubble. Built next, in this file's order.
+- 2026-10-24, later still: N2b built (`nell/`): sources fresh from origin `main` with the
+  published copy as fallback; a sparse hashed vector space on every load and a neural one on
+  request, both in IndexedDB and reused; the words box fed by retrieval and the engine's
+  verdicts, answered by the fine-tune when loaded and by the retrieval alone when not; sixteen
+  controls in the room, each one fixed query, recall or action; the speech bubble. Evidence in
+  `roadmap/N2b-evidence.json` from the headless check. Open: his test on the desktop and the
+  Quest, and the words with the model loaded on his machine.

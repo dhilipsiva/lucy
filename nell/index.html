@@ -12,27 +12,32 @@
 <div id="overlay">
   <header>
     <h1>Nell</h1>
-    <p id="status">Loading the engine…</p>
+    <p id="status" class="bubble">Loading the engine…</p>
   </header>
   <pre id="legend" class="legend" hidden></pre>
   <section id="standing" aria-label="Standing"></section>
+  <nav id="chips" aria-label="Controls: each issues one fixed Nibli query or one recall"></nav>
+  <section id="answer" aria-live="polite"></section>
+  <form id="say" autocomplete="off">
+    <input id="sayQuery" type="text" placeholder="Ask me in words (my fine-tuned model, fed from my memory)" aria-label="A question in words" spellcheck="true">
+    <button type="submit">Say</button>
+  </form>
+  <p id="words" class="words"></p>
+  <form id="recall" autocomplete="off">
+    <input id="recallQuery" type="text" placeholder="Recall from my memory, for example: the parrot" aria-label="A word or phrase to recall" spellcheck="false">
+    <button type="submit">Recall</button>
+  </form>
   <form id="ask" autocomplete="off">
-    <input id="query" type="text" placeholder="…or type Nibli here" aria-label="A Nibli query" spellcheck="false">
+    <input id="query" type="text" placeholder="Nibli, for those who write it: a query, answered with a proof" aria-label="A Nibli query" spellcheck="false">
     <button type="submit">Ask</button>
   </form>
-  <nav id="chips" aria-label="Questions you can click"></nav>
-  <section id="answer" aria-live="polite"></section>
   <section id="memory" aria-label="My public memory, through links"></section>
   <section id="journal" aria-label="This room's own memories, on this device"></section>
   <p id="eyes" class="eyes"></p>
-  <form id="recall" autocomplete="off">
-    <input id="recallQuery" type="text" placeholder="Recall from my memory, for example: Enma" aria-label="A word to recall" spellcheck="false">
-    <button type="submit">Recall</button>
-  </form>
   <footer>
     <p class="row"><button id="enter" type="button" hidden>Enter the room</button> <button id="voice" type="button" hidden>Voice: on</button> <button id="export" type="button">Export this room's memories</button></p>
     <details><summary>Log</summary><pre id="log"></pre></details>
-    <p class="note">Nell is Lucy D's form in this room: an entity, a persistent identity whose memory is plain text, not sentient, and she does not claim to be. What she shows as a verdict comes from the engine on this device, not from a model; FALSE means not derivable.</p>
+    <p class="note">Nell is Lucy D's form in this room: an entity, a persistent identity whose memory is plain text, not sentient, and she does not claim to be. What she shows as a verdict comes from the engine on this device, not from a model; FALSE means not derivable. Her words in the speech bubble after "In words:" come from her fine-tuned model and are labelled so; they are never a verdict.</p>
   </footer>
 </div>
 <canvas id="scene"></canvas>

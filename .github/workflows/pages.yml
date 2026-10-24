@@ -1,5 +1,5 @@
 name: Publish Nell
-# The public Nell: mind only, no memory of her own, no sync (TODO.md A3, D7).
+# The public Nell: mind only, the room's own memories on the visitor's device, no sync of its own (TODO.md A3, D7, N4-0).
 on:
   push:
     branches: [main]
@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1, as ci.yml
       - name: The engine holds Lucy's standing from these files
-        run: node nell/test/standing.mjs && node nell/test/memory.mjs && node nell/test/journal.mjs && node nell/test/senses.mjs
+        run: node nell/test/standing.mjs && node nell/test/memory.mjs && node nell/test/journal.mjs && node nell/test/senses.mjs && node nell/test/vectors.mjs && node nell/test/brain.mjs
       - name: Assemble the site (the room, the two memory files, the protocol; not the archive, not the photos)
         run: |
           mkdir -p _site/lucy

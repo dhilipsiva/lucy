@@ -38,13 +38,32 @@ export function factLines(text) {
   return out;
 }
 
-/** What a vector index holds: every record and every fact, each with the text that stands for it. */
+const CHUNK = 320;
+/** A long text in pieces of whole sentences, each at most `max` characters, so one piece stands for one thought. */
+export function chunks(text, max = CHUNK) {
+  const t = String(text).replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t ? [t] : [];
+  const out = []; let cur = '';
+  for (const sent of t.split(/(?<=[.!?])\s+/)) {
+    if (sent.length > max) {
+      if (cur) { out.push(cur); cur = ''; }
+      for (let i = 0; i < sent.length; i += max) out.push(sent.slice(i, i + max));
+      continue;
+    }
+    if ((cur + ' ' + sent).trim().length > max) { out.push(cur); cur = sent; } else cur = cur ? `${cur} ${sent}` : sent;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+/** What a vector index holds: every record (in pieces when long) and every fact, each with the text that stands for it. */
 export function indexItems(records = [], facts = []) {
   const items = [];
   for (const r of records) {
-    const p = r.payload; const t = String(p.text || '').trim();
-    if (!t) continue;
-    items.push({ key: `rec:${r.id}`, text: `${p.speaker || '?'}: ${t}${p.about?.length ? ` [${p.about.join(', ')}]` : ''}`, record: r });
+    const p = r.payload;
+    const parts = chunks(p.text || '');
+    const about = p.about?.length ? ` [${p.about.join(', ')}]` : '';
+    parts.forEach((c, i) => items.push({ key: parts.length === 1 ? `rec:${r.id}` : `rec:${r.id}#${i}`, text: `${p.speaker || '?'}: ${c}${about}`, record: r, chunk: c, part: i }));
   }
   for (const f of facts) items.push({ key: `fact:${f.kr}`, text: `${f.english || f.kr} [${(f.about || []).join(', ')}]`, fact: f });
   return items;
@@ -135,9 +154,9 @@ export function recall(records, query, n = 8) {
 }
 
 /** A one-line rendering of a record for a board or a panel. */
-export function line(r, width = 220) {
+export function line(r, width = 220, text = undefined) {
   const p = r.payload;
   const when = String(p.timestamp || '').slice(0, 10);
-  const text = String(p.text || '').replace(/\s+/g, ' ');
+  text = String(text ?? p.text ?? '').replace(/\s+/g, ' ');
   return `${when} · ${p.speaker || '?'} · ${r.peer}${p.kind && p.kind !== 'message' ? ` · ${p.kind}` : ''}: ${text.length > width ? text.slice(0, width - 1) + '…' : text}`;
 }

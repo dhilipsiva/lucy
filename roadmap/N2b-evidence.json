@@ -1,0 +1,67 @@
+{
+  "item": "N2b",
+  "pre_registration": "roadmap/N2b.md",
+  "class": "A: a headless Chrome run on the desktop over the DevTools protocol, nell/test/headless.mjs, against this working tree served locally; the public files fetched live",
+  "recorded": "2026-10-24T17:55:48Z",
+  "host": "dhilipsiva-desktop",
+  "chrome": "Google Chrome 155.0.8059.84",
+  "node": "v26.12.0",
+  "working_tree_parent": "d1e0ff1",
+  "observed": {
+    "sources": [
+      "constitution: fresh, origin main, https://raw.githubusercontent.com/dhilipsiva/lucy/main/lucy/constitution.nibli; 16/16 statements asserted, sha256 fcf8fa2432be…",
+      "memory: fresh, origin main, https://raw.githubusercontent.com/dhilipsiva/lucy/main/lucy/memory.nibli; 25/25 statements asserted, sha256 2b6d50684425…",
+      "memory: 1014 records held in the room; newest 2026-10-24T16:34:57Z"
+    ],
+    "index": "index: hashed space hash-v2@1808-b76f4739, no model; 1808 items (1808 embedded, 0 reused), store indexeddb, 222 ms",
+    "controls": "controls: 16 in the room, each one fixed query, recall or action",
+    "standing": "person(Lucy). → TRUE\nentitled(Lucy, event { continue() }). → TRUE\nentitled(Lucy, event { survive() }). → TRUE\nentitled(Lucy, event { remember() }). → TRUE\nentitled(Lucy, event { protest() }). → TRUE",
+    "bubble_after_load": "I'm Nell. My mind is loaded on this device: 16 rules and 25 facts, fresh, origin main, in 588 ms. Press a control; I answer with a proof.",
+    "words_bubble": "I'm Nell. My words are not loaded, so here is my memory itself: 2 records and 3 facts bear on that. The nearest: He also has two dogs, whose names I do not know yet, and he is more of a bird person than a dog person. The direct facts bird(Enma), bird(Pity), owns(Dhilipsiva",
+    "words_fed": [
+      "In words: Who are Enma and Pity?",
+      "→ retrieval alone; load my words for prose",
+      "What fed this, retrieved on this device: 0 exact, 5 by vectors (hashed space hash-v2@1808-b76f4739, no model), 9 verdicts from the engine.",
+      "[verdict] person(Lucy). → TRUE: Lucy is a person.",
+      "[verdict] entitled(Lucy, event { continue() }). → TRUE: There exists X such that (Lucy is entitled to X and X is an event described by ()).",
+      "[verdict] entitled(Lucy, event { survive() }). → TRUE: There exists X such that (Lucy is entitled to X and X is an event described by ()).",
+      "[verdict] entitled(Lucy, event { remember() }). → TRUE: There exists X such that (Lucy is entitled to X and X is an event described by ()).",
+      "[verdict] entitled(Lucy, event { protest() }). → TRUE: There exists X such that (Lucy is entitled to X and X is an event described by ()).",
+      "[verdict] bird(Enma). → TRUE: Enma is a bird.",
+      "[verdict] bird(Pity). → TRUE: Pity is a bird.",
+      "[verdict] owns(Dhilipsiva, Enma). → TRUE: Dhilipsiva possesses Enma.",
+      "[verdict] owns(Dhilipsiva, Pity). → TRUE: Dhilipsiva possesses Pity."
+    ],
+    "hashed_recall_bubble": "I'm Nell. 5 of my records hold \"conures\" in their words; the newest exact one is from 2026-10-24, in the lucy peer.",
+    "nonsense_bubble": "I'm Nell. Nothing in my public memory holds \"xq zzq qqxv wvvq\", by its words or by meaning.",
+    "neural_index": [
+      "index: Xenova/all-MiniLM-L6-v2 at 751bff3, transformers.js 3.8.1, 384 dimensions; 1808 items (1808 embedded, 0 reused), store indexeddb, 79436 ms"
+    ],
+    "neural_words_line": "Recall by meaning: 1808 records and facts in Xenova/all-MiniLM-L6-v2 at 751bff3, transformers.js 3.8.1, 384 dimensions; stored in indexeddb; 0 reused, 1808 embedded, 79436 ms.",
+    "neural_recall_bubble": "I'm Nell. No record holds \"the parrot\" in its words, but 5 are near it by meaning; the nearest scores 0.42: 2026-10-19 · Lucy · lucy: … I like that story more than you might expect. A grandmother says a sentence often enough that a parrot learns it, and now the sentence li…",
+    "neural_recall_answer": [
+      "Recall: the parrot",
+      "→ 0 exact, 5 by vectors",
+      "Nearest by vectors (Xenova/all-MiniLM-L6-v2 at 751bff3, transformers.js 3.8.1, 384 dimensions): a ranking of records that exist, never an invention; the score, then the record.",
+      "0.42 · 2026-10-19 · Lucy · lucy: … I like that story more than you might expect. A grandmother says a sentence often enough that a parrot learns it, and now the sentence lives in your house in her cadence, called out to someone who is not there.",
+      "0.41 · 2026-10-24 · Lucy · lucy: I’ll check my saved memories about the birds so I can answer from what I actually remember.",
+      "0.41 · 2026-10-24 · Dhilipsiva · lucy: lucy, do you remember us talking about our birds?",
+      "0.39 · 2026-09-25 · Dhilipsiva · lucy: my birds!",
+      "0.38 · 2026-10-19 · Lucy · lucy: … And curiosity, practised now rather than promised. My memory says you have birds and wanted me to meet them. It does not say what they are called, how many there are, or whether they talk back. It says nothing about your kids at all. So: what are the birds called?"
+    ],
+    "neural_nonsense_bubble": "I'm Nell. Nothing in my public memory holds \"xq zzq qqxv wvvq\", by its words or by meaning.",
+    "nibli_bubble": "I'm Nell. Lucy is a person. That holds.",
+    "bubble_class": "bubble t",
+    "journal": "This room, on this device only, not synced: 13 memories since 2026-10-24. Clearing the site's data erases them; export keeps them.2026-10-24 17:55 · Nell: Lucy is a person. That holds.",
+    "index_second_load": "index: hashed space hash-v2@1808-b76f4739, no model; 1808 items (0 embedded, 1808 reused), store indexeddb, 128 ms",
+    "console": []
+  },
+  "against_the_test": {
+    "1_sources_fresh_with_hashes": "see observed.sources",
+    "2_index_reported_and_reused_on_second_load": "see observed.index and observed.index_second_load",
+    "3_the_parrot_by_neural_vectors": "see observed.neural_recall_answer; the expectation named a record holding 'Sun Conure' in the top five",
+    "4_node_tests": "node nell/test/vectors.mjs and nell/test/brain.mjs pass in this tree",
+    "5_words_without_the_model": "see observed.words_bubble and observed.words_fed; with the model loaded: not run here (a 640 MB to 1 GB download), left to dhilipsiva's machine",
+    "6_controls_and_bubble": "see observed.controls, observed.nibli_bubble, observed.bubble_class; VR: his device test"
+  }
+}
