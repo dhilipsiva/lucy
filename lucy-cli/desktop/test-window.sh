@@ -57,9 +57,10 @@ done
 test -n "$window"
 sleep 0.2
 kill -0 "$ui_pid"
-test ! -e "$LUCY_DATA_DIR"
+# The idle observer creates replication/continuity state without opening chats.
+test ! -e "$LUCY_DATA_DIR/memory.redb"
 if test -n "${LUCY_TEST_SCREENSHOT:-}"; then
     magick import -window "$window" "$LUCY_TEST_SCREENSHOT"
 fi
-printf '%s\n' 'Rust GTK window opened without memory loading or inference.'
+printf '%s\n' 'Rust GTK window opened without loading the conversation index.'
 TEST
