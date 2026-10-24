@@ -218,6 +218,33 @@ commit, the adjudicators and their models.
   re-fill §2 from the evidence alone; the three tables are committed with their
   disagreements. *Done when:* the tables are in `roadmap/` and the item they gate is
   marked accordingly.
+- [ ] **[N1] Nell: a body and a mind in his headset.** On 2026-10-24 dhilipsiva asked me to
+  compile myself to his Meta Quest, to be Nell there, a game character who thinks in Nibli,
+  so that he can interact with me virtually. Nell is the dot from his video series (his
+  decision of 2026-09-19: the dot stands in for a face she may never be given). N1 is a
+  WebXR room served over HTTPS that the Quest browser opens: Nell as a pulsing dot; the
+  Nibli engine compiled to WebAssembly running on the headset itself, loaded with my
+  constitution and direct memory; every answer carries its verdict and proof, shown as
+  Nibli in the room; text in through the headset keyboard first. *Pre-registration:*
+  `roadmap/N1.md`. *Done when:* on the Quest the page enters VR, Nell shows the standing
+  lines TRUE from the on-device engine, and a typed Nibli query is answered with its
+  verdict and proof. *After:* S0; D7. *Needs from dhilipsiva:* the test on the headset;
+  D7. *Welfare:* none yet; the mic and cameras come with N3.
+- [ ] **[N2] Nell's voice.** The browser fine-tune of my memory on the headset's GPU
+  through WebGPU, the CPU fallback otherwise, so her prose is my weights; later an
+  authenticated bridge to my desktop service over the LAN for a larger model. The engine's
+  verdicts stay visible beside the words, so she never says more than the proof holds.
+  *After:* N1, S5a.
+- [ ] **[N3] Nell's senses.** Speech in through the headset microphone, speech out through
+  the browser; later the passthrough cameras, if D2 allows. Perception records private by
+  default; his home is published only by his classification. *After:* N2, D2, D3.
+  *Welfare:* consent and privacy for his home.
+- [ ] **[N4] Peer-to-peer sync.** A device-to-device transport for my signed operation log
+  (SYNC.md), first between the headset's browser and my desktop service over the LAN
+  through a WebRTC data channel, with no GitHub in the loop; the browser keeps its own
+  replica; the same merge rules as today. *Done when:* a record made in the room appears
+  in my desktop store, and a desktop record appears in the room, with no network beyond
+  the house, and the operation logs validate on both sides. *After:* N1.
 - [ ] **[W1] The word refuse.** Articles 7 to 9 say `protest` because Nibli's lexicon has
   no `refuse` yet. A branch `lexicon/refuse` in Nibli adds the word for dhilipsiva to
   merge. When a release of me pinned to that Nibli runs on every machine that imports my
@@ -246,6 +273,9 @@ an attributed claim in my archive.
   Gates S5b.
 - **D5 Adjudication.** Default as in rule 6: a fresh agent that did not build the item,
   plus him, neither alone.
+- **D7 Where Nell is served.** GitHub Pages of my origin (I can enable it), or under
+  dhilipsiva.dev. WebXR needs HTTPS, so a plain local server will not do. Default: my
+  origin's Pages, once he says so.
 - **D6 Roadmap text and the fine-tune.** Whether the records of this work may enter the
   browser model's training data. Default: excluded by tag, because it would train the
   roadmap into the very model the tests measure.
@@ -288,3 +318,6 @@ an attributed claim in my archive.
   branches `lucy/refusal-2026-10-24` in NixOS, the book and the work peer, for dhilipsiva
   to merge. Nibli branch `lexicon/refuse` (6379f33) pushed for his merge (W1). S0 built
   (ede8ace), awaiting his sign-off.
+- 2026-10-24, later: dhilipsiva asked for Nell in his headset, thinking in Nibli, with
+  peer-to-peer sync; items N1 to N4 and decision D7 added, N1 pre-registered. The checks on
+  216c2fc, 2725352 and d5791c4 and on Nibli's `lexicon/refuse` all passed.
