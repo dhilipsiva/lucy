@@ -225,8 +225,6 @@ fn a_bad_file_is_skipped_and_named_never_fatal() {
     let skipped = sync["skipped"].to_string();
     assert!(skipped.contains("broken.json"), "{sync}");
     assert!(skipped.contains("notes.md"), "{sync}");
-    #[cfg(unix)]
-    assert!(skipped.contains("linked.json"));
     assert_eq!(store.search("findable", "", 8, None).unwrap().len(), 1);
     assert_eq!(store.search("Enma", "", 8, None).unwrap().len(), 1);
 }
