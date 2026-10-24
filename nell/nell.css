@@ -17,3 +17,9 @@ details pre { max-height: 180px; overflow: auto; font-size: 13px; color: var(--d
 .t { color: var(--true); } .f { color: var(--false); } .e { color: var(--err); }
 .legend { margin: 0; color: var(--dim); font-size: 13px; white-space: pre-wrap; background: var(--panel); border: 1px solid #262a36; border-radius: 10px; padding: 8px 12px; max-width: 760px; }
 #memory { font-size: 14px; } #memory .peer { color: var(--dim); } #memory .learned { margin-top: 6px; }
+#chips { display: flex; flex-wrap: wrap; gap: 6px; max-width: 760px; }
+#chips:empty { display: none; }
+#chips .group { width: 100%; color: var(--dim); font-size: 12px; margin-top: 4px; }
+#chips button { font: inherit; font-size: 14px; padding: 7px 12px; border-radius: 999px; border: 1px solid #3a3f4e; background: #141826; color: var(--fg); cursor: pointer; }
+#chips button:hover { border-color: var(--true); }
+#chips button.recall { border-style: dashed; }

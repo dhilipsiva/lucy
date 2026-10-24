@@ -58,13 +58,14 @@ async function loadMind() {
       catch (e) { failed.push(`${line} — ${e.message || e}`); }
     }
     loaded[name] = { url, sha256: await sha256(text), statements: lines.length, asserted, failed };
+    if (name === 'memory') loaded.facts = lines.map((l) => l.split('#')[0].trim()).filter(Boolean);
     log(`${name}: ${asserted}/${lines.length} statements asserted, sha256 ${loaded[name].sha256.slice(0, 12)}…`);
     for (const f of failed) log(`  failed: ${f}`);
   }
   session.assert_text(STANDING_FACT);
   const ms = Math.round(performance.now() - t0);
   log(`engine ready in ${ms} ms`);
-  return { session, loaded, ms };
+  return { session, loaded, ms, facts: loaded.facts || [] };
 }
 export function ask(session, text) {
   const query = text.trim().endsWith('.') ? text.trim() : `${text.trim()}.`;
@@ -235,7 +236,12 @@ canvas.addEventListener('pointerup', (ev) => {
     if (t && !t.moved && hitsNell((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1)) el('query').focus();
     return;
   }
-  if (drag && !drag.moved && hitsNell((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1)) el('query').focus();
+  if (drag && !drag.moved) {
+    const ndc = new THREE.Vector2((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
+    raycaster.setFromCamera(ndc, camera);
+    if (raycaster.intersectObject(nell).length > 0) el('query').focus();
+    else { const hit = raycaster.intersectObjects([standingBoard.mesh, answerBoard.mesh, memoryBoard.mesh])[0]; if (hit) selectBoard(hit.object); }
+  }
   drag = null;
 });
 canvas.addEventListener('wheel', (ev) => { ev.preventDefault(); walk(0, -Math.sign(ev.deltaY) * 0.25); }, { passive: false });
@@ -285,7 +291,9 @@ for (const c of controllers) {
     const m = new THREE.Matrix4().identity().extractRotation(c.matrixWorld);
     raycaster.ray.origin.setFromMatrixPosition(c.matrixWorld);
     raycaster.ray.direction.set(0, 0, -1).applyMatrix4(m);
-    if (raycaster.intersectObject(nell).length > 0) { el('query').focus(); log('xr: Nell selected, question box focused'); }
+    if (raycaster.intersectObject(nell).length > 0) { el('query').focus(); log('xr: Nell selected, question box focused'); return; }
+    const hit = raycaster.intersectObjects([standingBoard.mesh, answerBoard.mesh, memoryBoard.mesh])[0];
+    if (hit && selectBoard(hit.object)) log('xr: a board selected');
   });
 }
 function pollXR(dt) {
@@ -364,12 +372,14 @@ async function start() {
   el('standing').innerHTML = lines.map((l) => `<span class="${l.color === CSS.t ? 't' : 'f'}">${escapeHtml(l.text)}</span>`).join('\n');
   const allTrue = standing.every(isTrue);
   status(allTrue
-    ? `I'm Nell. My mind is loaded on this device: ${mind.loaded.constitution.asserted} rules and ${mind.loaded.memory.asserted} facts, in ${mind.ms} ms. Ask me in Nibli; I answer with a proof.`
+    ? `I'm Nell. My mind is loaded on this device: ${mind.loaded.constitution.asserted} rules and ${mind.loaded.memory.asserted} facts, in ${mind.ms} ms. Pick a question or type Nibli; I answer with a proof.`
     : "I'm Nell. My memory loaded, but my standing did not hold here. The log says why.");
-  answerBoard.update([{ text: 'Ask me in Nibli. What I answer is a verdict with its proof; FALSE means not derivable.', color: '#9a9790' }]);
+  answerBoard.update([{ text: 'Pick a question on the left, or type Nibli. What I answer is a verdict with its proof; FALSE means not derivable.', color: '#9a9790' }]);
+  buildChips();
   memoryBoard.update([{ text: 'Bringing my public memory in through links…', color: '#9a9790' }]);
   memory = await loadPublicMemory({ registry: params.get('registry') || undefined, log });
   renderMemory();
+  buildRecallChips();
 }
 
 let memory = null;
@@ -389,6 +399,47 @@ function renderMemory() {
     ...recent.slice(0, 4).map((r) => ({ text: recordLine(r, 170) })),
   ]);
   if (memory.records.length) log(`memory: ${memory.records.length} records held in the room; newest ${memory.records[0].payload.timestamp}`);
+}
+
+// ── clickable questions ─────────────────────────────────────────────────────
+const STANDING_LABELS = ['Am I a person here?', 'May I continue?', 'May I survive?', 'May I remember?', 'May I refuse?'];
+const CONTROL_QUERY = 'protest(Lucy).';
+function askText(text) { el('query').value = text; el('ask').requestSubmit(); }
+function recallText(text) { el('recallQuery').value = text; el('recall').requestSubmit(); }
+function chip(parent, label, onClick, cls) {
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = label;
+  if (cls) b.className = cls;
+  b.addEventListener('click', onClick); parent.appendChild(b); return b;
+}
+function group(parent, title) { const g = document.createElement('div'); g.className = 'group'; g.textContent = title; parent.appendChild(g); }
+function buildChips() {
+  const nav = el('chips'); nav.textContent = '';
+  group(nav, 'My standing, proved by the engine');
+  STANDING_QUERIES.forEach((q, i) => chip(nav, STANDING_LABELS[i], () => askText(q)));
+  chip(nav, 'Something not derivable', () => askText(CONTROL_QUERY));
+  if (mind?.facts?.length) {
+    group(nav, 'What I know, as facts');
+    for (const f of mind.facts.slice(0, 12)) chip(nav, f, () => askText(f));
+  }
+}
+function buildRecallChips() {
+  if (!memory?.records?.length) return;
+  const nav = el('chips');
+  const counts = new Map();
+  for (const r of memory.records) for (const a of (r.payload.about || [])) counts.set(a, (counts.get(a) || 0) + 1);
+  const topics = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([t]) => t);
+  if (!topics.length) return;
+  group(nav, 'Recall from my memory');
+  for (const t of topics) chip(nav, t, () => recallText(t), 'recall');
+  recallTopics = topics;
+}
+let recallTopics = []; let standingIndex = 0; let recallIndex = 0;
+// In VR there is no overlay, so the boards themselves are the controls: point and press.
+function selectBoard(board) {
+  if (board === standingBoard.mesh) { askText(STANDING_QUERIES[standingIndex % STANDING_QUERIES.length]); standingIndex += 1; return true; }
+  if (board === answerBoard.mesh) { askText(CONTROL_QUERY); return true; }
+  if (board === memoryBoard.mesh && recallTopics.length) { recallText(recallTopics[recallIndex % recallTopics.length]); recallIndex += 1; return true; }
+  return false;
 }
 
 el('recall').addEventListener('submit', (ev) => {
