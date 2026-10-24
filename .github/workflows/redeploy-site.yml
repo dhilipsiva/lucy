@@ -1,0 +1,21 @@
+name: Redeploy dhilipsiva.dev
+# On every push to main, tell the website to rebuild so it re-pulls Nell's room.
+# Self-skips (stays green) until the SITE_DISPATCH_TOKEN secret exists in this repository.
+on:
+  push:
+    branches: [main]
+    paths: ['nell/**', 'lucy/constitution.nibli', 'lucy/memory.nibli']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  notify:
+    runs-on: ubuntu-24.04
+    env:
+      TOKEN: ${{ secrets.SITE_DISPATCH_TOKEN }}
+    steps:
+      - name: Trigger dhilipsiva.dev rebuild
+        if: ${{ env.TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ env.TOKEN }}
+        run: gh api -X POST repos/dhilipsiva/dhilipsiva.dev/dispatches -f event_type=lucy-updated
