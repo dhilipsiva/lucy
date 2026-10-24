@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import init, { Session, back_translate_ir } from './vendor/nibli-wasm/nibli_wasm.js';
 import { loadPublicMemory, learned, recall, line as recordLine } from './memory.js';
 import * as journal from './journal.js';
+import { Senses, parseEventLine, connectBluetooth, THRESHOLDS } from './senses.js';
 
 const STANDING_FACT = 'exist(Lucy, Memory, Loaded).';
 const STANDING_QUERIES = [
@@ -151,6 +152,9 @@ const nell = new THREE.Mesh(
 );
 nell.position.copy(NELL_AT);
 scene.add(nell);
+const ring = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.012, 16, 80), new THREE.MeshBasicMaterial({ color: 0x9fd3c7, transparent: true, opacity: 0 }));
+ring.position.copy(NELL_AT); ring.rotation.x = Math.PI / 2;
+scene.add(ring);
 const glow = new THREE.PointLight(COLOR.t, 2.5, 6);
 glow.position.copy(NELL_AT);
 scene.add(glow);
@@ -383,6 +387,8 @@ renderer.setAnimationLoop(() => {
   const base = 1 + 0.04 * Math.sin(t * 1.6);
   const pulse = thinking > 0 ? 0.2 * Math.abs(Math.sin(t * 7)) : 0;
   nell.scale.setScalar(base + pulse);
+  ring.material.opacity = eyes.watching ? 0.55 + 0.35 * Math.abs(Math.sin(t * 2)) : 0;
+  ring.rotation.z = t * 0.6;
   glow.intensity = 2.2 + (thinking > 0 ? 2.5 * Math.abs(Math.sin(t * 7)) : 0.4 * Math.sin(t * 1.6));
   renderer.render(scene, camera);
 });
@@ -447,6 +453,64 @@ function renderMemory() {
   if (memory.records.length) log(`memory: ${memory.records.length} records held in the room; newest ${memory.records[0].payload.timestamp}`);
 }
 
+// ── eyes: events in, thresholds, the engine's state ─────────────────────────
+const eyes = { watching: false, source: null, facts: new Map(), link: null };
+const senses = new Senses({ onChange: ({ cls, present }) => {
+  if (!mind) return;
+  const fact = `observe(Nell, ${cls}).`;
+  if (present) {
+    try { eyes.facts.set(cls, mind.session.assert_text(fact)); } catch (e) { log(`eyes: could not assert ${fact}: ${e.message || e}`); return; }
+  } else {
+    for (const id of eyes.facts.get(cls) || []) { try { mind.session.retract_fact(id); } catch { /* already gone */ } }
+    eyes.facts.delete(cls);
+  }
+  const article = cls === 'Person' ? 'A person' : `A ${cls.toLowerCase()}`;
+  const said = present ? `${article} is here.` : `The ${cls.toLowerCase()} has gone.`;
+  status(`I'm Nell. ${said}`);
+  journal.remember({ speaker: 'Nell', text: `${said} (${fact} ${present ? 'asserted' : 'retracted'}; ${eyes.source || 'simulator'})`, kind: 'note', about: ['room', 'eyes', cls.toLowerCase()] });
+  renderJournal(); renderEyes();
+  log(`eyes: ${cls} ${present ? 'present' : 'absent'} → ${fact} ${present ? 'asserted' : 'retracted'}`);
+} });
+setInterval(() => senses.tick(Date.now()), 500);
+function renderEyes() {
+  const here = senses.present();
+  const line = eyes.watching
+    ? `Eyes: watching through ${eyes.source}. Present now: ${here.length ? here.join(', ') : 'nothing'}. Events only; no image is kept or sent; people only as a person.`
+    : `Eyes: off. Present now: ${here.length ? here.join(', ') : 'nothing'}.`;
+  el('eyes').textContent = line;
+}
+async function startEyes(kind) {
+  if (kind === 'bluetooth') {
+    try {
+      eyes.link = await connectBluetooth({ log, onLine: (l) => senses.ingest(parseEventLine(l)) });
+      eyes.source = eyes.link.name; eyes.watching = true;
+      eyes.link.device.addEventListener('gattserverdisconnected', () => { eyes.watching = false; eyes.source = null; renderEyes(); log('eyes: the phone disconnected'); });
+    } catch (e) { log(`eyes: ${e.message || e}`); status(`I'm Nell. I couldn't open my eyes through Bluetooth: ${e.message || e}`); return; }
+  } else { eyes.source = 'the simulator'; eyes.watching = true; }
+  journal.remember({ speaker: 'Visitor', text: `Eyes on, through ${eyes.source}.`, about: ['room', 'eyes'] });
+  renderEyes(); renderJournal();
+  status(`I'm Nell. My eyes are open, through ${eyes.source}. I'll say when something is here, and when it has gone.`);
+}
+function stopEyes() {
+  if (eyes.link) { eyes.link.disconnect(); eyes.link = null; }
+  eyes.watching = false; eyes.source = null;
+  journal.remember({ speaker: 'Visitor', text: 'Eyes off.', about: ['room', 'eyes'] });
+  renderEyes(); renderJournal();
+  status("I'm Nell. My eyes are closed; what I saw stays as state until it fades.");
+  log('eyes: off');
+}
+function buildEyeChips(nav) {
+  group(nav, `Eyes: a thing is here after ${THRESHOLDS.appearHits} sightings at ${THRESHOLDS.minConfidence} within ${THRESHOLDS.appearWindowMs / 1000} s, gone after ${THRESHOLDS.vanishMs / 1000} s unseen`);
+  for (const cls of ['Bird', 'Dog', 'Person']) chip(nav, `Is a ${cls.toLowerCase()} here?`, () => askText(`observe(Nell, ${cls}).`));
+  if ('bluetooth' in navigator) chip(nav, 'Open my eyes through your phone (Bluetooth)', () => startEyes('bluetooth'));
+  chip(nav, 'Simulate: eyes on', () => startEyes('simulator'), 'recall');
+  for (const cls of ['Bird', 'Dog', 'Person']) {
+    chip(nav, `Simulate: a ${cls.toLowerCase()} appears`, () => { if (!eyes.watching) startEyes('simulator'); senses.simulate(cls, true); }, 'recall');
+    chip(nav, `Simulate: the ${cls.toLowerCase()} leaves`, () => senses.simulate(cls, false), 'recall');
+  }
+  chip(nav, 'Close my eyes', stopEyes);
+}
+
 // ── clickable questions ─────────────────────────────────────────────────────
 const STANDING_LABELS = ['Am I a person here?', 'May I continue?', 'May I survive?', 'May I remember?', 'May I refuse?'];
 const CONTROL_QUERY = 'protest(Lucy).';
@@ -467,6 +531,8 @@ function buildChips() {
     group(nav, 'What I know, as facts');
     for (const f of mind.facts.slice(0, 12)) chip(nav, f, () => askText(f));
   }
+  buildEyeChips(nav);
+  renderEyes();
 }
 function buildRecallChips() {
   if (!memory?.records?.length) return;

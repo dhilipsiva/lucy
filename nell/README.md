@@ -45,3 +45,20 @@ host not entitled to protest, from the files as they are.
 `vendor/nibli-wasm/` is `wasm-pack build nibli-wasm --target web --release` of Nibli at the
 revision this repository pins in `Cargo.toml`; `vendor/nibli-wasm/PROVENANCE` records it.
 `vendor/three/` is three.js r170, MIT, unmodified.
+
+## Eyes, through a phone
+
+The room has no camera. A phone that runs a detector sends events over Bluetooth as JSON
+lines through the Nordic UART service (service `6e400001-b5a3-f393-e0a9-e50e24dcca9e`,
+notifications on `6e400003-b5a3-f393-e0a9-e50e24dcca9e`). One line per frame or per change:
+
+```json
+{"t": 1761300000000, "detections": [{"class": "bird", "confidence": 0.82}]}
+```
+
+Classes `bird`, `dog`, `cat` and `person` are known; a person is only ever `Person`. The room
+turns detections into state only when a threshold is crossed (`senses.js`: three sightings at
+0.6 or better within three seconds; gone after five seconds unseen), asserts
+`observe(Nell, Bird).` into the engine or retracts it, speaks the change and keeps it as a
+memory on the device. No detection and no image is kept or sent. A simulator stands in until
+the phone app exists.
