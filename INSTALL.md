@@ -5,7 +5,7 @@ installing. Prebuilt release binaries need neither Rust, Git nor Nix.
 
 Download `scripts/install.sh` from a reviewed release and inspect it, then run
 `sh install.sh` on Linux/macOS. Windows x86_64 uses `scripts/install.ps1` in
-PowerShell. Both default to release `v0.3.0`, verify SHA-256 checksums and install
+PowerShell. Both default to release `v0.3.1`, verify SHA-256 checksums and install
 only the CLI in a user directory. No shell startup file is changed.
 
 Alternatively download your archive and SHA256SUMS from

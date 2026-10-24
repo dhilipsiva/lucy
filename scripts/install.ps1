@@ -1,4 +1,4 @@
-param([string]$Version = 'v0.3.0', [string]$BinDir = "$env:LOCALAPPDATA\Lucy\bin")
+param([string]$Version = 'v0.3.1', [string]$BinDir = "$env:LOCALAPPDATA\Lucy\bin")
 $ErrorActionPreference = 'Stop'
 if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') { throw 'This release provides Windows x86_64 only.' }
 if ($Version -notmatch '^v\d+\.\d+\.\d+$') { throw 'Invalid release version' }

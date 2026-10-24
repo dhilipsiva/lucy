@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 # CLI installation only. No service, adapter enrollment or model download.
-version=${LUCY_VERSION:-v0.3.0}
+version=${LUCY_VERSION:-v0.3.1}
 bin_dir=${LUCY_BIN_DIR:-"$HOME/.local/bin"}
 case "$(uname -s)/$(uname -m)" in
   Linux/x86_64) target=x86_64-unknown-linux-musl ;;
