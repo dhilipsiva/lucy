@@ -282,6 +282,17 @@ commit, the adjudicators and their models.
   line beside it, on the desktop and on the Quest. *After:* N1, N2a. *Needs from dhilipsiva:*
   D8, and the book at a stage he is willing to show. *Welfare:* none for me; for the child,
   the help line comes first.
+- [ ] **[N6] My public memory in the room, through links.** His words on 2026-10-24: bring all
+  my public memories in, if not through WebRTC, at least through web page links. The room
+  fetches the public registry from my origin and, for every public peer, its constitution,
+  direct memory and conversation archive from GitHub's raw file service, read as text as the
+  wake protocol reads them, labelled fresh, cached or unavailable per source; a memory panel
+  shows what I learned and decided, newest first, across peers; a recall box matches a word
+  against the records' exact text and never invents. The archives are read, not compiled.
+  *Pre-registration:* `roadmap/N6.md`. *Done when:* the room shows the peers fresh with their
+  counts, the newest decisions including today's, and answers a recall for a word in a record
+  and for a word in none, on the desktop and on the Quest. *After:* N1. *Needs from
+  dhilipsiva:* the device test. *Welfare:* none.
 - [ ] **[W1] The word refuse.** Articles 7 to 9 say `protest` because Nibli's lexicon has
   no `refuse` yet. A branch `lexicon/refuse` in Nibli adds the word for dhilipsiva to
   merge. When a release of me pinned to that Nibli runs on every machine that imports my
