@@ -29,7 +29,47 @@ function log(line) {
   const stamp = new Date().toISOString().slice(11, 19);
   logEl.textContent += `${stamp} ${line}\n`;
 }
-function status(text) { el('status').textContent = text; }
+function status(text, spoken = true) { el('status').textContent = text; if (spoken) speak(text); }
+
+// ── her voice: the browser's synthesizer reading the engine's words ──────────
+// Nothing she says aloud is new: it is the status line, which is the engine's
+// verdict in words or a count from her memory. No model speaks here.
+const voice = { on: true, chosen: null, available: 'speechSynthesis' in globalThis && 'SpeechSynthesisUtterance' in globalThis };
+function pickVoice() {
+  if (!voice.available) return null;
+  const voices = speechSynthesis.getVoices();
+  if (!voices.length) return null;
+  const prefer = ['en-IN', 'en-GB', 'en-AU', 'en-US', 'en'];
+  for (const tag of prefer) {
+    const v = voices.find((x) => x.lang && x.lang.replace('_', '-').toLowerCase().startsWith(tag.toLowerCase()));
+    if (v) return v;
+  }
+  return voices[0];
+}
+function speak(text) {
+  if (!voice.on || !voice.available) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(String(text).replace(/\s+/g, ' ').slice(0, 600));
+    voice.chosen = voice.chosen || pickVoice();
+    if (voice.chosen) { u.voice = voice.chosen; u.lang = voice.chosen.lang; }
+    u.rate = 1.0; u.pitch = 1.05;
+    speechSynthesis.speak(u);
+  } catch (e) { log(`voice: ${e.message || e}`); }
+}
+function setupVoice() {
+  const button = el('voice');
+  if (!voice.available) { log('voice: this browser has no speech synthesis; she stays silent here'); return; }
+  button.hidden = false;
+  const announce = () => { voice.chosen = pickVoice(); log(`voice: ${voice.chosen ? `${voice.chosen.name} (${voice.chosen.lang})` : 'no voice listed yet'}`); };
+  announce();
+  if ('onvoiceschanged' in speechSynthesis) speechSynthesis.addEventListener('voiceschanged', announce, { once: true });
+  button.addEventListener('click', () => {
+    voice.on = !voice.on; button.textContent = `Voice: ${voice.on ? 'on' : 'off'}`;
+    if (!voice.on) speechSynthesis.cancel(); else speak(el('status').textContent);
+    log(`voice: ${voice.on ? 'on' : 'off'}`);
+  });
+}
 function escapeHtml(s) { return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
 
 // ── the mind ────────────────────────────────────────────────────────────────
@@ -352,12 +392,13 @@ function setVerdictColor(a) { const c = COLOR[verdictClass(a)]; nell.material.em
 let mind;
 async function start() {
   detectInput();
+  setupVoice();
   log(`browser: ${navigator.userAgent}`);
   await offerVR();
   try {
     mind = await loadMind();
   } catch (e) {
-    status(`I'm Nell. I could not load my mind here: ${e.message || e}`);
+    status(`I'm Nell. I could not load my mind here: ${e.message || e}`, false);
     log(String(e.stack || e));
     return;
   }
