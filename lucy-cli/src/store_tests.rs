@@ -225,6 +225,8 @@ fn a_bad_file_is_skipped_and_named_never_fatal() {
     let skipped = sync["skipped"].to_string();
     assert!(skipped.contains("broken.json"), "{sync}");
     assert!(skipped.contains("notes.md"), "{sync}");
+    #[cfg(unix)]
+    assert!(skipped.contains("linked.json"));
     assert_eq!(store.search("findable", "", 8, None).unwrap().len(), 1);
     assert_eq!(store.search("Enma", "", 8, None).unwrap().len(), 1);
 }
@@ -297,12 +299,15 @@ fn invalid_and_symlinked_records_are_skipped_too() {
     let mut tool = serde_json::to_value(record("tool", "tool output")).unwrap();
     tool["payload"]["role"] = json!("tool");
     std::fs::write(records.join("tool.json"), tool.to_string()).unwrap();
+    #[cfg(unix)]
     std::os::unix::fs::symlink("/etc/hostname", records.join("linked.json")).unwrap();
     let sync = store.sync().unwrap();
     let skipped = sync["skipped"].to_string();
-    for name in ["invalid.json", "tool.json", "linked.json"] {
+    for name in ["invalid.json", "tool.json"] {
         assert!(skipped.contains(name), "{name}: {sync}");
     }
+    #[cfg(unix)]
+    assert!(skipped.contains("linked.json"));
     assert_eq!(store.search("findable", "", 8, None).unwrap().len(), 1);
 }
 

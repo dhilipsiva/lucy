@@ -238,3 +238,96 @@ fn operation_log_uses_the_actual_nibli_grammar() {
     assert!(nibli_kr::parse_checked(&text).is_ok());
     nibli_engine::NibliEngine::new().assert_text(&text).unwrap();
 }
+
+#[test]
+fn exact_origin_routing_preserves_edits_tombstones_and_concurrency() {
+    let d = tempfile::tempdir().unwrap();
+    let r = Replica::open(d.path()).unwrap();
+    let mut local = r.local_peer();
+    let mut destination = peer(&r);
+    destination.record_origins.insert("test".into());
+    r.append(&local, "r1", Change::Add, payload("original"), json!({}))
+        .unwrap();
+    route_local(&r, &destination).unwrap();
+    let remote_dir = tempfile::tempdir().unwrap();
+    let remote = Replica::open(remote_dir.path()).unwrap();
+    local.keys.insert(remote.actor(), remote.public_key());
+    save(
+        &r.root.join("local-keys.json"),
+        &serde_json::to_vec(&local.keys).unwrap(),
+    )
+    .unwrap();
+    remote.merge(&local, r.read(&local).unwrap()).unwrap();
+    r.append(&local, "r1", Change::Correct, payload("left"), json!({}))
+        .unwrap();
+    remote
+        .append(&local, "r1", Change::Correct, payload("right"), json!({}))
+        .unwrap();
+    r.merge(&local, remote.read(&local).unwrap()).unwrap();
+    drop(r);
+    let r = Replica::open(d.path()).unwrap();
+    route_local(&r, &destination).unwrap();
+    assert_eq!(
+        project(&r.read(&destination).unwrap()).unwrap().conflicts["r1"].len(),
+        2
+    );
+    r.append(&local, "r1", Change::Retract, Value::Null, json!({}))
+        .unwrap();
+    route_local(&r, &destination).unwrap();
+    assert!(
+        project(&r.read(&destination).unwrap())
+            .unwrap()
+            .deleted
+            .contains("r1")
+    );
+    r.append(
+        &local,
+        "r1",
+        Change::Restore,
+        payload("restored"),
+        json!({}),
+    )
+    .unwrap();
+    route_local(&r, &destination).unwrap();
+    let before = r.read(&destination).unwrap();
+    assert_eq!(project(&before).unwrap().active["r1"], payload("restored"));
+    route_local(&r, &destination).unwrap();
+    assert_eq!(r.read(&destination).unwrap(), before);
+    let mut changed = payload("relabeled");
+    changed["record"]["origin"] = json!("other");
+    assert!(
+        r.append(&local, "r1", Change::Correct, changed, json!({}))
+            .is_err()
+    );
+}
+
+#[test]
+fn source_revision_reverts_update_projection_without_restoring_tombstones() {
+    let d = tempfile::tempdir().unwrap();
+    let r = Replica::open(d.path()).unwrap();
+    let p = peer(&r);
+    let a = "person(Adam).";
+    let b = "person(Beth).";
+    for (text, revision) in [(a, "first"), (b, "second"), (a, "reverted")] {
+        import_source(&r, &p, "memory.nibli", text, revision).unwrap();
+        assert_eq!(
+            project(&r.read(&p).unwrap()).unwrap().active["assertions:memory.nibli"]["assertion"],
+            text
+        );
+    }
+    r.append(
+        &p,
+        "assertions:memory.nibli",
+        Change::Retract,
+        Value::Null,
+        json!({}),
+    )
+    .unwrap();
+    import_source(&r, &p, "memory.nibli", b, "later").unwrap();
+    assert!(
+        project(&r.read(&p).unwrap())
+            .unwrap()
+            .deleted
+            .contains("assertions:memory.nibli")
+    );
+}

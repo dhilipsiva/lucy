@@ -416,7 +416,7 @@ fn paths_cannot_escape_through_parent_components_or_symlinks() {
     }
     assert_eq!(
         actions::path(&workspace, "sub/../note", false).unwrap(),
-        workspace.join("note")
+        workspace.canonicalize().unwrap().join("note")
     );
 }
 

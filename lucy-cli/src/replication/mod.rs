@@ -490,6 +490,14 @@ pub fn validate(log: &BTreeMap<String, Operation>, peer: &Peer) -> Result<()> {
             if let Some(record) = op.payload.get("record") {
                 let r: Record = serde_json::from_value(record.clone()).map_err(err)?;
                 r.validate()?;
+                if let Some(original) = log
+                    .values()
+                    .find(|p| p.target == op.target && p.change == Change::Add)
+                    && (original.payload["record"]["origin"] != record["origin"]
+                        || original.payload["record"]["payload"]["id"] != record["payload"]["id"])
+                {
+                    return Err("correction cannot change record origin or identity".into());
+                }
                 if peer.public && r.payload["private"] != false {
                     return Err("public scope requires explicit public record".into());
                 }
@@ -508,6 +516,19 @@ pub fn validate(log: &BTreeMap<String, Operation>, peer: &Peer) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn supersedes(log: &BTreeMap<String, Operation>, ancestor: &str, descendant: &str) -> bool {
+    let a = &log[ancestor];
+    let b = &log[descendant];
+    if let (Some(original), Some(_)) = (
+        a.provenance["local_operation"].as_str(),
+        b.provenance["local_operation"].as_str(),
+    ) && let Some(parents) = b.provenance["local_predecessors"].as_array()
+    {
+        return parents.iter().any(|p| p == original);
+    }
+    precedes(log, ancestor, descendant)
 }
 
 #[derive(Debug, Serialize)]
@@ -535,11 +556,11 @@ pub fn project(log: &BTreeMap<String, Operation>) -> Result<Projection> {
                 o.change != Change::Retract
                     && deletions.iter().all(|d| {
                         // Only a restoration can supersede a tombstone, including a concurrent one.
-                        (o.change == Change::Restore && precedes(log, &d.id, &o.id))
+                        (o.change == Change::Restore && supersedes(log, &d.id, &o.id))
                             || ops.iter().any(|r| {
                                 r.change == Change::Restore
-                                    && precedes(log, &r.id, &o.id)
-                                    && precedes(log, &d.id, &r.id)
+                                    && supersedes(log, &r.id, &o.id)
+                                    && supersedes(log, &d.id, &r.id)
                             })
                     })
             })
@@ -549,7 +570,7 @@ pub fn project(log: &BTreeMap<String, Operation>) -> Result<Projection> {
             .filter(|o| {
                 !candidates
                     .iter()
-                    .any(|other| precedes(log, &o.id, &other.id))
+                    .any(|other| supersedes(log, &o.id, &other.id))
             })
             .collect();
         if maximal.is_empty() {
@@ -611,12 +632,19 @@ pub fn import_source(
     let hash = digest(text.as_bytes());
     let log = replica.read(peer)?;
     let checkpoint = format!("source:{path}:{hash}");
-    if log
+    let checkpoints: Vec<_> = log
         .values()
-        .any(|o| o.target == checkpoint && o.payload["validated"] == true)
-    {
+        .filter(|o| o.payload["validated"] == true && o.provenance["path"] == path)
+        .collect();
+    if checkpoints.iter().any(|o| {
+        o.target == checkpoint
+            && checkpoints
+                .iter()
+                .all(|other| other.id == o.id || precedes(&log, &other.id, &o.id))
+    }) {
         return Ok(0);
     }
+    let projection = project(&log)?;
     let provenance = json!({"repository":peer.repository,"path":path,"revision":revision,"sha256":hash,"verification":"legacy_source"});
     // Preserve rejected bytes locally; they must not be queued for public upload.
     save(
@@ -659,11 +687,18 @@ pub fn import_source(
             .values()
             .find(|o| o.target == target && o.change == Change::Add);
         let change = if let Some(prior) = prior {
-            if prior.payload == payload {
+            if payload.get("record").is_some() {
+                if prior.payload == payload {
+                    continue;
+                }
+                return Err(format!("legacy record changed: {target}"));
+            }
+            if projection.active.get(&target) == Some(&payload) {
                 continue;
             }
-            if payload.get("record").is_some() {
-                return Err(format!("legacy record changed: {target}"));
+            // A file reappearing is not permission to undo an explicit retraction.
+            if projection.deleted.contains(&target) {
+                continue;
             }
             Change::Correct
         } else {
@@ -1021,21 +1056,48 @@ fn route_local(replica: &Replica, peer: &Peer) -> Result<()> {
     }
     let source = replica.read(&replica.local_peer())?;
     let current = replica.read(peer)?;
+    let targets: BTreeSet<_> = source
+        .values()
+        .filter(|op| op.change == Change::Add)
+        .filter(|op| {
+            op.payload["record"]["origin"]
+                .as_str()
+                .is_some_and(|origin| peer.record_origins.contains(origin))
+        })
+        .map(|op| op.target.as_str())
+        .collect();
+    let mut remaining: BTreeMap<_, _> = source.iter().collect();
+    let mut done = BTreeSet::new();
     let mut changes = Vec::new();
-    for op in source.values().filter(|o| o.change == Change::Add) {
-        let Some(origin) = op.payload["record"]["origin"].as_str() else {
-            continue;
-        };
-        if !peer.record_origins.contains(origin) || current.values().any(|o| o.target == op.target)
-        {
-            continue;
+    while !remaining.is_empty() {
+        let ready: Vec<_> = remaining
+            .iter()
+            .filter(|(_, op)| op.parents.iter().all(|p| done.contains(p)))
+            .map(|(id, _)| *id)
+            .collect();
+        if ready.is_empty() {
+            return Err("invalid local causal graph".into());
         }
-        changes.push((
-            op.target.clone(),
-            Change::Add,
-            op.payload.clone(),
-            json!({"local_operation":op.id,"provenance":op.provenance}),
-        ));
+        for id in ready {
+            let op = remaining.remove(id).expect("ready operation");
+            done.insert(id.clone());
+            if !targets.contains(op.target.as_str())
+                || current
+                    .values()
+                    .any(|p| p.provenance["local_operation"] == op.id)
+            {
+                continue;
+            }
+            // Scope translation is signed locally. Preserve original per-record
+            // causality so batching concurrent corrections cannot select a winner.
+            let predecessors: Vec<_> = source
+                .values()
+                .filter(|p| p.target == op.target && precedes(&source, &p.id, &op.id))
+                .map(|p| p.id.clone())
+                .collect();
+            changes.push((op.target.clone(), op.change.clone(), op.payload.clone(),
+                json!({"local_operation":op.id,"local_predecessors":predecessors,"provenance":op.provenance})));
+        }
     }
     if !changes.is_empty() {
         replica.append_many(peer, changes)?;

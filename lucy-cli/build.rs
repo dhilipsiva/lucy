@@ -2,7 +2,7 @@ fn main() {
     let lock = std::fs::read_to_string("../Cargo.lock").expect("workspace Cargo.lock");
     let package = lock
         .split("[[package]]")
-        .find(|p| p.contains("name = \"nibli-engine\"\n"))
+        .find(|p| p.lines().any(|line| line == "name = \"nibli-engine\""))
         .expect("pinned Nibli engine");
     let source = package
         .lines()

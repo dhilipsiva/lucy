@@ -23,6 +23,8 @@ selects a winner. Git history can retain deleted content; deletion is not erasur
 Use `lucy peer change --stdin` with `{ "peer": "NAME", "target": "ID",
 "change": "correct", "payload": {…}, "provenance": {…} }` for reviewed changes.
 `retract` takes a null payload; `restore` must explicitly follow a tombstone.
+Exact-origin routes forward corrections, tombstones and restorations as well as
+additions, retaining the original per-record causality across scope translation.
 Snapshots are deterministic Nibli. Conflicting assertions block their reasoning
 projection; original evidence stays available. redb and embeddings are caches.
 

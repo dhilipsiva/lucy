@@ -95,6 +95,28 @@ fn permissions(path: &Path, directory: bool) -> Result<()> {
     Ok(())
 }
 
+/// macOS exposes these root-owned system directories through fixed aliases.
+/// Resolve only those aliases; user-controlled symlinks remain forbidden.
+fn private_root(path: &Path) -> Result<PathBuf> {
+    let root = std::path::absolute(path).map_err(err)?;
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::MetadataExt;
+        for (alias, target) in [("/var", "/private/var"), ("/tmp", "/private/tmp")] {
+            if let Ok(suffix) = root.strip_prefix(alias) {
+                let metadata = fs::symlink_metadata(alias).map_err(err)?;
+                if metadata.uid() == 0
+                    && metadata.file_type().is_symlink()
+                    && fs::canonicalize(alias).map_err(err)? == Path::new(target)
+                {
+                    return Ok(Path::new(target).join(suffix));
+                }
+            }
+        }
+    }
+    Ok(root)
+}
+
 fn plain(path: &Path) -> Result<()> {
     if fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
         return Err(format!("refusing symlink: {}", path.display()));
@@ -298,7 +320,7 @@ impl Store {
         Ok(payload)
     }
     pub fn open(root: &Path) -> Result<Self> {
-        let root = std::path::absolute(root).map_err(err)?;
+        let root = private_root(root)?;
         // Private data may never enter a Nix input or public worktree.
         for parent in root.ancestors() {
             plain(parent)?;

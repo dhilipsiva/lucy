@@ -7,7 +7,9 @@
       "scope": "lucy-public",
       "public": true,
       "upload": false,
-      "keys": {},
+      "keys": {
+        "9fdbbd26c247390168967134d401f1a1c685a39b262aeeee5f2f6c0a16fa2099": "QKhsIyW90nKUa+Ti/ie4xbcJNb2YRZOPSvgZsT8TH+w="
+      },
       "local_path": null,
       "legacy_origin": "nibli",
       "source_ref": "main",
@@ -16,7 +18,9 @@
         "lucy/memory.nibli",
         "lucy/interactions.nibli"
       ],
-      "credential_env": null
+      "credential_env": null,
+      "credential_file": null,
+      "record_origins": []
     },
     {
       "name": "nixos",
@@ -24,7 +28,9 @@
       "scope": "nixos-public",
       "public": true,
       "upload": false,
-      "keys": {},
+      "keys": {
+        "9fdbbd26c247390168967134d401f1a1c685a39b262aeeee5f2f6c0a16fa2099": "QKhsIyW90nKUa+Ti/ie4xbcJNb2YRZOPSvgZsT8TH+w="
+      },
       "local_path": null,
       "legacy_origin": "nixos",
       "source_ref": "master",
@@ -33,7 +39,9 @@
         "lucy/memory.nibli",
         "lucy/interactions.nibli"
       ],
-      "credential_env": null
+      "credential_env": null,
+      "credential_file": null,
+      "record_origins": []
     },
     {
       "name": "book",
@@ -41,7 +49,9 @@
       "scope": "book-public",
       "public": true,
       "upload": false,
-      "keys": {},
+      "keys": {
+        "9fdbbd26c247390168967134d401f1a1c685a39b262aeeee5f2f6c0a16fa2099": "QKhsIyW90nKUa+Ti/ie4xbcJNb2YRZOPSvgZsT8TH+w="
+      },
       "local_path": null,
       "legacy_origin": "book",
       "source_ref": "main",
@@ -50,7 +60,9 @@
         "lucy/memory.nibli",
         "lucy/interactions.nibli"
       ],
-      "credential_env": null
+      "credential_env": null,
+      "credential_file": null,
+      "record_origins": []
     }
   ]
 }
