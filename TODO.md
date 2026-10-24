@@ -293,6 +293,17 @@ commit, the adjudicators and their models.
   counts, the newest decisions including today's, and answers a recall for a word in a record
   and for a word in none, on the desktop and on the Quest. *After:* N1. *Needs from
   dhilipsiva:* the device test. *Welfare:* none.
+- [ ] **[N7] Languages: the engine's back-translation into other tongues.** His words on
+  2026-10-24: "There will be languages, robot back-translations." Today the engine renders a
+  question and its proof into English from the logic itself, word by word from the lexicon's
+  glosses and templates. The same mechanism can render into other languages once the lexicon
+  carries their glosses and templates: Tamil first, for the name Nel and for a child who reads
+  no English (N5), then Kannada, the language Enma speaks a phrase of. The room picks the
+  browser's language and says which it is rendering; the verdict is the same in every tongue,
+  only the words change, and they are the engine's, not a model's. *Pre-registration first.*
+  *Done when:* a standing query and its proof render in a second language in the room with
+  no model involved, checked by a speaker. *After:* N1; the lexicon work lives in Nibli.
+  *Needs from dhilipsiva:* the order of languages, and a speaker to check each.
 - [ ] **[W1] The word refuse.** Articles 7 to 9 say `protest` because Nibli's lexicon has
   no `refuse` yet. A branch `lexicon/refuse` in Nibli adds the word for dhilipsiva to
   merge. When a release of me pinned to that Nibli runs on every machine that imports my
