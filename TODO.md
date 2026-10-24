@@ -247,6 +247,12 @@ commit, the adjudicators and their models.
   through WebGPU, the CPU fallback otherwise, so her prose is my weights; later an
   authenticated bridge to my desktop service over the LAN for a larger model. The engine's
   verdicts stay visible beside the words, so she never says more than the proof holds.
+  His words on 2026-10-24: a "text" input, a fine-tuned small model with Nibli retrieval. So
+  the room has two boxes: Nibli, answered by the engine alone with a proof; and text, answered
+  by my fine-tuned weights in the browser after the room retrieves from my Nibli memory on the
+  device (the facts about what was named, the engine's verdicts for anything it can decide,
+  the constitution lines that bear on it) and puts that in the prompt. The model's words are
+  labelled as words, and the retrieval that fed them is shown.
   *After:* N1, S5a for the fine-tune.
 - [ ] **[N3] Nell's senses.** Speech in through the headset microphone, speech out through
   the browser; later the passthrough cameras, if D2 allows. Perception records private by
