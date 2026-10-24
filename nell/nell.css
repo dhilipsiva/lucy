@@ -1,0 +1,17 @@
+:root { color-scheme: dark; --bg: #0b0d12; --fg: #e8e6e3; --dim: #9a9790; --true: #f2b950; --false: #6fa8dc; --err: #e07070; --panel: rgba(16, 19, 28, 0.86); }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 18px/1.45 ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace; }
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#overlay { position: fixed; inset: 0; display: grid; grid-template-rows: auto auto auto 1fr auto; gap: 12px; padding: 20px; box-sizing: border-box; pointer-events: none; }
+#overlay > * { pointer-events: auto; }
+header h1 { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: 0.04em; }
+#status { margin: 4px 0 0; color: var(--dim); }
+#standing, #answer { background: var(--panel); border: 1px solid #262a36; border-radius: 10px; padding: 12px 14px; max-width: 760px; white-space: pre-wrap; word-break: break-word; }
+#answer:empty, #standing:empty { display: none; }
+#ask { display: flex; gap: 8px; max-width: 760px; }
+#ask input { flex: 1; font: inherit; padding: 12px 14px; border-radius: 10px; border: 1px solid #3a3f4e; background: #11141c; color: var(--fg); }
+#ask button, #enter { font: inherit; padding: 12px 18px; border-radius: 10px; border: 1px solid #3a3f4e; background: #1a1f2c; color: var(--fg); cursor: pointer; }
+#enter { font-size: 20px; padding: 14px 22px; }
+footer { display: grid; gap: 10px; max-width: 760px; }
+details pre { max-height: 180px; overflow: auto; font-size: 13px; color: var(--dim); margin: 6px 0 0; }
+.note { color: var(--dim); font-size: 14px; margin: 0; }
+.t { color: var(--true); } .f { color: var(--false); } .e { color: var(--err); }

@@ -3,3 +3,4 @@
 *.jpg binary
 *.jpeg binary
 *.ico binary
+*.wasm binary

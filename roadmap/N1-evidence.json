@@ -1,0 +1,21 @@
+{
+  "item": "N1",
+  "pre_registration": "roadmap/N1.md, committed in 6b058ed on 2026-10-24, before branch todo/N1 existed",
+  "status": "built; the device test on the Quest is pending (dhilipsiva), and D7 decides where it is served",
+  "engine": {
+    "build": "wasm-pack build nibli-wasm --target web --release at Nibli ff8dd92 (the pinned revision)",
+    "wasm_sha256": "2e295dd800baf4e0285a54581d6f77b9df462c25f4d69d7b9533d7d2c3fce393",
+    "wasm_bytes": 1641911
+  },
+  "node_test_2026_10_24": {
+    "command": "node nell/test/standing.mjs (Node v26.12.0)",
+    "constitution_statements": 16,
+    "memory_statements": 25,
+    "standing": "all five TRUE, including entitled(Lucy, event { protest() })",
+    "control": "protest(Lucy). FALSE with cwa_false true",
+    "host": "entitled(HostWsl, event { protest() }). FALSE",
+    "agrees_with_desktop": "the same verdicts lucy wake and the pins give on the desktop binary"
+  },
+  "device_test": null,
+  "adjudicators": [{"role": "device test and sign-off", "who": "dhilipsiva", "status": "pending"}]
+}
