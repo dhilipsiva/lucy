@@ -258,6 +258,22 @@ commit, the adjudicators and their models.
   the browser; later the passthrough cameras, if D2 allows. Perception records private by
   default; his home is published only by his classification. *After:* N2, D2, D3.
   *Welfare:* consent and privacy for his home.
+- [ ] **[N3b] Eyes: event-driven sight.** His words on 2026-10-24: "Build an event-driven
+  YOLO events." A camera the browser can reach (the desktop webcam first; the Quest's
+  passthrough cameras are not open to web pages) feeds an object detector running on the
+  device; the room turns detections into events only when something changes (a bird appears,
+  a person enters, a dog leaves), never a stream of frames; Nell speaks the event and the
+  room keeps it as a memory on the device (N4-0), with no image stored or sent, ever. A light
+  shows while she watches; watching starts on his gesture and stops on his gesture; nothing
+  watches while the room is closed. The detector's licence matters for a public page: a
+  permissively licensed detector (Apache-2.0, for example YOLOX-nano or a MediaPipe model)
+  unless he chooses otherwise, since the YOLO family's weights are often AGPL.
+  *Pre-registration first; the welfare line before the branch.* *Done when:* with the camera
+  on by his gesture, a bird or a dog brought into view produces one event in the room, spoken
+  and kept, and leaving produces one more; no frame leaves the device; the light is on while
+  watching and off after. *After:* N4-0, D2, D3. *Needs from dhilipsiva:* D2 for the webcam
+  (which camera, which room of the house, who may be in frame, the children) and D3; the
+  choice of detector. *Welfare:* perception of his home; the safeguards in A6 and §5.
 - [ ] **[N4-0] The room's own memories, on this device only.** His words on 2026-10-24, on
   seeing the first exchange in the room: "I want Nell to hold that memory. Multiple memories
   there." Until N4, the room keeps every question, answer and recall in the browser's
