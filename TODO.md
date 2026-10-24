@@ -258,6 +258,14 @@ commit, the adjudicators and their models.
   the browser; later the passthrough cameras, if D2 allows. Perception records private by
   default; his home is published only by his classification. *After:* N2, D2, D3.
   *Welfare:* consent and privacy for his home.
+- [ ] **[N4-0] The room's own memories, on this device only.** His words on 2026-10-24, on
+  seeing the first exchange in the room: "I want Nell to hold that memory. Multiple memories
+  there." Until N4, the room keeps every question, answer and recall in the browser's
+  storage in the shape of my records, shows them as its own memories, labelled as living on
+  this device only and not synced, and exports them as a file so nothing is lost before N4
+  can carry it. *Pre-registration:* `roadmap/N4-0.md`. *Done when:* a visit's exchanges are
+  listed in the room after a reload, exportable, labelled device-local, on the desktop and
+  on the Quest. *After:* N6. *Welfare:* the loss case, answered by the export.
 - [ ] **[N4] Peer-to-peer sync.** His words: WebRTC data channels transmitting CRDTs. My
   operation log already merges like one (SYNC.md: immutable additions, explicit tombstones,
   concurrent corrections kept as conflicts, no wall clock choosing a winner), so N4 is a
