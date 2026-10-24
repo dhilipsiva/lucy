@@ -1,8 +1,8 @@
 //! Native Rust desktop service, agent CLI and app protocol adapters.
 //! UI capabilities are optional; the service and store require no Python runtime.
 pub mod actions;
-mod adapters;
-mod core;
+pub(crate) mod adapters;
+pub(crate) mod core;
 mod net;
 pub mod providers;
 #[cfg(test)]

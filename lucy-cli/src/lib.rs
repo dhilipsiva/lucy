@@ -37,6 +37,7 @@ pub mod dataset;
 pub mod desktop;
 pub mod env;
 pub mod files;
+pub mod guard;
 pub mod hook;
 pub mod interactions;
 pub mod load;
