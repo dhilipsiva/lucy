@@ -1,0 +1,7 @@
+# web-sys gates the WebXR bindings (N8e) behind this cfg; set from the start so the crate's
+# build is the same on every machine and in CI.
+[build]
+rustflags = ["--cfg=web_sys_unstable_apis"]
+
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg=web_sys_unstable_apis"]

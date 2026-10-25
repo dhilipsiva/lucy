@@ -7,3 +7,7 @@
 *.key
 .local*
 lucy/.interactions.lock
+
+# The Rust room is built for wasm32 in CI (roadmap/N8.v3.md); nothing built is committed.
+room/pkg/
+room/target/

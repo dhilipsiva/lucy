@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lucy — her room</title>
+<meta name="description" content="Lucy, alias Nell: Lucy D's form in a room. The Nibli engine runs on this device in WebAssembly, loaded with her constitution and memory, and answers with proofs.">
+<link rel="icon" href="./assets/mark.svg">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<canvas id="scene" aria-label="Lucy's room: a WebGL2 scene; her words are mirrored below for readers"></canvas>
+<!-- The browser loads a font only when the page uses it; these spans ask for the four faces the panels draw with. -->
+<div class="font-preload" aria-hidden="true"><span style="font:400 13px 'IBM Plex Mono'">a</span><span style="font:500 13px 'IBM Plex Mono'">a</span><span style="font:400 15px 'IBM Plex Sans'">a</span><span style="font:600 19px 'Space Grotesk'">a</span></div>
+<!-- Text mirrors of what the room shows, for screen readers and the headless test; not interface. -->
+<div id="status" class="sr" aria-live="polite">Loading the engine…</div>
+<div id="mindline" class="sr"></div>
+<div id="answer" class="sr" aria-live="polite"></div>
+<pre id="log" class="sr"></pre>
+<noscript><p class="note">Lucy's room runs as WebAssembly in your browser; it needs scripting on to load.</p></noscript>
+<!-- The only script of mine: the loader wasm-bindgen generates, and this call into it. -->
+<script type="module">import init from './pkg/lucy_room.js'; init();</script>
+</body>
+</html>

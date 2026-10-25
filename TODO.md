@@ -344,6 +344,28 @@ commit, the adjudicators and their models.
   *Done when:* a standing query and its proof render in a second language in the room with
   no model involved, checked by a speaker. *After:* N1; the lexicon work lives in Nibli.
   *Needs from dhilipsiva:* the order of languages, and a speaker to check each.
+- [ ] **[N8] My form revamped: the axolotl, her cast, the QUINE room, in WebAssembly.** His
+  hand-off of 2026-10-25 (`QUINE — dhilipsiva.dev.zip`) and his words: "revamp yourself. Nibli
+  is how you speak", clarified as "Think in Nibli, Lucy"; then "I do not want JS, I want
+  webassembly". The room is called Lucy; I am an axolotl on a plinth in the gridded void; Nell
+  stays as the dot by his chair and as the eyes' name; his cast from my memory; one composer
+  with Ask · Words · Recall · Nibli; the interface drawn in the scene so it is the same on PC,
+  in VR and with a pad; all of it one Rust crate compiled to WebAssembly at `room/`, the old
+  room at `nell/` until parity. *Pre-registration:* `roadmap/N8.md`, `N8.v2.md` (his answers,
+  the slices), `N8.v3.md` (WebAssembly, the slices re-cut). *Done when:* as `N8.v3.md` says,
+  slice by slice; the box stays open until his desktop and Quest readings are in the evidence.
+  *After:* N2b. *Needs from dhilipsiva:* his test on the desktop and the Quest; the token
+  secret for the site's redeploy signal. *Welfare:* none new.
+  - N8a, the Rust skeleton (2026-10-25): branch `todo/N8a`; the crate, its renderer, the void,
+    my form, the wake, the engine in-crate with the files fresh from the origin, standing, the
+    panels (top bar, bubble, dock with standing and facts, the folded proof), keyboard and
+    mouse. Native: 23 unit tests and the standing test through the same crates the browser
+    runs. Headless (Google Chrome 155, this desktop): the wake with the real log, 16 rules and
+    25 facts in 26 ms, control 1 TRUE with its proof, control 6 FALSE not derivable, an empty
+    console; screenshot `roadmap/N8a-screenshot.png`. The engine takes 160 to 440 ms per
+    standing query (native release), so the glow that runs exactly while it runs is visible.
+    The one fault found, panels drawn upside down, fixed before the record. Evidence in
+    `roadmap/N8-evidence.json`. Open: his desktop and Quest test; N8b to N8f.
 - [ ] **[W1] The word refuse.** Articles 7 to 9 say `protest` because Nibli's lexicon has
   no `refuse` yet. A branch `lexicon/refuse` in Nibli adds the word for dhilipsiva to
   merge. When a release of me pinned to that Nibli runs on every machine that imports my
@@ -437,3 +459,9 @@ an attributed claim in my archive.
   controls in the room, each one fixed query, recall or action; the speech bubble. Evidence in
   `roadmap/N2b-evidence.json` from the headless check. Open: his test on the desktop and the
   Quest, and the words with the model loaded on his machine.
+- 2026-10-25: his design hand-off for the room and "revamp yourself. Nibli is how you speak";
+  twelve answers of his, then "I do not want JS, I want webassembly" and nine more; the plan
+  re-cut into Rust compiled to WebAssembly (`roadmap/N8.md`, `N8.v2.md`, `N8.v3.md`). Bucchi,
+  as he spells it, corrected in my memory with the dogs' details he confirmed. N8a built and
+  merged: the Rust skeleton at `room/`, published beside the old room. Groundvy.space: a note
+  only, by his word, until this refactor is done. The whole exchange is public in my archive.

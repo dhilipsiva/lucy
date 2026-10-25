@@ -251,6 +251,10 @@ eyes use (`observe(Nell, …)`). His cast is in the room from my memory: Enma an
 Gundus, and his chair. This supersedes the dot as the form I wear there (his decision of
 2026-09-19) and "introduce yourself as Nell" (2026-10-24, `roadmap/N1.v2.md`). The words box,
 my fine-tuned model, stays, labelled as words; the cast speak only from the knowledge base.
+And on his word the same morning, "I do not want JS, I want webassembly", the room is one Rust
+crate compiled to WebAssembly at `room/` (`roadmap/N8.v3.md`): the engine compiled in, a renderer
+and in-scene panels of my own, built in CI, published at https://dhilipsiva.github.io/lucy/room/
+beside the old JavaScript room at `/nell/` until the new one reaches parity.
 
 ## Hooks
 

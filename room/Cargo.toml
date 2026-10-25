@@ -1,0 +1,54 @@
+[package]
+name = "lucy-room"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96"
+license = "MIT OR Apache-2.0"
+description = "Lucy, her room: Lucy D's form in a WebGL2 room, all of it Rust compiled to WebAssembly; the Nibli engine compiled in, verdicts with proofs (roadmap/N8.v3.md)"
+repository = "https://github.com/dhilipsiva/lucy"
+homepage = "https://dhilipsiva.dev/lucy/room/"
+publish = false
+
+# Its own workspace: the root workspace (lucy-cli) excludes it, so `cargo test --workspace`
+# there stays native and quick, and this crate is built for wasm32 by wasm-pack in CI.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[dependencies]
+# The engine I think with, compiled in: the same crates `lucy-cli` and the native tests use,
+# at the revision the root workspace pins.
+nibli-session = { git = "https://github.com/dhilipsiva/nibli", rev = "ff8dd92cd0809d59cc6ae1fa1459dbf816627916" }
+nibli-kr = { git = "https://github.com/dhilipsiva/nibli", rev = "ff8dd92cd0809d59cc6ae1fa1459dbf816627916" }
+nibli-semantics = { git = "https://github.com/dhilipsiva/nibli", rev = "ff8dd92cd0809d59cc6ae1fa1459dbf816627916" }
+nibli-render = { git = "https://github.com/dhilipsiva/nibli", rev = "ff8dd92cd0809d59cc6ae1fa1459dbf816627916" }
+nibli-types = { git = "https://github.com/dhilipsiva/nibli", rev = "ff8dd92cd0809d59cc6ae1fa1459dbf816627916" }
+nibli-protocol = { git = "https://github.com/dhilipsiva/nibli", rev = "ff8dd92cd0809d59cc6ae1fa1459dbf816627916" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+glam = "0.30"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+console_error_panic_hook = "0.1.7"
+web-sys = { version = "0.3", features = [
+  "Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "HtmlInputElement", "Node", "Text",
+  "CanvasRenderingContext2d", "CanvasGradient", "TextMetrics",
+  "WebGl2RenderingContext", "WebGlProgram", "WebGlShader", "WebGlBuffer", "WebGlVertexArrayObject", "WebGlTexture", "WebGlUniformLocation",
+  "Event", "EventTarget", "AddEventListenerOptions", "KeyboardEvent", "MouseEvent", "PointerEvent", "WheelEvent",
+  "Gamepad", "GamepadButton", "Navigator", "Performance", "Location", "UrlSearchParams",
+  "Request", "RequestInit", "RequestCache", "Response", "Headers",
+  "FontFaceSet", "MediaQueryList", "CssStyleDeclaration", "DomRect",
+  "SpeechSynthesis", "SpeechSynthesisUtterance",
+  "console",
+] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

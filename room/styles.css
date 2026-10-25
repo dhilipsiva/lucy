@@ -1,0 +1,10 @@
+/* Lucy, her room. The interface is drawn inside the scene; this sheet only loads the QUINE
+   fonts (self-hosted beside the room), paints the void behind the canvas, and hides the text
+   mirrors from sight while keeping them for readers. */
+@import url('tokens/fonts.css');
+html, body { margin: 0; height: 100%; background: #0B0B10; color: #C9C8C2; overflow: hidden; overscroll-behavior: none; }
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+#scene:active { cursor: grabbing; }
+.font-preload { position: absolute; left: -9999px; top: 0; opacity: 0; pointer-events: none; }
+.sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.note { position: fixed; inset: 16px; font: 14px/1.5 'IBM Plex Mono', ui-monospace, monospace; }

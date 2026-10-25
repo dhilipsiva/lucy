@@ -23,3 +23,16 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa
       - run: nix develop .#desktop --command just ci-desktop
+  room:
+    # The Rust room (roadmap/N8.v3.md): its own workspace, formatted, linted, tested natively on my files, and type-checked for wasm32.
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: room
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - run: rustup toolchain install 1.96.1 --profile minimal --component clippy,rustfmt --target wasm32-unknown-unknown
+      - run: cargo +1.96.1 fmt --all -- --check
+      - run: cargo +1.96.1 clippy --locked --all-targets -- -D warnings
+      - run: cargo +1.96.1 test --locked
+      - run: cargo +1.96.1 check --locked --target wasm32-unknown-unknown

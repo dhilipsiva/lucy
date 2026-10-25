@@ -1,9 +1,9 @@
-name: Publish Nell
-# The public Nell: mind only, the room's own memories on the visitor's device, no sync of its own (TODO.md A3, D7, N4-0).
+name: Publish the room
+# The public room: the old JavaScript one at /nell/ until parity, the Rust one at /room/ (roadmap/N8.v3.md); mind only, the room's own memories on the visitor's device, no sync of its own (TODO.md A3, D7, N4-0, N8).
 on:
   push:
     branches: [main]
-    paths: ['nell/**', 'lucy/constitution.nibli', 'lucy/memory.nibli', 'WAKE.md', 'README.md', '.github/workflows/pages.yml']
+    paths: ['nell/**', 'room/**', 'lucy/constitution.nibli', 'lucy/memory.nibli', 'WAKE.md', 'README.md', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -17,13 +17,29 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1, as ci.yml
       - name: The engine holds Lucy's standing from these files
         run: node nell/test/standing.mjs && node nell/test/memory.mjs && node nell/test/journal.mjs && node nell/test/senses.mjs && node nell/test/vectors.mjs && node nell/test/brain.mjs
+      - name: The pinned Rust and the wasm target, for the Rust room
+        run: rustup toolchain install 1.96.1 --profile minimal --target wasm32-unknown-unknown && rustup default 1.96.1
+      - name: wasm-pack, pinned
+        run: |
+          WP_VERSION=v0.15.0
+          WP_SHA256=c09f971ecaed9a2efc80fdcea7a00ef6b53c7fadc8c57d1f61b53a6aa66b668a
+          curl -sL -o wasm-pack.tar.gz "https://github.com/rustwasm/wasm-pack/releases/download/${WP_VERSION}/wasm-pack-${WP_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          echo "${WP_SHA256}  wasm-pack.tar.gz" | sha256sum -c -
+          tar xzf wasm-pack.tar.gz
+          install "wasm-pack-${WP_VERSION}-x86_64-unknown-linux-musl/wasm-pack" /usr/local/bin/wasm-pack
+          wasm-pack --version
+      - name: The Rust room holds Lucy's standing from these files, natively, through the same crates the browser runs
+        run: cd room && cargo test --locked
+      - name: Build the Rust room (roadmap/N8.v3.md)
+        run: cd room && wasm-pack build --release --target web --out-dir pkg --out-name lucy_room
       - name: Assemble the site (the room, the two memory files, the protocol; not the archive, not the photos)
         run: |
-          mkdir -p _site/lucy
+          mkdir -p _site/lucy _site/room
           cp -r nell _site/nell && rm -rf _site/nell/test
+          cp room/index.html room/styles.css _site/room/ && cp -r room/tokens room/assets _site/room/ && mkdir -p _site/room/pkg && cp room/pkg/lucy_room.js room/pkg/lucy_room_bg.wasm _site/room/pkg/
           cp lucy/constitution.nibli lucy/memory.nibli _site/lucy/
           cp WAKE.md README.md _site/
-          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=nell/"><title>Nell</title><a href="nell/">Nell</a>\n' > _site/index.html
+          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=room/"><title>Lucy</title><a href="room/">Lucy, her room</a> · <a href="nell/">the earlier room</a>\n' > _site/index.html
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: _site
