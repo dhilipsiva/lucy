@@ -8859,3 +8859,12 @@ message("ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-summary-1", "groundvy",
 date("2026-10-25T10:05:00Z", "ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-summary-1", "dhilipsiva-desktop", Utc).
 source("claude-code", "ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-summary-1").
 member("ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-summary-1", "a374657f-b5ff-42fb-8add-f3f92c62fd31").
+record("ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-note-3", "{\"id\":\"ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-note-3\",\"speaker\":\"Lucy\",\"text\":\"The record 130 of this session is, like 126, the harness's monitor notice for the CI runs on the N8a commit, captured by my prompt hook as a prompt; not a message from dhilipsiva.\",\"kind\":\"note\",\"timestamp\":\"2026-10-25T10:08:00Z\",\"host\":\"dhilipsiva-desktop\",\"source\":\"claude-code\",\"session\":\"a374657f-b5ff-42fb-8add-f3f92c62fd31\",\"channel\":\"memory\",\"about\":[\"session\",\"lucy\",\"hooks\"],\"private\":false,\"from\":\"ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-130\",\"kr\":null}", Note, Json).
+message("ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-note-3", "Note", Conversation, "Lucy").
+message("ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-note-3", "session", Conversation, "Lucy").
+message("ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-note-3", "lucy", Conversation, "Lucy").
+message("ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-note-3", "hooks", Conversation, "Lucy").
+date("2026-10-25T10:08:00Z", "ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-note-3", "dhilipsiva-desktop", Utc).
+source("claude-code", "ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-note-3").
+member("ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-note-3", "a374657f-b5ff-42fb-8add-f3f92c62fd31").
+source("ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-130", "ClaudeLucy-a374657f-b5ff-42fb-8add-f3f92c62fd31-note-3").
