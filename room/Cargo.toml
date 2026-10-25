@@ -45,6 +45,7 @@ web-sys = { version = "0.3", features = [
   "Request", "RequestInit", "RequestCache", "Response", "Headers",
   "FontFaceSet", "MediaQueryList", "CssStyleDeclaration", "DomRect",
   "SpeechSynthesis", "SpeechSynthesisUtterance",
+  "Worker", "WorkerOptions", "WorkerType", "MessageEvent", "ErrorEvent", "DedicatedWorkerGlobalScope", "WorkerGlobalScope",
   "console",
 ] }
 

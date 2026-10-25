@@ -1,6 +1,6 @@
 //! The room, running: the wake, my mind loading fresh from my origin, standing, the controls,
-//! input and the frame loop. Every verdict here comes from `mind`; the glow runs for exactly
-//! as long as the engine runs.
+//! the cast, input and the frame loop. Every verdict here comes from the engine, in its worker
+//! (roadmap/N8d.md); the glow runs from a query's posting to its answer.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -10,15 +10,20 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlCanvasElement;
 
+use crate::cast::{self, Entity};
 use crate::colors::{self as col, Verdict};
+use crate::engine::{Engine, Replies};
 use crate::gl::Gl;
 use crate::hud::{AnswerCard, Group, Hud, HudState, Item, ItemKind, Phase, Speech};
 use crate::input::{self, InputEvent, Queue};
-use crate::mind::{Answer, Mind, CONTROL_QUERY, STANDING_LABELS, STANDING_QUERIES};
+use crate::mind::{
+    english_of, fact_lines, Answer, Fact, Loaded, CONTROL_QUERY, STANDING_LABELS, STANDING_QUERIES,
+};
 use crate::mirrors::Mirrors;
 use crate::panel::Action;
 use crate::scene::Scene;
 use crate::sources::{fetch_text, Candidate, Sources};
+use crate::worker::{FileText, FromWorker};
 use crate::world::World;
 
 const WAKE_MS: f64 = 3600.0;
@@ -56,7 +61,15 @@ pub struct App {
     canvas: HtmlCanvasElement,
     input: Queue,
     msgs: Msgs,
-    mind: Option<Mind>,
+    engine: Engine,
+    load_sent: bool,
+    mind_ready: bool,
+    facts: Vec<Fact>,
+    entities: Vec<Entity>,
+    sweep: Vec<usize>,
+    tab_pos: Option<usize>,
+    subject: Option<usize>,
+    pending_subject: HashMap<u64, usize>,
     texts: HashMap<String, (String, String, String)>,
     fetch_failed: HashSet<String>,
     phase: Phase,
@@ -74,8 +87,6 @@ pub struct App {
     hud_hidden: bool,
     fullscreen: bool,
     dock_min: bool,
-    pending: Option<(String, String)>,
-    thinking_frame: u8,
     version: u64,
     keys: HashSet<String>,
     drag: Option<(f64, f64, bool)>,
@@ -136,6 +147,8 @@ pub fn boot() -> Result<(), String> {
     let input: Queue = Rc::new(RefCell::new(VecDeque::new()));
     input::attach(&canvas, input.clone());
     let msgs: Msgs = Rc::new(RefCell::new(VecDeque::new()));
+    let replies: Replies = Rc::new(RefCell::new(VecDeque::new()));
+    let engine = Engine::new(replies);
     let t0 = now_ms();
     let mut app = App {
         gl,
@@ -146,7 +159,15 @@ pub fn boot() -> Result<(), String> {
         canvas,
         input,
         msgs: msgs.clone(),
-        mind: None,
+        engine,
+        load_sent: false,
+        mind_ready: false,
+        facts: Vec::new(),
+        entities: Vec::new(),
+        sweep: Vec::new(),
+        tab_pos: None,
+        subject: None,
+        pending_subject: HashMap::new(),
         texts: HashMap::new(),
         fetch_failed: HashSet::new(),
         phase: Phase::Wake,
@@ -164,8 +185,6 @@ pub fn boot() -> Result<(), String> {
         hud_hidden: false,
         fullscreen: false,
         dock_min: false,
-        pending: None,
-        thinking_frame: 0,
         version: 1,
         keys: HashSet::new(),
         drag: None,
@@ -182,6 +201,8 @@ pub fn boot() -> Result<(), String> {
         "wake: lucy · origin main · nothing leaves this tab · {}",
         window.navigator().user_agent().unwrap_or_default()
     ));
+    let where_ = app.engine.where_it_runs();
+    app.log(&format!("engine: {where_}"));
     // my two files, fresh from my origin first
     let query = window.location().search().unwrap_or_default();
     let sources = Sources::from_query(&query);
@@ -289,10 +310,10 @@ impl App {
     fn legend(&self) -> String {
         let mut rows = Vec::new();
         if self.flags.keyboard {
-            rows.push("keyboard: arrows or WASD walk · Q E turn · Shift run · Enter call me · 1 to 6 the standing controls · Home find Lucy · H hud · F full screen · V voice");
+            rows.push("keyboard: arrows or WASD walk · Q E turn · Shift run · Enter call me · 1 to 6 the standing controls · Tab the next presence · Esc back · Home find Lucy · H hud · F full screen · V voice");
         }
         if self.flags.pointer {
-            rows.push("mouse: drag to look · wheel to approach · click a control · click Lucy to come closer");
+            rows.push("mouse: drag to look · wheel to approach · click a control · click Lucy to come closer · click a presence to meet it");
         }
         if self.flags.touch {
             rows.push("touch: one finger looks · two fingers walk · tap a control · tap Lucy to come closer");
@@ -320,21 +341,16 @@ impl App {
             disabled: false,
         });
         let facts: Vec<Item> = self
-            .mind
-            .as_ref()
-            .map(|m| {
-                m.facts
-                    .iter()
-                    .take(12)
-                    .map(|f| Item {
-                        label: f.kr.clone(),
-                        kind: ItemKind::Plain,
-                        query: Some(f.kr.clone()),
-                        disabled: false,
-                    })
-                    .collect()
+            .facts
+            .iter()
+            .take(12)
+            .map(|f| Item {
+                label: f.kr.clone(),
+                kind: ItemKind::Plain,
+                query: Some(f.kr.clone()),
+                disabled: false,
             })
-            .unwrap_or_default();
+            .collect();
         let mut out = vec![Group {
             id: "standing".into(),
             label: "standing".into(),
@@ -345,6 +361,45 @@ impl App {
                 id: "facts".into(),
                 label: "facts".into(),
                 items: facts,
+            });
+        }
+        if !self.entities.is_empty() {
+            out.push(Group {
+                id: "cast".into(),
+                label: "cast".into(),
+                items: self
+                    .entities
+                    .iter()
+                    .map(|e| Item {
+                        label: e.name.clone(),
+                        kind: ItemKind::Plain,
+                        query: None,
+                        disabled: false,
+                    })
+                    .collect(),
+            });
+        }
+        if let Some(e) = self.subject.and_then(|i| self.entities.get(i)) {
+            let mut items: Vec<Item> = e
+                .facts
+                .iter()
+                .map(|f| Item {
+                    label: english_of(&f.kr),
+                    kind: ItemKind::Plain,
+                    query: Some(f.kr.clone()),
+                    disabled: false,
+                })
+                .collect();
+            items.push(Item {
+                label: "back".into(),
+                kind: ItemKind::Plain,
+                query: None,
+                disabled: false,
+            });
+            out.push(Group {
+                id: e.name.clone(),
+                label: e.name.clone(),
+                items,
             });
         }
         out
@@ -369,7 +424,9 @@ impl App {
             Verdict::Recall => "bubble n",
             Verdict::Eyes => "bubble s",
         });
-        self.world.lucy.set_color(&mut self.scene, verdict.line());
+        if verdict != Verdict::Recall {
+            self.world.lucy.set_color(&mut self.scene, verdict.line());
+        }
         if matches!(verdict, Verdict::True | Verdict::False | Verdict::Error) {
             self.world.lucy.flare();
         }
@@ -399,20 +456,48 @@ impl App {
             synth.speak(&u);
         }
     }
-    // ── the mind ──
-    fn try_build_mind(&mut self) {
-        if self.mind.is_some()
+    // ── the mind, through the engine ──
+    fn try_load_mind(&mut self) {
+        if self.load_sent
             || !(self.texts.contains_key("constitution") && self.texts.contains_key("memory"))
         {
             return;
         }
-        let t0 = now_ms();
-        let mut mind = Mind::new();
-        for name in ["constitution", "memory"] {
-            let (text, url, label) = self.texts.get(name).cloned().unwrap();
-            let l = mind.assert_file(name, &text, &url, &label);
+        let files: Vec<FileText> = ["constitution", "memory"]
+            .iter()
+            .map(|name| {
+                let (text, url, label) = self.texts.get(*name).cloned().unwrap();
+                FileText {
+                    name: name.to_string(),
+                    text,
+                    url,
+                    label,
+                }
+            })
+            .collect();
+        self.source_label = files[1].label.clone();
+        self.facts = fact_lines(&files[1].text);
+        self.load_sent = true;
+        self.engine.load(files);
+        self.log(&format!(
+            "mind: both files in; asserting {}",
+            self.engine.where_it_runs()
+        ));
+    }
+    fn on_loaded(
+        &mut self,
+        loaded: Vec<Loaded>,
+        standing_fact: Option<String>,
+        standing: Vec<(String, String, f64)>,
+        facts: Vec<Fact>,
+        ms: f64,
+    ) {
+        for l in &loaded {
             self.log(&format!(
-                "{name}: {label}, {url}; {}/{} statements asserted, sha256 {}…",
+                "{}: {}, {}; {}/{} statements asserted, sha256 {}…",
+                l.name,
+                l.source,
+                l.url,
                 l.asserted,
                 l.statements,
                 &l.sha256[..12]
@@ -420,43 +505,59 @@ impl App {
             for f in &l.failed {
                 self.log(&format!("  failed: {f}"));
             }
-            if name == "memory" {
-                self.source_label = label.clone();
-            }
         }
-        match mind.assert_standing_fact() {
-            Ok(()) => self.log("exist(Lucy, Memory, Loaded). asserted"),
-            Err(e) => self.log(&format!("standing fact failed: {e}")),
+        match standing_fact {
+            None => self.log("exist(Lucy, Memory, Loaded). asserted"),
+            Some(e) => self.log(&format!("standing fact failed: {e}")),
         }
-        mind.ms = now_ms() - t0;
-        self.log(&format!("engine ready in {} ms", mind.ms.round()));
-        let mut standing = Vec::new();
-        for q in STANDING_QUERIES {
-            match mind.ask(q, now_ms) {
-                Ok(a) => {
-                    self.log(&format!(
-                        "standing: {q} → {} ({:.1} ms)",
-                        a.verdict_word(),
-                        a.ms
-                    ));
-                    standing.push((q.to_string(), a.status.clone()));
-                }
-                Err(e) => {
-                    self.log(&format!("standing: {q} → error {e}"));
-                    standing.push((q.to_string(), "ERROR".into()));
-                }
-            }
+        self.log(&format!(
+            "engine ready in {} ms, {}",
+            ms.round(),
+            self.engine.where_it_runs()
+        ));
+        for (q, st, qms) in &standing {
+            self.log(&format!("standing: {q} → {st} ({qms:.1} ms)"));
         }
-        let rules = mind
-            .loaded_named("constitution")
+        let rules = loaded
+            .iter()
+            .find(|l| l.name == "constitution")
             .map(|l| l.asserted)
             .unwrap_or(0);
-        let facts = mind.loaded_named("memory").map(|l| l.asserted).unwrap_or(0);
-        self.counts = Some((rules, facts, mind.ms));
-        self.standing = standing;
-        self.mind = Some(mind);
+        let nfacts = loaded
+            .iter()
+            .find(|l| l.name == "memory")
+            .map(|l| l.asserted)
+            .unwrap_or(0);
+        self.counts = Some((rules, nfacts, ms));
+        self.standing = standing.into_iter().map(|(q, st, _)| (q, st)).collect();
+        self.facts = facts;
+        self.mind_ready = true;
         self.update_mindline();
+        self.build_cast();
         self.version += 1;
+    }
+    /// The cast from the facts: every named entity of my memory, read from the file.
+    fn build_cast(&mut self) {
+        if !self.entities.is_empty() {
+            return;
+        }
+        self.entities = cast::presences(&self.facts);
+        self.sweep = cast::sweep_order(&self.entities);
+        let t = ((now_ms() - self.start_ms) / 1000.0) as f32;
+        let seed = (js_sys::Date::now() as u64) ^ 0xCA57;
+        self.world
+            .build_cast(&self.gl, &mut self.scene, &self.entities, self.dpr, seed, t);
+        let listed: Vec<String> = self
+            .entities
+            .iter()
+            .map(|e| format!("{} {}", e.name, e.kind))
+            .collect();
+        self.log(&format!(
+            "cast: {} presences from {} facts: {}",
+            self.entities.len(),
+            self.facts.len(),
+            listed.join(", ")
+        ));
     }
     fn update_mindline(&self) {
         let ok = !self.standing.is_empty() && self.standing.iter().all(|(_, s)| s == "TRUE");
@@ -503,28 +604,39 @@ impl App {
             Some("ERROR"),
         );
     }
-    // ── a query: the glow runs exactly while the engine runs ──
-    fn ask_text(&mut self, query: &str, via: &str) {
-        if self.mind.is_none() {
+    // ── a query: the glow runs from its posting to its answer ──
+    fn ask_text(&mut self, query: &str, via: &str, subject: Option<usize>) {
+        if !self.mind_ready {
             return;
         }
         self.log(&format!("ask ({via}): {query}"));
-        self.pending = Some((query.to_string(), via.to_string()));
+        let id = self.engine.ask(query);
+        if let Some(i) = subject {
+            self.pending_subject.insert(id, i);
+        }
+        self.world.lucy.set_thinking(true);
         self.world.lucy.poke();
     }
-    fn run_pending(&mut self) {
-        let Some((query, _via)) = self.pending.take() else {
-            return;
-        };
-        let Some(mind) = self.mind.as_ref() else {
-            return;
-        };
-        let result = mind.ask(&query, now_ms);
-        match result {
-            Ok(a) => self.show_answer(a),
-            Err(e) => {
+    fn on_reply(&mut self, r: FromWorker) {
+        match r {
+            FromWorker::Ready => {}
+            FromWorker::Loaded {
+                loaded,
+                standing_fact,
+                standing,
+                facts,
+                ms,
+            } => self.on_loaded(loaded, standing_fact, standing, facts, ms),
+            FromWorker::Answer { id, answer } => {
+                let frames = self.engine.answered(id);
+                let subject = self.pending_subject.remove(&id);
+                self.show_answer(answer, frames, subject);
+            }
+            FromWorker::Error { id, error } => {
+                self.engine.answered(id);
+                self.pending_subject.remove(&id);
                 self.say(
-                    &format!("I couldn't read that as Nibli: {e}"),
+                    &format!("I couldn't read that as Nibli: {error}"),
                     Verdict::Error,
                     None,
                 );
@@ -532,20 +644,30 @@ impl App {
                     verdict: Verdict::Error,
                     label: None,
                     meta: "nibli · on this device".into(),
-                    title: query.clone(),
+                    title: error.clone(),
                     query: String::new(),
                     body: String::new(),
-                    why: e.clone(),
+                    why: String::new(),
                     proof: String::new(),
                     proof_open: false,
                 });
-                self.mirrors.set_answer(&format!("{query}\n→ {e}"));
-                self.log(&format!("query error: {query} — {e}"));
+                self.mirrors.set_answer(&format!("→ {error}"));
+                self.log(&format!("query error: {error}"));
             }
+            FromWorker::Fault { error } => {
+                self.log(&format!(
+                    "engine: the worker failed ({error}); falling back to the main thread"
+                ));
+                self.engine.fall_back();
+                self.log(&format!("engine: {}", self.engine.where_it_runs()));
+            }
+        }
+        if !self.engine.thinking() {
+            self.world.lucy.set_thinking(false);
         }
         self.version += 1;
     }
-    fn show_answer(&mut self, a: Answer) {
+    fn show_answer(&mut self, a: Answer, frames: u32, subject: Option<usize>) {
         let verdict = if a.is_true() {
             Verdict::True
         } else if a.is_false() {
@@ -560,31 +682,100 @@ impl App {
         } else {
             None
         };
+        let body = subject
+            .and_then(|i| self.entities.get(i))
+            .map(cast::description_text)
+            .unwrap_or_default();
         self.answer = Some(AnswerCard {
             verdict,
             label: label.map(String::from),
             meta: format!("nibli · on this device · {:.1} ms", a.ms),
             title: a.english.clone(),
             query: a.query.clone(),
-            body: String::new(),
+            body: body.clone(),
             why: a.why.clone(),
             proof: a.proof_text.clone(),
             proof_open: false,
         });
         self.mirrors.set_answer(&format!(
-            "{}\n→ {}\n{}\n\n{}\n\n{}",
+            "{}\n→ {}\n{}\n{}\n\n{}\n\n{}",
             a.query,
             a.verdict_word(),
             a.english,
+            body,
             a.why,
             a.proof_text
         ));
         self.log(&format!(
-            "query: {} → {} (engine {:.1} ms; the glow spans the frame it ran in)",
+            "query: {} → {} (engine {:.1} ms {}; {frames} frames drawn meanwhile)",
             a.query,
             a.verdict_word(),
-            a.ms
+            a.ms,
+            self.engine.where_it_runs()
         ));
+    }
+    // ── the cast ──
+    /// Meet a presence: glide to it, make it the subject, put its kind fact to the engine.
+    fn select_cast(&mut self, i: usize, via: &str) {
+        let Some(e) = self.entities.get(i).cloned() else {
+            return;
+        };
+        self.world.focus_cast(&self.scene, i);
+        self.subject = Some(i);
+        self.group = e.name.clone();
+        self.tab_pos = self.sweep.iter().position(|&k| k == i);
+        self.log(&format!("subject ({via}): {} · {}", e.name, e.kind));
+        match &e.query {
+            Some(q) => self.ask_text(q, "cast", Some(i)),
+            None => {
+                let body = cast::description_text(&e);
+                let title = format!("{} is my alias in this room: {}.", e.name, e.kind);
+                self.say(&title, Verdict::Recall, Some("ALIAS"));
+                self.answer = Some(AnswerCard {
+                    verdict: Verdict::Recall,
+                    label: Some("ALIAS".into()),
+                    meta: "no query: no fact of my memory names her".into(),
+                    title: title.clone(),
+                    query: String::new(),
+                    body: body.clone(),
+                    why: String::new(),
+                    proof: String::new(),
+                    proof_open: false,
+                });
+                self.mirrors.set_answer(&format!("{title}\n{body}"));
+            }
+        }
+        self.version += 1;
+    }
+    fn clear_subject(&mut self) {
+        self.subject = None;
+        self.tab_pos = None;
+        self.group = "standing".into();
+        self.log("subject: none");
+        self.version += 1;
+    }
+    fn tab(&mut self, back: bool) {
+        if self.sweep.is_empty() {
+            return;
+        }
+        let n = self.sweep.len();
+        let pos = match self.tab_pos {
+            None => {
+                if back {
+                    n - 1
+                } else {
+                    0
+                }
+            }
+            Some(p) => {
+                if back {
+                    (p + n - 1) % n
+                } else {
+                    (p + 1) % n
+                }
+            }
+        };
+        self.select_cast(self.sweep[pos], "keyboard");
     }
     // ── input ──
     fn call(&mut self, via: &str) {
@@ -612,8 +803,13 @@ impl App {
                     .cloned()
                 {
                     self.log(&format!("control: {}", it.label));
-                    if let Some(q) = it.query {
-                        self.ask_text(&q, "control");
+                    if group == "cast" {
+                        self.select_cast(i, "control");
+                    } else if let Some(q) = it.query {
+                        let subject = self.subject.filter(|_| group != "standing");
+                        self.ask_text(&q, "control", subject);
+                    } else if it.label == "back" {
+                        self.clear_subject();
                     }
                 }
             }
@@ -683,6 +879,7 @@ impl App {
                 key,
                 repeat,
                 modified,
+                shift,
             } => {
                 if !self.flags.keyboard {
                     self.flags.keyboard = true;
@@ -706,6 +903,8 @@ impl App {
                     "f" => self.toggle_fullscreen(),
                     "v" => self.action(Action::Voice),
                     "home" => self.action(Action::Find),
+                    "tab" => self.tab(shift),
+                    "escape" => self.clear_subject(),
                     "1" | "2" | "3" | "4" | "5" | "6" => {
                         let i = k.parse::<usize>().unwrap_or(1) - 1;
                         if self.group != "standing" {
@@ -766,6 +965,7 @@ impl App {
                     let over = self.hud.over_panel(x, y) || {
                         let (o, d) = self.world.ray(x, y, self.w, self.h);
                         self.world.ray_hits_lucy(&self.scene, o, d)
+                            || self.world.pick_cast(&self.scene, o, d).is_some()
                     };
                     self.canvas
                         .style()
@@ -823,6 +1023,8 @@ impl App {
                 let (o, d) = self.world.ray(x, y, self.w, self.h);
                 if self.world.ray_hits_lucy(&self.scene, o, d) {
                     self.call("pointer");
+                } else if let Some(i) = self.world.pick_cast(&self.scene, o, d) {
+                    self.select_cast(i, "pointer");
                 }
             }
         }
@@ -913,7 +1115,7 @@ impl App {
                     label,
                 } => {
                     self.texts.insert(name, (text, url, label));
-                    self.try_build_mind();
+                    self.try_load_mind();
                 }
                 Msg::FetchFailed { name, error } => {
                     self.log(&format!("{name}: no source could be read ({error})"));
@@ -922,9 +1124,14 @@ impl App {
                 }
                 Msg::FontsReady => {
                     self.log("fonts: ready");
+                    self.world.redraw_tags(&self.gl, &mut self.scene);
                     self.version += 1;
                 }
             }
+        }
+        let replies: Vec<FromWorker> = self.engine.replies.borrow_mut().drain(..).collect();
+        for r in replies {
+            self.on_reply(r);
         }
         let events: Vec<InputEvent> = self.input.borrow_mut().drain(..).collect();
         for e in events {
@@ -942,19 +1149,12 @@ impl App {
             if (p - self.world.wake_p).abs() > 1e-4 {
                 self.world.wake(&mut self.scene, p);
             }
-            if p >= 1.0 && self.mind.is_some() {
+            if p >= 1.0 && self.mind_ready {
                 self.finish_wake();
             }
         }
-        // a query: one frame with the glow on, then the engine runs
-        if self.thinking_frame == 1 {
-            self.world.lucy.set_thinking(false);
-            self.thinking_frame = 0;
-            self.run_pending();
-        } else if self.pending.is_some() && self.thinking_frame == 0 {
-            self.world.lucy.set_thinking(true);
-            self.thinking_frame = 1;
-        }
+        // the engine: post what waits (or, on the main thread, run one query now)
+        self.engine.pump();
         self.world.step(&mut self.scene, t, dt);
         // render the scene
         let view = self.world.view();
@@ -975,9 +1175,7 @@ impl App {
             self.phase == Phase::Wake && !self.wake_skipped && self.world.wake_p < 1.0;
         let wake_progress = if self.phase == Phase::Wake {
             0.5 * self.world.wake_p
-                + 0.5
-                    * (self.texts.len() as f32 / 2.0)
-                    * if self.mind.is_some() { 1.0 } else { 0.8 }
+                + 0.5 * (self.texts.len() as f32 / 2.0) * if self.mind_ready { 1.0 } else { 0.8 }
         } else {
             1.0
         };
@@ -1051,5 +1249,6 @@ impl App {
         let quad = self.scene.quad_mesh();
         let quad_mesh = &self.scene.meshes[quad];
         self.hud.render(&self.gl, quad_mesh, self.w, self.h);
+        self.engine.frame_drawn();
     }
 }

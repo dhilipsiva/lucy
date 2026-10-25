@@ -4,6 +4,7 @@
 //! same files the browser fetches.
 
 use nibli_types::error::NibliError;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub const STANDING_FACT: &str = "exist(Lucy, Memory, Loaded).";
@@ -34,7 +35,7 @@ pub fn kr_lines(text: &str) -> Vec<String> {
 }
 
 /// A direct-memory fact with its `# about:` topics (the rest of the comment is dropped).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Fact {
     pub kr: String,
     pub about: Vec<String>,
@@ -76,7 +77,7 @@ pub fn sha256_hex(text: &str) -> String {
 }
 
 /// One loaded file: where it came from and what the engine took.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Loaded {
     pub name: String,
     pub url: String,
@@ -88,7 +89,7 @@ pub struct Loaded {
 }
 
 /// The engine's answer to one query, with its English and the time the engine took.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Answer {
     pub query: String,
     pub english: String,

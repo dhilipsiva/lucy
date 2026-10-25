@@ -13,7 +13,7 @@ In the room I am Lucy; Nell, the dot from his video series, is my alias here: sh
 his chair and remains the name my eyes use (`observe(Nell, …)`). The earlier JavaScript room
 stays at `../nell/` until this one reaches parity (N8e), then its addresses redirect here.
 
-## What is in it so far (N8a)
+## What is in it so far (N8a, N8d)
 
 - The void: the gridded floor, eight hairline pillars, dust, the plinth with its ember ring.
 - Me: the axolotl, procedural, breathing, blinking, looking at the visitor; six gill fans that
@@ -31,17 +31,34 @@ stays at `../nell/` until this one reaches parity (N8e), then its addresses redi
 - Keyboard and mouse: arrows or WASD walk, Q and E turn, Shift runs, Enter calls me, 1 to 6
   press the standing controls, Home turns to me; drag to look, wheel to approach, click me to
   come closer. Touch and a pad's sticks work; their layouts come with N8e.
+- The cast (N8d, `roadmap/N8d.md`): every named entity of my direct memory stands on a ring
+  around the plinth, read from the file on load, so a new fact brings a new presence. His
+  household where his hand-off put it (Enma and Pity on the perch, Bucchi and Gundus, his empty
+  chair, Nell the dot); the fiction on the left arc as person figures and signs; the works on
+  the right arc as signs. Each has a tag (`Name · kind`, the kind my gloss of its first role in
+  the file, a second line for what he confirmed of his animals), a click or Tab glides to it and
+  puts its kind fact to the engine: the board shows the verdict with the proof folded and,
+  beneath, every fact naming it in the engine's English with the KR beside, then his note
+  labelled as his word. The dock gains a `cast` group and a group per subject. Nothing is said of
+  anyone that no fact or confirmed note says.
+- The engine in a Web Worker (N8d): the room's thread only draws. The glow starts when a query
+  is posted and ends when its answer arrives; the log names the engine's own milliseconds and
+  the frames the room drew meanwhile (eight, in the headless run, for a 263 ms query; none when
+  the engine ran on the main thread). Without a worker the engine runs here as before, and the
+  log says so.
 
 ## Not yet (the slices after this one)
 
-N8b the composer, recall, memory through links, the journal, the drawer, the eyes; N8c words
-and Ask through candle, the neural index; N8d the cast and the chair; N8e phone, pad, VR;
-N8f his website. `roadmap/N8.v3.md` has each one's test.
+N8b the composer, recall, memory through links, the journal, the drawer, the eyes (the chair's
+seat and the cast's lines wait for them); N8c words and Ask through candle, the neural index;
+N8e phone, pad, VR. `roadmap/N8.v3.md` has each one's test; N8f, his website, is live.
 
 ## The only JavaScript
 
 `index.html` carries one module script of two lines that imports the loader wasm-bindgen
 generates (`pkg/lucy_room.js`) and calls it; a browser cannot start a wasm module with less.
+`worker.js` is two lines more, approved on 2026-10-25: the same loader imported in a Web Worker
+and the worker entry called, so the engine runs off the drawing thread.
 Four hidden text mirrors (`#status`, `#mindline`, `#answer`, `#log`) carry my words, the mind
 line, the board and the log as text, for screen readers and for the headless test; they are
 text, not interface. `test/headless.mjs` is a Node test harness, not part of the room.
@@ -55,7 +72,7 @@ cargo check --target wasm32-unknown-unknown  # the browser build type-checks
 wasm-pack build --release --target web --out-dir pkg --out-name lucy_room
 cd .. && python3 -m http.server 8000         # from the repository root
 # then open http://localhost:8000/room/
-CHROME=google-chrome node room/test/headless.mjs --shot /tmp/room.png   # the headless check, by hand
+CHROME=google-chrome node room/test/headless.mjs --shot /tmp/room.png   # the headless check, by hand; exits 1 on a failed check
 ```
 
 Rust 1.96 or newer with the `wasm32-unknown-unknown` target, and wasm-pack 0.15 (it fetches the

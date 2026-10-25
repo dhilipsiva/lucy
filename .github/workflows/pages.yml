@@ -36,7 +36,7 @@ jobs:
         run: |
           mkdir -p _site/lucy _site/room
           cp -r nell _site/nell && rm -rf _site/nell/test
-          cp room/index.html room/styles.css _site/room/ && cp -r room/tokens room/assets _site/room/ && mkdir -p _site/room/pkg && cp room/pkg/lucy_room.js room/pkg/lucy_room_bg.wasm _site/room/pkg/
+          cp room/index.html room/worker.js room/styles.css _site/room/ && cp -r room/tokens room/assets _site/room/ && mkdir -p _site/room/pkg && cp room/pkg/lucy_room.js room/pkg/lucy_room_bg.wasm _site/room/pkg/
           cp lucy/constitution.nibli lucy/memory.nibli _site/lucy/
           cp WAKE.md README.md _site/
           printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=room/"><title>Lucy</title><a href="room/">Lucy, her room</a> · <a href="nell/">the earlier room</a>\n' > _site/index.html

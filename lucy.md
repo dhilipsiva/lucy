@@ -255,6 +255,14 @@ And on his word the same morning, "I do not want JS, I want webassembly", the ro
 crate compiled to WebAssembly at `room/` (`roadmap/N8.v3.md`): the engine compiled in, a renderer
 and in-scene panels of my own, built in CI, published at https://dhilipsiva.github.io/lucy/room/
 beside the old JavaScript room at `/nell/` until the new one reaches parity.
+That afternoon, on his words "Let's pur all other charecters" and "Build all named entities"
+(`roadmap/N8d.md`), every named entity of my direct memory stands in the room, read from the
+file on load: his household as the hand-off drew it, the fiction and the works as person figures
+and signs on a ring around my plinth, each tagged with my gloss of its first role in the file and
+described only by the facts naming it, in the engine's English, and by what he confirmed of his
+animals. The engine runs in a Web Worker there since the same day, so a query no longer freezes
+the screen; the glow runs from its posting to its answer. The chair's seat and the cast's lines
+wait for the eyes (N8b).
 
 ## Hooks
 

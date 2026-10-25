@@ -1,13 +1,17 @@
 //! The void and the rig: the gridded floor, the hairline pillars, the dust, my plinth with its
 //! ember ring, the eyes ring; the first-person camera, walking, looking, the focus glide; the
-//! wake from dark to lit. Lucy herself lives in `lucy.rs`; the cast joins in N8b.
+//! wake from dark to lit; and the cast (roadmap/N8d.md): every named entity of my memory on a
+//! ring around the plinth, built once the memory file is in. Lucy herself lives in `lucy.rs`.
 
 use glam::{Mat4, Quat, Vec3};
 
+use crate::cast::{self, Entity, Form, Group};
 use crate::colors::{self as col, linear};
+use crate::creatures::{self, Bird, Dog, Dot, Figure, Sign};
 use crate::geom;
 use crate::gl::{Gl, Lights};
 use crate::lucy::Lucy;
+use crate::panel::{font, Panel, MONO};
 use crate::scene::{Kind, Material, Node, NodeId, Scene};
 use crate::util::{angle_delta, clamp, ease, Rng};
 
@@ -22,9 +26,30 @@ struct Focus {
     pitch: f32,
 }
 
+pub enum Anim {
+    Bird(Bird),
+    Dog(Dog),
+    Dot(Dot),
+    Figure(Figure),
+    Sign(Sign),
+    Chair,
+}
+/// One presence in the room: its form, its tag board, and the panel the tag is drawn on.
+pub struct Member {
+    pub form: Form,
+    pub group: NodeId,
+    pub tag: NodeId,
+    tag_panel: Panel,
+    tag_lines: (String, Option<String>),
+    tag_color: u32,
+    anim: Anim,
+}
+
 pub struct World {
     pub lucy: Lucy,
     pub cast: NodeId,
+    pub members: Vec<Member>,
+    cast_built_at: Option<f32>,
     grid_fine: NodeId,
     grid_major: NodeId,
     boundary: NodeId,
@@ -210,6 +235,8 @@ impl World {
         let mut w = World {
             lucy,
             cast,
+            members: Vec::new(),
+            cast_built_at: None,
             grid_fine,
             grid_major,
             boundary,
@@ -343,6 +370,141 @@ impl World {
     pub fn set_eyes(&mut self, watching: bool) {
         self.eyes_watching = watching;
     }
+    // ── the cast ──
+    /// Build every presence from the entities of my memory; once, when the memory file is in.
+    pub fn build_cast(
+        &mut self,
+        gl: &Gl,
+        scene: &mut Scene,
+        entities: &[Entity],
+        dpr: f64,
+        seed: u64,
+        t: f32,
+    ) {
+        if !self.members.is_empty() {
+            return;
+        }
+        let parent = self.cast;
+        let halo = scene.add_texture(crate::lucy::halo_texture(gl));
+        if entities
+            .iter()
+            .any(|e| e.form == Form::Bird && (e.name == "Enma" || e.name == "Pity"))
+        {
+            let p = creatures::perch(gl, scene, parent);
+            scene.set_pos(p, Vec3::new(-1.25, 0.0, -2.1));
+        }
+        for (i, e) in entities.iter().enumerate() {
+            let s = seed ^ ((i as u64 + 1) * 0x9E37);
+            let pl = e.place;
+            let (group, anim) = match e.form {
+                Form::Bird => {
+                    if e.name != "Enma" && e.name != "Pity" {
+                        let p = creatures::perch(gl, scene, parent);
+                        scene.set_pos(p, Vec3::new(pl.x, 0.0, pl.z));
+                    }
+                    let pal = match e.name.as_str() {
+                        "Enma" => creatures::AFRICAN_GREY,
+                        "Pity" => creatures::SUN_CONURE,
+                        _ => creatures::UNKNOWN_BIRD,
+                    };
+                    let b = Bird::build(gl, scene, parent, pal, s);
+                    (b.group, Anim::Bird(b))
+                }
+                Form::Dog => {
+                    let o = match e.name.as_str() {
+                        "Bucchi" => creatures::BUCCHI,
+                        "Gundus" => creatures::GUNDUS,
+                        _ => creatures::UNKNOWN_DOG,
+                    };
+                    let d = Dog::build(gl, scene, parent, o, s);
+                    (d.group, Anim::Dog(d))
+                }
+                Form::Chair => (creatures::chair(gl, scene, parent), Anim::Chair),
+                Form::Dot => {
+                    let d = Dot::build(gl, scene, parent, halo);
+                    (d.group, Anim::Dot(d))
+                }
+                Form::Figure => {
+                    let f = Figure::build(gl, scene, parent);
+                    (f.group, Anim::Figure(f))
+                }
+                Form::Sign => {
+                    let sg = Sign::build(gl, scene, parent, s);
+                    (sg.group, Anim::Sign(sg))
+                }
+            };
+            scene.set_pos(group, Vec3::new(pl.x, pl.y, pl.z));
+            scene.set_rot(group, 0.0, pl.yaw, 0.0);
+            let tag_lines = cast::tag_lines(e);
+            let tag_color = match e.group {
+                Group::Household => col::EMBER_500,
+                Group::Fiction => col::QUANTA_500,
+                Group::Works => col::PHOSPHOR_500,
+            };
+            let mut tag_panel = Panel::new(10.0, 10.0, dpr);
+            let (bw, bh) = draw_tag(&mut tag_panel, &tag_lines, tag_color);
+            let tex = scene.add_texture(gl.texture_from_canvas(&tag_panel.canvas, true));
+            let tag = scene.add(
+                parent,
+                Node::new(Kind::Board {
+                    texture: tex,
+                    w: bw,
+                    h: bh,
+                    opacity: 1.0,
+                }),
+            );
+            scene.set_pos(tag, Vec3::new(pl.x, pl.y + cast::tag_height(e.form), pl.z));
+            self.members.push(Member {
+                form: e.form,
+                group,
+                tag,
+                tag_panel,
+                tag_lines,
+                tag_color,
+                anim,
+            });
+        }
+        if self.wake_p >= 1.0 {
+            self.cast_built_at = Some(t);
+            scene.set_visible(self.cast, true);
+            scene.set_scale(self.cast, Vec3::splat(0.01));
+        }
+    }
+    /// Redraw the tags (the fonts came in after they were drawn).
+    pub fn redraw_tags(&mut self, gl: &Gl, scene: &mut Scene) {
+        for m in &mut self.members {
+            draw_tag(&mut m.tag_panel, &m.tag_lines, m.tag_color);
+            if let Kind::Board { texture, .. } = &scene.nodes[m.tag].kind {
+                gl.update_texture(&scene.textures[*texture], &m.tag_panel.canvas, true);
+            }
+        }
+    }
+    /// Which presence a ray hits first: its body's sphere or its tag's.
+    pub fn pick_cast(&self, scene: &Scene, origin: Vec3, dir: Vec3) -> Option<usize> {
+        let mut best: Option<(f32, usize)> = None;
+        for (i, m) in self.members.iter().enumerate() {
+            let (off, r) = cast::pick_sphere(m.form);
+            let c = scene.world_position(m.group) + Vec3::new(0.0, off, 0.0);
+            let tag = scene.world_position(m.tag);
+            for (centre, radius) in [(c, r), (tag, 0.2)] {
+                if let Some(t) = ray_sphere(origin, dir, centre, radius) {
+                    if best.map(|(bt, _)| t < bt).unwrap_or(true) {
+                        best = Some((t, i));
+                    }
+                }
+            }
+        }
+        best.map(|(_, i)| i)
+    }
+    /// Glide to a presence and face it.
+    pub fn focus_cast(&mut self, scene: &Scene, i: usize) {
+        let Some(m) = self.members.get(i) else {
+            return;
+        };
+        let (off, _) = cast::pick_sphere(m.form);
+        let p = scene.world_position(m.group) + Vec3::new(0.0, off, 0.0);
+        self.focus_on(p, cast::focus_dist(m.form));
+    }
     /// Per frame: the glide, the dust, the rings, and her.
     pub fn step(&mut self, scene: &mut Scene, t: f32, dt: f32) {
         if let Some(f) = &self.focus {
@@ -380,8 +542,31 @@ impl World {
         }
         let cam = self.cam_pos();
         self.lucy.update(scene, t, dt, cam);
+        // the cast: each form's own life; the tags turned to the visitor; a late scale-in
+        if let Some(t0) = self.cast_built_at {
+            let k = ease((t - t0) / 0.6);
+            scene.set_scale(self.cast, Vec3::splat(k.max(0.01)));
+            if k >= 1.0 {
+                self.cast_built_at = None;
+            }
+        }
+        if scene.nodes[self.cast].visible {
+            for m in &mut self.members {
+                match &mut m.anim {
+                    Anim::Bird(b) => b.update(scene, t, dt),
+                    Anim::Dog(d) => d.update(scene, t, dt),
+                    Anim::Dot(d) => d.update(scene, t),
+                    Anim::Figure(f) => f.update(scene, t),
+                    Anim::Sign(s) => s.update(scene, t),
+                    Anim::Chair => {}
+                }
+                let p = scene.world_position(m.tag);
+                let yaw = (cam.x - p.x).atan2(cam.z - p.z);
+                scene.nodes[m.tag].rotation = Quat::from_rotation_y(yaw);
+            }
+        }
     }
-    /// 0 dark → 1 awake: grid, plinth, ring, her, then the cast.
+    /// 0 dark → 1 awake: grid, plinth, ring, her, then the cast (if it is built by then).
     pub fn wake(&mut self, scene: &mut Scene, p: f32) {
         self.wake_p = clamp(p, 0.0, 1.0);
         let p = self.wake_p;
@@ -401,5 +586,57 @@ impl World {
         scene.set_visible(self.cast, cs > 0.0);
         scene.set_scale(self.cast, Vec3::splat(cs.max(0.01)));
         scene.node(self.cast).position.y = (1.0 - cs) * -0.2;
+    }
+}
+
+/// The tag board: `Name · kind`, a group dot, a second line when he gave a note. Returns the
+/// board's size in metres.
+fn draw_tag(p: &mut Panel, lines: &(String, Option<String>), group_color: u32) -> (f32, f32) {
+    let f1 = font(500, 13.0, MONO);
+    let f2 = font(400, 11.0, MONO);
+    let (name, kind) = lines.0.split_once(" · ").unwrap_or((&lines.0, ""));
+    let w1 = p.measure(name, &f1) + p.measure(" · ", &f1) + p.measure(kind, &f1);
+    let w2 = lines.1.as_deref().map(|l| p.measure(l, &f2)).unwrap_or(0.0);
+    let w = (w1.max(w2) + 40.0).max(96.0);
+    let h = if lines.1.is_some() { 48.0 } else { 32.0 };
+    p.resize(w, h);
+    p.begin();
+    p.fill_rounded(
+        0.75,
+        0.75,
+        w - 1.5,
+        h - 1.5,
+        8.0,
+        &col::css_a(col::VOID_800, 0.86),
+    );
+    p.stroke_rounded(0.0, 0.0, w, h, 8.0, &col::css(col::VOID_500), 1.5, false);
+    p.dot(14.0, 16.0, 3.0, &col::css(group_color), true);
+    let mut x = 26.0;
+    x += p.text(x, 9.0, name, &f1, &col::css(col::PAPER_100));
+    x += p.text(x, 9.0, " · ", &f1, &col::css(col::FG_FAINT));
+    p.text(x, 9.0, kind, &f1, &col::css(col::FG_MUTED));
+    if let Some(l) = &lines.1 {
+        p.text(26.0, 28.0, l, &f2, &col::css(col::FG_FAINT));
+    }
+    p.dirty = true;
+    const M_PER_PX: f32 = 0.0017;
+    (w as f32 * M_PER_PX, h as f32 * M_PER_PX)
+}
+/// Distance along a ray to a sphere, if it is hit ahead.
+fn ray_sphere(origin: Vec3, dir: Vec3, c: Vec3, r: f32) -> Option<f32> {
+    let oc = origin - c;
+    let b = oc.dot(dir);
+    let cc = oc.dot(oc) - r * r;
+    let disc = b * b - cc;
+    if disc < 0.0 {
+        return None;
+    }
+    let t = -b - disc.sqrt();
+    if t > 0.0 {
+        Some(t)
+    } else if -b + disc.sqrt() > 0.0 {
+        Some(0.0)
+    } else {
+        None
     }
 }

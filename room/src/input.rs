@@ -14,6 +14,7 @@ pub enum InputEvent {
         key: String,
         repeat: bool,
         modified: bool,
+        shift: bool,
     },
     KeyUp {
         key: String,
@@ -62,11 +63,9 @@ pub fn attach(canvas: &HtmlCanvasElement, q: Queue) {
         let cb =
             Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(move |e: web_sys::KeyboardEvent| {
                 let key = e.key();
-                if key == "Enter" || key == " " || key.starts_with("Arrow") {
-                    /* the app decides; keep the page from scrolling */
-                    if key != "Enter" {
-                        e.prevent_default();
-                    }
+                if key == " " || key == "Tab" || key.starts_with("Arrow") {
+                    // the app decides; keep the page from scrolling or moving its focus
+                    e.prevent_default();
                 }
                 push(
                     &q,
@@ -74,6 +73,7 @@ pub fn attach(canvas: &HtmlCanvasElement, q: Queue) {
                         key,
                         repeat: e.repeat(),
                         modified: e.meta_key() || e.ctrl_key() || e.alt_key(),
+                        shift: e.shift_key(),
                     },
                 );
             });

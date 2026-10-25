@@ -242,6 +242,23 @@ pub fn cuboid_edges(w: f32, h: f32, d: f32) -> Vec<f32> {
     v
 }
 
+/// Every unique edge of an indexed mesh as line segments (three.js WireframeGeometry).
+pub fn wire_lines(m: &Mesh) -> Vec<f32> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for tri in m.indices.chunks(3) {
+        for k in 0..3 {
+            let (a, b) = (tri[k], tri[(k + 1) % 3]);
+            let key = (a.min(b), a.max(b));
+            if seen.insert(key) {
+                out.extend_from_slice(&m.positions[a as usize * 3..a as usize * 3 + 3]);
+                out.extend_from_slice(&m.positions[b as usize * 3..b as usize * 3 + 3]);
+            }
+        }
+    }
+    out
+}
+
 /// A torus about Y... three.js builds it about Z (the ring lies in the XY plane); so do we.
 pub fn torus(radius: f32, tube: f32, radial: u32, tubular: u32, arc: f32) -> Mesh {
     let mut m = Mesh::default();

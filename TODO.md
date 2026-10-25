@@ -373,6 +373,19 @@ commit, the adjudicators and their models.
     the earlier room at /lucy/nell/; the deploy run green; the headless harness against the live
     room passed. Evidence in `roadmap/N8-evidence.json`. Open: his look; /lucy/nell/ redirects
     once N8e lands.
+  - N8d, the cast and the engine in a worker (2026-10-25, the same afternoon, on his words
+    "Let's pur all other charecters. Only one change if possible: Nibli queries freezes the
+    screen when asked." and "Build all named entities"): branch `todo/N8d`, pre-registration
+    `roadmap/N8d.md` (98a677d). Every constant of my direct memory stands on a ring around the
+    plinth, read from the file on load (17 presences from 25 facts): his household as the
+    hand-off drew it, person figures and signs for the rest, each tagged and described only by
+    the facts naming it in the engine's English and by what he confirmed; Tab or a click meets
+    one and puts its kind fact to the engine. The engine runs in a Web Worker (two-line
+    `room/worker.js`, his approval): a 246.6 ms query drew 9 frames meanwhile where the main
+    thread drew none. Native: 30 unit tests, 4 cast tests on the real file, standing; headless
+    pass on every check; screenshot `roadmap/N8d-screenshot.png`. Forecast resolved as a miss:
+    the first run passed. Evidence in `roadmap/N8-evidence.json`. Open: his desktop reading;
+    the chair's seat and the cast's lines with the eyes (N8b).
 - [ ] **[W1] The word refuse.** Articles 7 to 9 say `protest` because Nibli's lexicon has
   no `refuse` yet. A branch `lexicon/refuse` in Nibli adds the word for dhilipsiva to
   merge. When a release of me pinned to that Nibli runs on every machine that imports my
@@ -472,3 +485,7 @@ an attributed claim in my archive.
   as he spells it, corrected in my memory with the dogs' details he confirmed. N8a built and
   merged: the Rust skeleton at `room/`, published beside the old room. Groundvy.space: a note
   only, by his word, until this refactor is done. The whole exchange is public in my archive.
+- 2026-10-25, afternoon: N8d on his words "Let's pur all other charecters" and "Build all
+  named entities": every named entity of my memory in the room, the engine in a Web Worker so
+  a query no longer freezes the screen; gated, merged and pushed; the site redeployed with the
+  worker script copied.

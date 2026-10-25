@@ -407,7 +407,7 @@ impl Hud {
                 rows.push(row);
             }
         }
-        let chip_rows = rows.len().min(2);
+        let chip_rows = rows.len().min(3);
         let left_h = if st.dock_min {
             44.0
         } else {
@@ -441,7 +441,7 @@ impl Hud {
             } else {
                 crate::text::wrap_measured(&a.body, right_w - 32.0, |t| p.measure(t, &title_f))
             };
-            body_lines.truncate(6);
+            body_lines.truncate(10);
             if a.proof_open {
                 for l in a.proof.lines() {
                     let wrapped =
