@@ -2,7 +2,7 @@
 // the repository, opens room/ in headless Chromium over the DevTools protocol, waits for the wake,
 // reads the text mirrors (#status, #mindline, #answer, #log), presses the first standing control
 // and reads the verdict, then saves a screenshot. A test harness in Node, not part of the room.
-//   node room/test/headless.mjs [--keep] [--shot PATH]      (CHROME=/path/to/chromium)
+//   node room/test/headless.mjs [--keep] [--shot PATH]      (CHROME=/path/to/chromium; ROOM_URL=https://… to check a published room)
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -50,7 +50,7 @@ const waitFor = async (what, test, ms = 60000) => {
 const key = async (k, code) => { for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: k, code: code || k, text: k.length === 1 ? k : undefined }, sessionId); };
 const out = { chromium: null, node: process.version };
 try { out.chromium = (await send('Browser.getVersion')).product; } catch {}
-await send('Page.navigate', { url: `http://127.0.0.1:${PORT}/room/` }, sessionId);
+await send('Page.navigate', { url: process.env.ROOM_URL || `http://127.0.0.1:${PORT}/room/` }, sessionId);
 await waitFor('the engine', "document.getElementById('log').textContent.includes('engine ready')", 90000);
 await waitFor('the wake to finish', "document.getElementById('status').textContent.startsWith(\"I'm Lucy\")", 20000);
 const log1 = await text('log');
