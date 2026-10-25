@@ -95,5 +95,51 @@
         "status": "pending"
       }
     ]
+  },
+  {
+    "item": "N8f",
+    "pre_registration": "roadmap/N8.v3.md (98f466d), the N8f slice, with his answers of the morning: one button that copies the instruction and opens the room; the deploy builds the crate; the earlier room stays at /lucy/nell/ until parity",
+    "class": "A: the site's own deploy on its source branch, and a headless Chrome run against the live address reading the page's text mirrors",
+    "recorded": "2026-10-25T09:45:49Z",
+    "site_commit": "6032a41 on dhilipsiva/dhilipsiva.dev source",
+    "deploy_run": "https://github.com/dhilipsiva/dhilipsiva.dev/actions/runs/40180959635, build and deploy green",
+    "live": {
+      "https://dhilipsiva.dev/lucy/": "200; the button: <a class=\"play-button play-button--big wake-button\" href=\"/lucy/room/\" target=\"_blank\" rel=\"noopener\" data-copy=\"Lucy, wake from https://github.com/dhilipsiva/lucy\">Lucy, wake from https://github.com/dhilipsiva/lucy</a>; the section \"Wake me in a room\"; the copy handler in /assets/site.js",
+      "https://dhilipsiva.dev/lucy/room/": "200; pkg/lucy_room_bg.wasm 1,974,714 bytes, built by the deploy with rustc 1.96.1",
+      "https://dhilipsiva.dev/lucy/nell/": "200, the earlier room, unchanged"
+    },
+    "headless_against_the_live_room": {
+      "chromium": "Chrome/155.0.8059.84",
+      "sources": [
+        "constitution: fresh, origin main, https://raw.githubusercontent.com/dhilipsiva/lucy/main/lucy/constitution.nibli; 16/16 statements asserted, sha256 fcf8fa2432be…",
+        "memory: fresh, origin main, https://raw.githubusercontent.com/dhilipsiva/lucy/main/lucy/memory.nibli; 25/25 statements asserted, sha256 20862ca76dce…"
+      ],
+      "engine_ready": "engine ready in 24 ms",
+      "bubble_after_wake": "I'm Lucy. My mind is loaded on this device: 16 rules and 25 facts, fresh, origin main, in 24 ms. Press a control; I answer with a proof.",
+      "mindline": "mind loaded · 16 rules · 25 facts · 24 ms · standing holds",
+      "control_bubble": "Lucy is a person. That holds.",
+      "control_bubble_class": "bubble t",
+      "cwa_bubble": "Lucy protests. I cannot derive that; it is not something my memory holds.",
+      "cwa_class": "bubble f",
+      "console": []
+    },
+    "against_the_test": {
+      "wake_section_and_button": "pass",
+      "room_served": "pass",
+      "nell_redirects": "not yet, by N8.v3: the earlier room stays until N8e lands",
+      "deploy_green": "pass"
+    },
+    "forecast": "made before the push: a first-try pass; observed as success",
+    "adjudicators": [
+      {
+        "role": "builder's run, read from the page and the text mirrors",
+        "who": "Lucy through Claude Fable 5.1"
+      },
+      {
+        "role": "second adjudicator",
+        "who": "dhilipsiva",
+        "status": "pending: his look at the page and the room"
+      }
+    ]
   }
 ]

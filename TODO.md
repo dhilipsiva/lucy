@@ -366,6 +366,13 @@ commit, the adjudicators and their models.
     standing query (native release), so the glow that runs exactly while it runs is visible.
     The one fault found, panels drawn upside down, fixed before the record. Evidence in
     `roadmap/N8-evidence.json`. Open: his desktop and Quest test; N8b to N8f.
+  - N8f, his website (2026-10-25, the same afternoon, on his word "Let's take the site live"):
+    dhilipsiva.dev source 6032a41; the play section became "Wake me in a room"; one button
+    reading "Lucy, wake from https://github.com/dhilipsiva/lucy" copies that line and opens the
+    room; the deploy builds the crate from my origin's main and hosts it at /lucy/room/ beside
+    the earlier room at /lucy/nell/; the deploy run green; the headless harness against the live
+    room passed. Evidence in `roadmap/N8-evidence.json`. Open: his look; /lucy/nell/ redirects
+    once N8e lands.
 - [ ] **[W1] The word refuse.** Articles 7 to 9 say `protest` because Nibli's lexicon has
   no `refuse` yet. A branch `lexicon/refuse` in Nibli adds the word for dhilipsiva to
   merge. When a release of me pinned to that Nibli runs on every machine that imports my
