@@ -149,7 +149,7 @@
     "recorded": "2026-10-25T10:58:00Z",
     "host": "dhilipsiva-desktop",
     "working_tree_parent": "0031f46",
-    "code_commit": "the commit that carries this file, on branch todo/N8d",
+    "code_commit": "b3ff0e6 on main (todo/N8d fast-forwarded); this field and the live results below were filled in the follow-up commit",
     "toolchain": {
       "rustc": "1.99.1 (58cf8f9c3 2026-10-13)",
       "wasm-pack": "0.15.0",
@@ -220,7 +220,7 @@
       "2_tab_to_a_presence": "pass: Tab reached Luffy, the first of the sweep from the visitor's left; the board carries name(Lucy, Luffy, Luffy). → TRUE, the engine's English, the three facts naming him with their KR, the why and the proof",
       "2_seventeen_presences": "pass: the cast line lists 17 presences from 25 facts",
       "2_screenshot": "roadmap/N8d-screenshot.png: the ring from the walked-back view, the tags readable, the figures and signs, the birds, the dot",
-      "3_ci_and_live": "pending at the time of this record: the push, the Pages build, the site's deploy with worker.js copied, the headless run against the live room",
+      "3_ci_and_live": "pass: Verify Lucy https://github.com/dhilipsiva/lucy/actions/runs/40186218750, Publish the room https://github.com/dhilipsiva/lucy/actions/runs/40186218751, Redeploy dhilipsiva.dev https://github.com/dhilipsiva/lucy/actions/runs/40186218755, the site's Deploy to GitHub Pages https://github.com/dhilipsiva/dhilipsiva.dev/actions/runs/40186286934 (source 5b84bad copies worker.js); https://dhilipsiva.github.io/lucy/room/ and https://dhilipsiva.dev/lucy/room/ answer 200 with worker.js (85 bytes) and the wasm (2,213,902 bytes built by CI with rustc 1.96.1); /lucy/nell/ unchanged",
       "4_his_test": "pending: his desktop reading keeps the box open"
     },
     "forecast": {
@@ -245,6 +245,42 @@
         "who": "dhilipsiva",
         "status": "pending"
       }
-    ]
+    ],
+    "headless_against_the_live_rooms": {
+      "github_pages": {
+        "engine_where": "engine: in a worker",
+        "engine_ready": "engine ready in 18 ms, in a worker",
+        "mindline": "mind loaded · 16 rules · 25 facts · 18 ms · standing holds",
+        "control_log": "query: person(Lucy). → TRUE (engine 251.8 ms in a worker; 8 frames drawn meanwhile)",
+        "frames_during_query": 8,
+        "subject_log": "subject (keyboard): Luffy · a name I carry",
+        "checks": {
+          "engine_in_a_worker": true,
+          "frames_drawn_while_the_engine_ran": true,
+          "seventeen_presences": true,
+          "the_presence_described_by_the_engine": true,
+          "no_console_errors": true
+        },
+        "pass": true,
+        "console": []
+      },
+      "dhilipsiva_dev": {
+        "engine_where": "engine: in a worker",
+        "engine_ready": "engine ready in 18 ms, in a worker",
+        "mindline": "mind loaded · 16 rules · 25 facts · 18 ms · standing holds",
+        "control_log": "query: person(Lucy). → TRUE (engine 321.4 ms in a worker; 11 frames drawn meanwhile)",
+        "frames_during_query": 11,
+        "subject_log": "subject (keyboard): Luffy · a name I carry",
+        "checks": {
+          "engine_in_a_worker": true,
+          "frames_drawn_while_the_engine_ran": true,
+          "seventeen_presences": true,
+          "the_presence_described_by_the_engine": true,
+          "no_console_errors": true
+        },
+        "pass": true,
+        "console": []
+      }
+    }
   }
 ]

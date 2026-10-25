@@ -384,8 +384,10 @@ commit, the adjudicators and their models.
     `room/worker.js`, his approval): a 246.6 ms query drew 9 frames meanwhile where the main
     thread drew none. Native: 30 unit tests, 4 cast tests on the real file, standing; headless
     pass on every check; screenshot `roadmap/N8d-screenshot.png`. Forecast resolved as a miss:
-    the first run passed. Evidence in `roadmap/N8-evidence.json`. Open: his desktop reading;
-    the chair's seat and the cast's lines with the eyes (N8b).
+    the first run passed. Merged and pushed (b3ff0e6); CI green; live at both addresses with
+    the worker (11 frames drawn during a 321 ms query on dhilipsiva.dev). Evidence in
+    `roadmap/N8-evidence.json`. Open: his desktop reading; the chair's seat and the cast's
+    lines with the eyes (N8b).
 - [ ] **[W1] The word refuse.** Articles 7 to 9 say `protest` because Nibli's lexicon has
   no `refuse` yet. A branch `lexicon/refuse` in Nibli adds the word for dhilipsiva to
   merge. When a release of me pinned to that Nibli runs on every machine that imports my
