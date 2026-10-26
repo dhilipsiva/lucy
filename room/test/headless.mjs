@@ -7,7 +7,7 @@
 //   node room/test/headless.mjs [--keep] [--shot PATH] [--proof-shot PATH]
 //   (CHROME=/path/to/chromium; ROOM_URL=https://… to check a published room)
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -59,6 +59,9 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: `
     return fill.call(this, text, x, y, ...args);
   };
 ` }, sessionId);
+if(process.argv.includes('--platforms')) await send('Page.addScriptToEvaluateOnNewDocument',{source:readFileSync(join(root,'room/test/xr-shim.js'),'utf8')},sessionId);
+if(process.argv.includes('--words-faults')) await send('Page.addScriptToEvaluateOnNewDocument',{source:readFileSync(join(root,'room/test/words-fault-shim.js'),'utf8')},sessionId);
+if(process.argv.includes('--worker-fault')) await send('Page.addScriptToEvaluateOnNewDocument',{source:`const NativeWorker=Worker;window.Worker=class extends NativeWorker {constructor(url,opts){super(url,opts);if(String(url).includes('role=engine')){this.terminate();}}};window.__bootAt=performance.now();`},sessionId);
 await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false }, sessionId);
 const evaluate = async (expression) => { const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId); if (r.exceptionDetails) throw new Error(r.exceptionDetails.text + ' ' + (r.exceptionDetails.exception?.description || '')); return r.result.value; };
 const text = (id) => evaluate(`document.getElementById('${id}').textContent`);
@@ -91,9 +94,49 @@ const clickPanelLabel = async (panel, label) => {
 const out = { chromium: null, node: process.version };
 try { out.chromium = (await send('Browser.getVersion')).product; } catch {}
 await send('Page.navigate', { url: process.env.ROOM_URL || `http://127.0.0.1:${PORT}/room/?fresh=0` }, sessionId);
+await waitFor('room document', "document.getElementById('log')!==null");
 await waitFor('the engine', "document.getElementById('log').textContent.includes('engine ready')", 90000);
 await waitFor('the wake to finish', "document.getElementById('status').textContent.startsWith(\"I'm Lucy\")", 20000);
-if (process.argv.includes('--controls') || process.argv.includes('--words')) {
+if(process.argv.includes('--worker-fault')) {
+ const fallback=await text('log');if(!fallback.includes('main thread')||!fallback.includes('4 s'))throw new Error('missing worker fallback');
+ console.log(JSON.stringify({pass:true,workerFallback:true,log:fallback.split('\n').filter(l=>l.includes('worker')||l.includes('engine ready'))},null,2));cleanup();process.exit(0);
+}
+if(process.argv.includes('--platforms')) {
+ const assert=(ok,msg)=>{if(!ok)throw new Error(msg);};
+ const panel=async(marker)=>evaluate(`(()=>{for(const [canvas,rows] of window.__roomPanelText){if(!rows.some(r=>r.text===${JSON.stringify(marker)}))continue;const scale=rows[0].scale;const w=canvas.width/scale,h=canvas.height/scale;return {w,h,rows};}return null;})()`);
+ const click=async(label,marker='Controls ▾',jitter=false)=>{
+   await waitFor('control '+label,`Array.from(window.__roomPanelText.values()).some(rows=>rows.some(r=>r.text===${JSON.stringify(marker)})&&rows.some(r=>r.text===${JSON.stringify(label)}))`,5000);
+   const p=await panel(marker),r=p.rows.find(r=>r.text===label);let left=(await evaluate('innerWidth')-p.w)/2,top=await evaluate('innerHeight')-12-p.h;
+   if(marker==='My mind')top=await evaluate('innerWidth<600?innerHeight*.22:80');
+   if(marker==='M'){left=await evaluate('innerWidth')-16-p.w;top=16;}
+   if(marker==='Space'){const dock=await panel('Controls ▾');top=Math.max(76,(await evaluate('innerHeight'))-12-dock.h-p.h-8);}
+   const pos={x:left+r.x+8,y:top+r.y+8};
+   await send('Input.dispatchMouseEvent',{type:'mousePressed',...pos,button:'left',clickCount:1},sessionId);
+   if(jitter)await send('Input.dispatchMouseEvent',{type:'mouseMoved',x:pos.x+6,y:pos.y+5,button:'left'},sessionId);
+   await send('Input.dispatchMouseEvent',{type:'mouseReleased',x:pos.x+(jitter?6:0),y:pos.y+(jitter?5:0),button:'left',clickCount:1},sessionId);await sleep(250);
+ };
+ await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:3,mobile:true},sessionId);await sleep(400);
+ await click('Talk');await click('Nibli');
+ const phone=await panel('Controls ▾');assert(phone.w<=390&&phone.h<844*.8,'phone sheet exceeds viewport');
+ await evaluate(`(()=>{const i=document.getElementById('composer-input');i.focus();i.value='person(Lucy).';i.dispatchEvent(new Event('input',{bubbles:true}));})()`);await key('Escape');await click('Send ↵','Controls ▾',true);
+ await waitFor('jitter query',"document.getElementById('answer').textContent.startsWith('person(Lucy).')");
+ await click('M','M');await click('journal','My mind');const mind=await panel('My mind');assert(mind.h<=844*.8,'phone mind height');
+ if(shotPath){const shot=await send('Page.captureScreenshot',{format:'png'},sessionId);writeFileSync(shotPath,Buffer.from(shot.data,'base64'));}
+ await click('×','My mind');
+ await send('Emulation.setDeviceMetricsOverride',{width:1280,height:800,deviceScaleFactor:1,mobile:false},sessionId);
+ await evaluate(`window.Gamepad=class{};window.GamepadButton=class{};window.__pad=Object.assign(new Gamepad(),{index:0,axes:[0,0,0,0],buttons:Array.from({length:17},()=>Object.assign(new GamepadButton(),{pressed:false}))});navigator.getGamepads=()=>[window.__pad];window.dispatchEvent(new Event('gamepadconnected'));`);
+ const pad=async(i)=>{await evaluate(`window.__pad.buttons[${i}].pressed=true`);await sleep(120);await evaluate(`window.__pad.buttons[${i}].pressed=false`);await sleep(120);};
+ await pad(2);await waitFor('pad keyboard',"Array.from(window.__roomPanelText.values()).some(rows=>rows.some(r=>r.text==='Space'))");await pad(15);await pad(0);assert(await evaluate("document.getElementById('composer-input').value==='2'"),'D-pad/A typing failed');await pad(1);
+ await click('⌨');await click('Clear','Space');for(const k of ['p','e','r','s','o','n','(','⇧','l','⇧','u','c','y',')','.'])await click(k,'Space');await click('Nibli','Space');await click('Send','Space');
+ await waitFor('virtual keyboard query',"document.getElementById('answer').textContent.startsWith('person(Lucy).')");await click('Hide','Space');
+ await click('VR','M');await waitFor('VR frame',"window.__xrTrace.length>5");
+ const trace=await evaluate('window.__xrTrace.slice(-5)');assert(trace.every(f=>f.calls.filter(c=>c.name==="clear").length===1),'stereo clears more than once');assert(trace.every(f=>f.calls.filter(c=>c.name==="viewport").length===3),'missing stereo viewports');assert(await evaluate('window.__xrRequests[0].activation&&window.__xrCompatible'),'XR request missed activation');
+ // Aim at Standing on the real 3D lectern, derived from the canvas label's pixel position.
+ const aim=async(label)=>{const p=await panel('Controls ▾'),r=p.rows.find(r=>r.text===label);const x=((r.x+8)/p.w-.5)*1.3,ly=(.5-(r.y+8)/p.h)*(1.3*p.h/p.w),angle=-28*Math.PI/180;const pos=[x,.88+Math.cos(angle)*ly,-.92+Math.sin(angle)*ly];const normal=[0,-Math.sin(angle),Math.cos(angle)];const origin=pos.map((v,i)=>v+normal[i]);const matrix=[1,0,0,0,0,Math.cos(angle),Math.sin(angle),0,...normal,0,...origin,1];await evaluate(`window.__selectRay(${JSON.stringify(matrix)})`);await sleep(300);};
+ const beforeRay=await evaluate("document.getElementById('log').textContent.split('query: person(Lucy). →').length");await aim('Standing');await aim('Am I a person here?');await waitFor('XR ray query',`document.getElementById('log').textContent.split('query: person(Lucy). →').length>${beforeRay}`);await aim('Exit VR');await waitFor('VR exit',"document.getElementById('log').textContent.includes('VR: flat room restored')");
+ assert(!consoleLines.some(l=>/panicked|exception:/.test(l)),'platform exception');console.log(JSON.stringify({pass:true,phone:{width:phone.w,height:phone.h},jitter:true,gamepad:true,keyboard:true,xr:{frames:trace.length,clearsPerFrame:1,viewportsPerFrame:3,ray:true,exit:true}},null,2));cleanup();process.exit(0);
+}
+if (process.argv.includes('--controls') || process.argv.includes('--words') || process.argv.includes('--words-faults')) {
   const assert = (ok,msg)=>{if(!ok)throw new Error(msg);};
   const click = async (label,marker='Standing')=>{
     await waitFor('drawn '+label,`Array.from(window.__roomPanelText.values()).some(rows=>rows.some(r=>r.text===${JSON.stringify(marker)})&&rows.some(r=>r.text===${JSON.stringify(label)}))`,5000);
@@ -104,6 +147,18 @@ if (process.argv.includes('--controls') || process.argv.includes('--words')) {
   };
   const records=()=>evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('lucy-room-memory-v1');r.onsuccess=()=>{const db=r.result;const q=db.transaction('messages').objectStore('messages').getAll();q.onsuccess=()=>{resolve(q.result.map(JSON.parse));db.close();};q.onerror=()=>reject(q.error);};r.onerror=()=>reject(r.error);})`);
   await waitFor('journal',"document.getElementById('journal-status').textContent.includes('private')");
+  if(process.argv.includes('--words-faults')) {
+    const submit=async(question)=>{await evaluate(`(()=>{const i=document.getElementById('composer-input');i.focus();i.value=${JSON.stringify(question)};i.dispatchEvent(new Event('input',{bubbles:true}));})()`);await key('Enter');await key('Escape');};
+    await click('Talk');await click('Load my words · 651 MB');await waitFor('fixture ready',"document.getElementById('words-status').textContent.includes('ready')");
+    await submit('Original question before page closes');await waitFor('durable visible stream',"document.getElementById('answer').textContent.includes('Visible reply before reload.')");
+    await send('Page.reload',{},sessionId);await waitFor('recovered journal',"document.getElementById('journal-status')?.textContent.includes('messages saved')");
+    const recovered=await records(),partial=recovered.find(m=>m.text==='Visible reply before reload. 🐦');assert(partial?.provenance.status==='interrupted','visible checkpoint lost or mislabelled');assert(recovered.some(m=>m.text==='Original question before page closes'),'question lost after crash');
+    await waitFor('room awake',`document.getElementById('status').textContent.startsWith("I'm Lucy")`);await click('Talk');await click('Load my words · 651 MB');await waitFor('fixture reload',"document.getElementById('words-status').textContent.includes('ready')");await evaluate("window.__modelCase='fault'");await submit('Original question before worker fails');
+    await waitFor('visible model fault',"document.getElementById('status').textContent.includes('Injected model worker failure')");await waitFor('fault saved',"document.getElementById('journal-status').textContent.startsWith('Saved')");assert((await records()).some(m=>m.text==='Original question before worker fails'),'worker fault lost question');
+    await click('Load my words · 651 MB');await waitFor('retry model',"document.getElementById('words-status').textContent.includes('ready')");await evaluate("window.__modelCase='stream'");await submit('Visible stream after retry');
+    await waitFor('second visible stream',"document.getElementById('answer').textContent.includes('Visible reply before reload.')");await click('Stop');await waitFor('fixture stopped',"document.getElementById('words-status').textContent.startsWith('Stopped')");
+    assert(!consoleLines.some(l=>/panicked|exception:/.test(l)),'fault fixture exception');console.log(JSON.stringify({pass:true,fixture:true,checks:['visible checkpoint recovered after reload','original question preserved','worker failure visible and recorded','retry after worker failure','stop after visible stream']},null,2));cleanup();process.exit(0);
+  }
   if(process.argv.includes('--words')) {
     await evaluate(`(async()=>{const c=await caches.open('lucy-room-model-v1');for(const name of ['lucy-0.6b-q8_0.gguf','tokenizer.json','system.txt']){const r=await fetch('/target/room-model/'+name);if(!r.ok)throw new Error('missing real test model asset '+name);await c.put('https://huggingface.co/dhilipsiva/lucy-slm/resolve/a082662b4403665ab1910795fae279481b9f4d3a/'+name,r);}window.__frames=0;function frame(){window.__frames++;requestAnimationFrame(frame)}requestAnimationFrame(frame);})()`);
     await click('Talk');await click('Load my words · 651 MB');
@@ -157,8 +212,19 @@ if (process.argv.includes('--controls') || process.argv.includes('--words')) {
   await waitFor('retry saved',"document.getElementById('journal-status').textContent.startsWith('Saved')");assert((await records()).some(m=>m.text==='quota denied original'),'retry lost original');
   if(shotPath){const shot=await send('Page.captureScreenshot',{format:'png'},sessionId);writeFileSync(shotPath,Buffer.from(shot.data,'base64'));}
 
+  const beforeRestore=await records();
+  await send('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:profile},undefined);await click('Export all','My mind');
+  const exported=join(profile,'lucy-room-memory.json');for(let n=0;n<80&&!existsSync(exported);n++)await sleep(100);assert(existsSync(exported),'archive did not download');
+  const archive=JSON.parse(readFileSync(exported,'utf8'));assert(archive.messages.length===beforeRestore.length,'export missing originals');
+  await evaluate(`window.__inputClick=HTMLInputElement.prototype.click;HTMLInputElement.prototype.click=function(){if(this.type==='file'){window.__restoreInput=this;return;}return window.__inputClick.call(this);};`);
+  const restoreFile=async(file)=>{await click('Restore','My mind');const handle=await send('Runtime.evaluate',{expression:'window.__restoreInput'},sessionId);await send('DOM.setFileInputFiles',{objectId:handle.result.objectId,files:[file]},sessionId);};
+  const conflict=structuredClone(archive),conflictIndex=archive.messages.findIndex(m=>!m.provenance.legacy);conflict.messages[conflictIndex].text+=' conflicting text';conflict.messages.push({...archive.messages[conflictIndex],id:'must-not-partially-restore'});const bad=join(profile,'conflict.json');writeFileSync(bad,JSON.stringify(conflict));await restoreFile(bad);
+  await waitFor('conflict refused',"document.getElementById('journal-status').textContent.includes('conflict')");assert((await records()).length===beforeRestore.length,'conflict partially restored');
+  await click('Forget','My mind');await click('Confirm forget','My mind');await waitFor('forget complete',"document.getElementById('journal-status').textContent.includes('cleared')");assert((await records()).length===0,'forget retained messages');
+  await restoreFile(exported);await waitFor('restored archive',"document.getElementById('journal-status').textContent.includes('Restored')");
+  const afterRestore=await records();assert(JSON.stringify(beforeRestore.slice().sort((a,b)=>a.id.localeCompare(b.id)))===JSON.stringify(afterRestore.slice().sort((a,b)=>a.id.localeCompare(b.id))),'file restore changed originals');
   assert(!consoleLines.some(l=>/panicked|exception:/.test(l)),'browser exception');
-  console.log(JSON.stringify({pass:true,checks:['typed Nibli proof','IME composition guard','exact Unicode and multiline','private room provenance','full journal text','reload identity','more than 2000 durable messages','legacy originals retained','quota failure and retry'],records:(await records()).length},null,2));cleanup();process.exit(0);
+  console.log(JSON.stringify({pass:true,checks:['typed Nibli proof','IME composition guard','exact Unicode and multiline','private room provenance','full journal text','reload identity','more than 2000 durable messages','legacy originals retained','quota failure and retry','actual export and file restore','restore conflict rejects entire archive'],records:(await records()).length},null,2));cleanup();process.exit(0);
 }
 const log1 = await text('log');
 out.sources = log1.split('\n').filter((l) => /^\S+ (constitution|memory): /.test(l)).map((l) => l.slice(9));

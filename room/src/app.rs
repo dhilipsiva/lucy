@@ -4,7 +4,7 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -56,6 +56,7 @@ pub struct App {
     desk: crate::desk::Desk,
     words: crate::words::Words,
     generation: Option<crate::journal::Message>,
+    generation_context: String,
     eyes: crate::eyes::Eyes,
     eye_lines: crate::eyes::Lines,
     typed_queries: HashSet<u64>,
@@ -96,10 +97,23 @@ pub struct App {
     dock_min: bool,
     version: u64,
     keys: HashSet<String>,
-    drag: Option<(f64, f64, bool)>,
-    touches: HashMap<i32, (f64, f64, bool)>,
+    drag: Option<crate::controls::Pointer>,
+    touches: HashMap<i32, crate::controls::Pointer>,
     pads: HashMap<u32, Vec<bool>>,
     flags: InputFlags,
+    focus: Option<usize>,
+    self_weak: Weak<RefCell<App>>,
+    xr_active: bool,
+    #[cfg(target_arch = "wasm32")]
+    xr_pending: bool,
+    xr_supported: bool,
+    #[cfg(target_arch = "wasm32")]
+    xr: Option<crate::xr::Session>,
+    #[cfg(target_arch = "wasm32")]
+    xr_ray: crate::gl::GpuMesh,
+    #[cfg(target_arch = "wasm32")]
+    xr_panels: Vec<crate::xr::PanelPose>,
+    keyboard_shift: bool,
     w: f64,
     h: f64,
     dpr: f64,
@@ -163,10 +177,16 @@ pub fn boot() -> Result<(), String> {
         desk: crate::desk::Desk::new(&window.location().search().unwrap_or_default()),
         words: Default::default(),
         generation: None,
+        generation_context: String::new(),
         eyes: Default::default(),
         eye_lines: Default::default(),
         typed_queries: HashSet::new(),
         relay: None,
+        #[cfg(target_arch = "wasm32")]
+        xr_ray: gl.upload_positions(
+            &[0.0, 0.0, 0.0, 0.0, 0.0, -1.0],
+            web_sys::WebGl2RenderingContext::LINES,
+        ),
         gl,
         scene,
         world,
@@ -207,6 +227,17 @@ pub fn boot() -> Result<(), String> {
         touches: HashMap::new(),
         pads: HashMap::new(),
         flags: InputFlags::default(),
+        focus: None,
+        self_weak: Weak::new(),
+        xr_active: false,
+        #[cfg(target_arch = "wasm32")]
+        xr_pending: false,
+        xr_supported: false,
+        #[cfg(target_arch = "wasm32")]
+        xr: None,
+        #[cfg(target_arch = "wasm32")]
+        xr_panels: vec![],
+        keyboard_shift: false,
         w,
         h,
         dpr,
@@ -272,6 +303,9 @@ pub fn boot() -> Result<(), String> {
     }
     let app = Rc::new(RefCell::new(app));
     let weak = Rc::downgrade(&app);
+    app.borrow_mut().self_weak = weak.clone();
+    #[cfg(target_arch = "wasm32")]
+    crate::xr::probe(weak.clone());
     let q = app.borrow().input.clone();
     input::direct(Rc::new(move |e| {
         if let Some(a) = weak.upgrade() {
@@ -285,7 +319,9 @@ pub fn boot() -> Result<(), String> {
     let f: FrameClosure = Rc::new(RefCell::new(None));
     let g = f.clone();
     *g.borrow_mut() = Some(Closure::new(move |t: f64| {
-        app.borrow_mut().frame(t);
+        if !app.borrow().xr_active {
+            app.borrow_mut().frame(t);
+        }
         if let Some(cb) = f.borrow().as_ref() {
             web_sys::window()
                 .unwrap()
@@ -300,6 +336,220 @@ pub fn boot() -> Result<(), String> {
 }
 
 impl App {
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn xr_support(&mut self, supported: bool) {
+        self.xr_supported = supported;
+        self.version += 1;
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn xr_error(&mut self, error: &str) {
+        self.xr_pending = false;
+        self.say(&format!("VR: {error}"), Verdict::Error, Some("VR"));
+        self.log(&format!("VR unavailable: {error}"));
+        self.version += 1;
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn xr_started(&mut self, session: crate::xr::Session) {
+        self.xr = Some(session);
+        self.xr_active = true;
+        self.xr_pending = false;
+        self.world.cancel_focus();
+        self.hud_hidden = false;
+        self.dock_min = false;
+        self.focus = None;
+        self.keys.clear();
+        self.log("VR: immersive session started");
+        self.version += 1;
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn xr_ended(&mut self) {
+        self.xr = None;
+        self.xr_active = false;
+        self.xr_pending = false;
+        self.xr_panels.clear();
+        self.gl
+            .ctx
+            .bind_framebuffer(web_sys::WebGl2RenderingContext::FRAMEBUFFER, None);
+        self.resize();
+        self.last_ms = now_ms();
+        self.log("VR: flat room restored");
+        self.version += 1;
+    }
+    #[cfg(target_arch = "wasm32")]
+    fn xr_rig(&self) -> glam::Mat4 {
+        let offset = self.xr.as_ref().map(|s| s.offset).unwrap_or(0.0);
+        glam::Mat4::from_rotation_translation(
+            glam::Quat::from_rotation_y(self.world.yaw),
+            glam::Vec3::new(self.world.rig.x, offset, self.world.rig.z),
+        )
+    }
+    #[cfg(target_arch = "wasm32")]
+    fn xr_ray_action(&mut self, origin: glam::Vec3, direction: glam::Vec3) {
+        if let Some((_, action)) = self.hud.ray_hit(&self.xr_panels, origin, direction) {
+            if let Some(a) = action {
+                self.action(a);
+            }
+            return;
+        }
+        if self.world.ray_hits_lucy(&self.scene, origin, direction) {
+            self.call("VR");
+        } else if let Some(i) = self.world.pick_cast(&self.scene, origin, direction) {
+            self.select_cast(i, "VR");
+        }
+        self.world.cancel_focus();
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn xr_select(&mut self, event: &web_sys::XrInputSourceEvent) {
+        if let Some(s) = &self.xr {
+            if let Some((o, d)) = crate::xr::ray(
+                &event.frame(),
+                &event.input_source(),
+                &s.space,
+                self.xr_rig(),
+            ) {
+                self.xr_ray_action(o, d);
+            }
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn xr_frame(&mut self, now: f64, frame: &web_sys::XrFrame) {
+        use glam::{Mat4, Quat, Vec3};
+        let Some(s) = &self.xr else {
+            return;
+        };
+        let (space, layer, session) = (s.space.clone(), s.layer.clone(), s.session.clone());
+        let Some(pose) = frame.get_viewer_pose(&space) else {
+            return;
+        };
+        let dt = ((now - self.last_ms) / 1000.0).clamp(0.0, 0.1) as f32;
+        let head = crate::xr::matrix(&pose.transform().matrix());
+        let forward = head.transform_vector3(-Vec3::Z);
+        let head_yaw = (-forward.x).atan2(-forward.z);
+        if let Some(s) = &mut self.xr {
+            s.head_yaw = head_yaw;
+        }
+        let sources = session.input_sources();
+        for i in 0..sources.length() {
+            let Some(source) = sources.get(i) else {
+                continue;
+            };
+            let Some(pad) = source.gamepad() else {
+                continue;
+            };
+            let axes = pad.axes();
+            let base = if axes.length() >= 4 { 2 } else { 0 };
+            let axis = |i| axes.get(i).as_f64().unwrap_or(0.0) as f32;
+            let (x, y) = (axis(base), axis(base + 1));
+            if source.handedness() == web_sys::XrHandedness::Left {
+                let dead = |v: f32| if v.abs() > 0.15 { v } else { 0.0 };
+                let move_ = Quat::from_rotation_y(self.world.yaw + head_yaw)
+                    * Vec3::new(dead(x), 0.0, dead(y))
+                    * 1.8
+                    * dt;
+                self.world.rig = crate::xr::bounded(self.world.rig + move_);
+            }
+            if source.handedness() == web_sys::XrHandedness::Right {
+                if let Some(s) = &mut self.xr {
+                    self.world.yaw += s.snap.turn(x, now);
+                    let pressed = pad
+                        .buttons()
+                        .get(3)
+                        .dyn_into::<web_sys::GamepadButton>()
+                        .ok()
+                        .is_some_and(|b| b.pressed());
+                    let find = pressed && !s.stick_down;
+                    s.stick_down = pressed;
+                    if find {
+                        self.action(Action::Find);
+                    }
+                }
+            }
+        }
+        self.frame(now);
+        let rig = self.xr_rig();
+        let floor_rig = Mat4::from_rotation_translation(
+            Quat::from_rotation_y(self.world.yaw),
+            Vec3::new(self.world.rig.x, 0.0, self.world.rig.z),
+        );
+        self.xr_panels = self.hud.xr_poses(floor_rig, (rig * head).w_axis.truncate());
+        let mut rays = vec![];
+        for i in 0..sources.length() {
+            if let Some(source) = sources.get(i) {
+                if let Some((o, d)) = crate::xr::ray(frame, &source, &space, rig) {
+                    let distance = self
+                        .hud
+                        .ray_hit(&self.xr_panels, o, d)
+                        .map(|h| h.0)
+                        .unwrap_or(3.0);
+                    rays.push((o, d, distance));
+                }
+            }
+        }
+        let g = &self.gl.ctx;
+        g.bind_framebuffer(
+            web_sys::WebGl2RenderingContext::FRAMEBUFFER,
+            layer.framebuffer().as_ref(),
+        );
+        self.gl.viewport(
+            0,
+            0,
+            layer.framebuffer_width() as i32,
+            layer.framebuffer_height() as i32,
+        );
+        self.gl
+            .clear(col::linear(col::VOID_900).map(|c| c.powf(1.0 / 2.2)));
+        self.hud.upload(&self.gl);
+        let quad = self.scene.quad_mesh();
+        let views = pose.views();
+        for value in views.iter() {
+            let view: web_sys::XrView = value.unchecked_into();
+            let Some(vp) = layer.get_viewport(&view) else {
+                continue;
+            };
+            self.gl.viewport(vp.x(), vp.y(), vp.width(), vp.height());
+            let head_world = rig * crate::xr::matrix(&view.transform().matrix());
+            let eye_view = head_world.inverse();
+            let proj = crate::xr::matrix(&view.projection_matrix());
+            let cam = head_world.w_axis.truncate();
+            self.scene.render(&self.gl, &eye_view, &proj, cam);
+            self.hud.render_xr(
+                &self.gl,
+                &self.scene.meshes[quad],
+                &eye_view,
+                &proj,
+                &self.xr_panels,
+            );
+            for &(o, d, length) in &rays {
+                let rotation = Quat::from_rotation_arc(-Vec3::Z, d);
+                let model =
+                    Mat4::from_scale_rotation_translation(Vec3::new(1.0, 1.0, length), rotation, o);
+                self.gl.draw_lines(
+                    &self.xr_ray,
+                    &model,
+                    &eye_view,
+                    &proj,
+                    col::linear(col::EMBER_500),
+                    0.9,
+                    &self.scene.lights,
+                );
+                let point = Mat4::from_scale_rotation_translation(
+                    Vec3::splat(0.006),
+                    rotation,
+                    o + d * length,
+                );
+                self.gl.draw_flat(
+                    &self.scene.meshes[quad],
+                    &(proj * eye_view * point),
+                    None,
+                    [0.9, 0.5, 0.2, 1.0],
+                    crate::gl::Blend::Alpha,
+                    true,
+                    false,
+                );
+            }
+        }
+    }
+
     fn log(&mut self, line: &str) {
         let full = format!("{} {line}", stamp());
         self.log.push(full.clone());
@@ -997,7 +1247,17 @@ impl App {
                 self.hud_hidden = false;
             }
             Action::Find => {
-                self.world.focus_lucy(&self.scene);
+                if self.xr_active {
+                    let d = crate::world::LUCY_HOME - self.world.rig;
+                    self.world.yaw = (-d.x).atan2(-d.z);
+                    #[cfg(target_arch = "wasm32")]
+                    if let Some(s) = &self.xr {
+                        self.world.yaw -= s.head_yaw;
+                    }
+                    self.world.cancel_focus();
+                } else {
+                    self.world.focus_lucy(&self.scene);
+                }
                 self.log("find: turned to Lucy");
             }
             Action::Mind => {
@@ -1017,7 +1277,12 @@ impl App {
             Action::Mode(mode) => self.desk.mode = mode,
             Action::Focus => {
                 self.keys.clear();
-                self.desk.focus();
+                if self.flags.gamepad || self.xr_active {
+                    self.desk.keyboard = true;
+                    self.focus = Some(0);
+                } else {
+                    self.desk.focus();
+                }
             }
             Action::Submit => self.desk.submit(),
             Action::ClearDraft => {
@@ -1046,10 +1311,29 @@ impl App {
             }
             Action::Keyboard => {
                 self.desk.keyboard = !self.desk.keyboard;
-                self.desk.focus();
+                self.focus = if self.flags.gamepad { Some(0) } else { None };
             }
             Action::Key(key) => {
-                self.desk.draft.push_str(&key);
+                match key.as_str() {
+                    "⇧" => self.keyboard_shift = !self.keyboard_shift,
+                    "⌫" => {
+                        self.desk.draft.pop();
+                    }
+                    "Clear" => self.desk.draft.clear(),
+                    "Hide" => {
+                        self.desk.keyboard = false;
+                        self.focus = Some(0);
+                    }
+                    "Send" => self.desk.submit(),
+                    "Nibli" => self.desk.mode = "nibli".into(),
+                    "Space" => self.desk.draft.push(' '),
+                    "↵" => self.desk.draft.push('\n'),
+                    _ => self.desk.draft.push_str(&if self.keyboard_shift {
+                        key.to_uppercase()
+                    } else {
+                        key
+                    }),
+                }
                 self.desk.sync_input();
             }
             Action::LoadWords => {
@@ -1077,7 +1361,16 @@ impl App {
                     }
                 }
             }
-            Action::Xr => {}
+            Action::Xr =>
+            {
+                #[cfg(target_arch = "wasm32")]
+                if let Some(s) = &self.xr {
+                    let _ = s.session.end();
+                } else if self.xr_supported && !self.xr_pending {
+                    self.xr_pending = true;
+                    crate::xr::start(self.self_weak.clone(), self.gl.ctx.clone());
+                }
+            }
         }
         self.version += 1;
     }
@@ -1111,7 +1404,13 @@ impl App {
                 let direct = self
                     .facts
                     .iter()
-                    .map(|f| format!("[direct memory] {}", f.kr))
+                    .filter(|f| {
+                        s.text
+                            .split(|c: char| !c.is_alphanumeric())
+                            .filter(|w| w.len() > 2)
+                            .any(|w| f.kr.to_lowercase().contains(&w.to_lowercase()))
+                    })
+                    .map(|f| format!("[direct memory] {} ({})", f.kr, english_of(&f.kr)))
                     .collect::<Vec<_>>()
                     .join("\n");
                 let verdict = self
@@ -1131,7 +1430,8 @@ impl App {
                         )
                     })
                     .unwrap_or_default();
-                let context = format!("{verdict}\n{recalled}\n{direct}");
+                let context = format!("{direct}\n{verdict}\n{recalled}");
+                self.generation_context = context.clone();
                 let history = self
                     .desk
                     .archive
@@ -1206,6 +1506,8 @@ impl App {
                             .map(|r| format!("{} · {} · {}", r.peer, r.id, r.timestamp))
                             .collect::<Vec<_>>()
                             .join("\n")
+                            + "\n\nAvailable retrieved text (the model may use a shorter prefix):\n"
+                            + &self.generation_context
                     ),
                     proof_open: false,
                     proof_page: 0,
@@ -1365,48 +1667,35 @@ impl App {
                     self.wake_skipped = true;
                     self.log("wake: skipped");
                 }
+                let action = match self.hud.hit(x, y) {
+                    crate::hud::HitResult::Panel(a) => a,
+                    _ => None,
+                };
+                let pointer =
+                    crate::controls::Pointer::new(x, y, touch, self.hud.over_panel(x, y), action);
                 if touch {
-                    self.touches.insert(id, (x, y, false));
+                    self.touches.insert(id, pointer);
                     if !self.flags.touch {
                         self.flags.touch = true;
                         self.version += 1;
                     }
                 } else {
-                    self.drag = Some((x, y, false));
+                    self.drag = Some(pointer);
                 }
                 self.world.lucy.poke();
             }
             InputEvent::PointerMove { x, y, touch, id } => {
-                if touch {
-                    if let Some(t) = self.touches.get_mut(&id) {
-                        let (dx, dy) = (x - t.0, y - t.1);
-                        t.0 = x;
-                        t.1 = y;
-                        if dx.abs() + dy.abs() > 2.0 {
-                            t.2 = true;
-                        }
-                        if self.touches.len() == 1 {
-                            self.world.look(-(dx as f32) * 0.005, -(dy as f32) * 0.005);
-                        } else {
-                            self.world.walk(0.0, -(dy as f32) * 0.01);
-                        }
-                    }
-                } else if let Some(d) = self.drag.as_mut() {
-                    let (dx, dy) = (x - d.0, y - d.1);
-                    d.0 = x;
-                    d.1 = y;
-                    if dx.abs() + dy.abs() > 2.0 {
-                        d.2 = true;
-                    }
-                    if d.2 {
+                let pointer = if touch {
+                    self.touches.get_mut(&id)
+                } else {
+                    self.drag.as_mut()
+                };
+                if let Some(p) = pointer {
+                    if let Some((dx, dy)) = p.motion(x, y) {
                         self.world.look(-(dx as f32) * 0.004, -(dy as f32) * 0.004);
                     }
                 } else {
-                    let over = self.hud.over_panel(x, y) || {
-                        let (o, d) = self.world.ray(x, y, self.w, self.h);
-                        self.world.ray_hits_lucy(&self.scene, o, d)
-                            || self.world.pick_cast(&self.scene, o, d).is_some()
-                    };
+                    let over = self.hud.over_panel(x, y);
                     self.canvas
                         .style()
                         .set_property("cursor", if over { "pointer" } else { "grab" })
@@ -1414,14 +1703,16 @@ impl App {
                 }
             }
             InputEvent::PointerUp { x, y, touch, id } => {
-                let moved = if touch {
-                    self.touches.remove(&id).map(|t| t.2).unwrap_or(true)
+                let pointer = if touch {
+                    self.touches.remove(&id)
                 } else {
-                    let m = self.drag.map(|d| d.2).unwrap_or(true);
-                    self.drag = None;
-                    m
+                    self.drag.take()
                 };
-                if !moved {
+                let action = match self.hud.hit(x, y) {
+                    crate::hud::HitResult::Panel(a) => a,
+                    _ => None,
+                };
+                if pointer.is_some_and(|p| p.click(x, y, action.as_ref())) {
                     self.click(x, y);
                 }
             }
@@ -1483,7 +1774,11 @@ impl App {
             .ok()
             .and_then(|v| v.as_f64())
             .unwrap_or(self.h);
+        if let Some(v) = window.visual_viewport() {
+            self.h = self.h.min(v.height());
+        }
         self.dpr = window.device_pixel_ratio().clamp(1.0, 2.0);
+        self.hud.pixel_ratio(self.dpr);
         self.canvas.set_width((self.w * self.dpr) as u32);
         self.canvas.set_height((self.h * self.dpr) as u32);
         self.gl
@@ -1495,6 +1790,10 @@ impl App {
             return;
         }
         let st = input::poll_gamepads(&mut self.pads);
+        if self.focus.is_none() && st.any {
+            self.focus = Some(0);
+            self.version += 1;
+        }
         if st.lx != 0.0 || st.ly != 0.0 {
             self.world.walk(st.lx * 1.5 * dt, -st.ly * 1.5 * dt);
             self.world.lucy.poke();
@@ -1503,7 +1802,71 @@ impl App {
             self.world.look(-st.rx * 2.0 * dt, -st.ry * 1.5 * dt);
         }
         for b in st.pressed {
-            self.log(&format!("pad: button {b} (the pad scheme comes with N8e)"));
+            match b {
+                0 => {
+                    if let Some(a) = self.hud.focus_action(self.focus.unwrap_or(0)) {
+                        self.action(a);
+                    }
+                }
+                1 => {
+                    if self.desk.keyboard {
+                        self.desk.keyboard = false;
+                    } else if self.desk.drawer.is_some() {
+                        self.desk.drawer = None;
+                    } else {
+                        self.clear_subject();
+                    }
+                    self.focus = Some(0);
+                }
+                2 => {
+                    self.group = "talk".into();
+                    self.desk.mode = "recall".into();
+                    self.action(Action::Focus);
+                }
+                3 => {
+                    self.group = "talk".into();
+                    self.desk.mode = if self.desk.mode == "words" {
+                        "recall"
+                    } else {
+                        "words"
+                    }
+                    .into();
+                    self.action(Action::Focus);
+                }
+                4 | 5 => {
+                    let delta = if b == 4 { -1 } else { 1 };
+                    if let Some(tab) = self.desk.drawer.clone() {
+                        let tabs = ["standing", "memory", "journal", "log", "about"];
+                        let pos = tabs.iter().position(|t| *t == tab).unwrap_or(0) as i32;
+                        self.action(Action::MindTab(
+                            tabs[(pos + delta).rem_euclid(5) as usize].into(),
+                        ));
+                    } else {
+                        let groups = ["standing", "cast", "facts", "talk"];
+                        let pos = groups.iter().position(|g| *g == self.group).unwrap_or(0) as i32;
+                        self.action(Action::Group(
+                            groups[(pos + delta).rem_euclid(4) as usize].into(),
+                        ));
+                    }
+                    self.focus = Some(0);
+                }
+                9 => {
+                    self.action(Action::Mind);
+                    self.focus = Some(0);
+                }
+                11 => self.action(Action::Find),
+                12..=15 => {
+                    let (dx, dy) = match b {
+                        12 => (0., -1.),
+                        13 => (0., 1.),
+                        14 => (-1., 0.),
+                        _ => (1., 0.),
+                    };
+                    self.focus = Some(self.hud.move_focus(self.focus.unwrap_or(0), dx, dy));
+                }
+                _ => {}
+            }
+            self.version += 1;
         }
     }
     fn poll_keys(&mut self, dt: f32) {
@@ -1605,8 +1968,10 @@ impl App {
         for e in events {
             self.handle(e);
         }
-        self.poll_keys(dt);
-        self.poll_pads(dt);
+        if !self.xr_active {
+            self.poll_keys(dt);
+            self.poll_pads(dt);
+        }
         // the wake: the animation and the loading, whichever is slower
         if self.phase == Phase::Wake {
             let p = if self.wake_skipped {
@@ -1628,9 +1993,11 @@ impl App {
         let view = self.world.view();
         let proj = World::proj((self.w / self.h) as f32);
         let cam = self.world.cam_pos();
-        self.gl
-            .clear(col::linear(col::VOID_900).map(|c| c.powf(1.0 / 2.2)));
-        self.scene.render(&self.gl, &view, &proj, cam);
+        if !self.xr_active {
+            self.gl
+                .clear(col::linear(col::VOID_900).map(|c| c.powf(1.0 / 2.2)));
+            self.scene.render(&self.gl, &view, &proj, cam);
+        }
         // the HUD
         let stale = self
             .speech
@@ -1666,6 +2033,10 @@ impl App {
                 }
             }
         }
+        let platform_xr = self.xr_active;
+        let platform_supported = self.xr_supported;
+        let platform_focus = self.focus;
+        let platform_gamepad = self.flags.gamepad;
         let App {
             words,
             drawer_body,
@@ -1709,7 +2080,10 @@ impl App {
             wake_lines: log,
             wake_progress,
             wake_animating,
-            focus: None,
+            focus: platform_focus,
+            gamepad: platform_gamepad,
+            xr_active: platform_xr,
+            xr_supported: platform_supported,
         };
         let stale_key = if stale { 1u64 << 60 } else { 0 };
         hud.draw(&st, *version ^ stale_key);
@@ -1738,13 +2112,18 @@ impl App {
             wake_lines: &self.log,
             wake_progress,
             wake_animating,
-            focus: None,
+            focus: self.focus,
+            gamepad: self.flags.gamepad,
+            xr_active: self.xr_active,
+            xr_supported: self.xr_supported,
         };
         self.hud
             .draw_finder(&st2, v, on_screen || self.phase != Phase::Ready);
         let quad = self.scene.quad_mesh();
         let quad_mesh = &self.scene.meshes[quad];
-        self.hud.render(&self.gl, quad_mesh, self.w, self.h);
+        if !self.xr_active {
+            self.hud.render(&self.gl, quad_mesh, self.w, self.h);
+        }
         self.engine.frame_drawn();
     }
 }

@@ -153,7 +153,6 @@ impl Gl {
         for (k, v) in [
             ("antialias", true),
             ("alpha", false),
-            ("xrCompatible", true),
             ("premultipliedAlpha", true),
         ] {
             js_sys::Reflect::set(&opts, &k.into(), &v.into()).map_err(|_| "context options")?;
@@ -242,6 +241,13 @@ impl Gl {
                 "u_fogFar",
             ],
         )?;
+        crate::panel::texture_limit(
+            ctx.get_parameter(G::MAX_TEXTURE_SIZE)
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(2048.0)
+                .min(4096.0),
+        );
         ctx.enable(G::DEPTH_TEST);
         ctx.enable(G::BLEND);
         ctx.enable(G::CULL_FACE);

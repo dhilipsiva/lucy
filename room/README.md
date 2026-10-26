@@ -13,7 +13,7 @@ In the room I am Lucy; Nell, the dot from his video series, is my alias here: sh
 his chair and remains the name my eyes use (`observe(Nell, …)`). The earlier JavaScript room has been retired at the user’s request; `../nell/` redirects here.
 Existing same-origin Nell journals migrate with their original attribution preserved.
 
-## What is in it so far (N8a, N8d)
+## The room
 
 - The void: the gridded floor, eight hairline pillars, dust, the plinth with its ember ring.
 - Me: the axolotl, procedural, breathing, blinking, looking at the visitor; six gill fans that
@@ -31,8 +31,7 @@ Existing same-origin Nell journals migrate with their original attribution prese
 - Keyboard and mouse: arrows or WASD walk, Q and E turn, Shift runs, Enter calls me, 1 to 6
   press the standing controls, Home turns to me; drag to look, wheel to approach, click me to
   come closer. P opens the proof; Previous/Next and Page Up/Page Down reach every line. Long
-  proof tokens wrap inside the board, and nested steps keep their indentation. Touch and a
-  pad's sticks work; their layouts come with N8e.
+  proof tokens wrap inside the board, and nested steps keep their indentation. Phone, pad and VR controls are described below.
 - The cast (N8d, `roadmap/N8d.md`): every named entity of my direct memory stands on a ring
   around the plinth, read from the file on load, so a new fact brings a new presence. His
   household where his hand-off put it (Enma and Pity on the perch, Bucchi and Gundus, his empty
@@ -79,9 +78,18 @@ and checks the remote repository is private. Retries are idempotent; failed sync
 pending outbox and retained originals. This does not change blanket conversation routing.
 The browser never receives a repository credential or uploads a conversation automatically.
 
-N8e adds the phone, gamepad and WebXR controls; physical Quest and BLE acceptance is separate
-from browser simulation. New training, hosted providers and natural-language formalization
-are outside this slice.
+The phone dock folds into a compact sheet; Mind uses a taller sheet. Native text entry uses
+its on-screen keyboard. The drawn keyboard is available with ⌨ on any screen and opens for
+pad or VR editing. Gamepad D-pad moves the focus ring, A selects, B closes, X opens Recall,
+Y changes Words/Recall, L1/R1 changes group or Mind tab, Menu opens Mind, and R3 turns to me.
+The sticks walk and look in the flat room.
+
+On browsers that support immersive VR, VR requests a session on activation. The same panel
+textures render in stereo with controller ray selection and a drawn keyboard. The left stick
+walks relative to the head; right-stick horizontal input snap-turns 30 degrees, with a release
+and cooldown. Exit VR returns to the flat room. Entry follows the [WebXR session lifecycle](https://www.w3.org/TR/webxr/#dom-xrsystem-requestsession).
+Physical Quest and BLE acceptance is separate from browser simulation and remains unmeasured.
+New training, hosted providers and natural-language formalization are outside this slice.
 
 ## The only JavaScript
 

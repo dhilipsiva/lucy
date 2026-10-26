@@ -142,6 +142,15 @@ impl Words {
         Ok(())
     }
     pub fn stop(&mut self) {
+        if !self.ready {
+            if let Some(w) = self.worker.take() {
+                w.terminate();
+            }
+            self.replies.borrow_mut().clear();
+            self.busy = false;
+            self.status = "Stopped loading · retry Load my words".into();
+            return;
+        }
         if let Some(w) = &self.worker {
             let _ = post(w, &Request::Stop);
         }

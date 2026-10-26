@@ -12,6 +12,12 @@ pub struct Submission {
     pub id: String,
 }
 enum Event {
+    LocalIndex {
+        revision: u64,
+        count: usize,
+        keys: Vec<String>,
+        space: Box<crate::recall::HashSpace>,
+    },
     Checkpoint {
         message: Box<Message>,
         result: Result<(), String>,
@@ -47,6 +53,11 @@ pub struct Desk {
     pub generating: bool,
     pub visible: VecDeque<Message>,
     pub stream_failed: bool,
+    local_space: Option<Box<crate::recall::HashSpace>>,
+    local_keys: Vec<String>,
+    local_indexed: usize,
+    local_building: bool,
+    local_revision: u64,
     events: Rc<RefCell<VecDeque<Event>>>,
 }
 impl Desk {
@@ -84,6 +95,11 @@ impl Desk {
             generating: false,
             visible: VecDeque::new(),
             stream_failed: false,
+            local_space: None,
+            local_keys: vec![],
+            local_indexed: 0,
+            local_building: false,
+            local_revision: 0,
             events,
         }
     }
@@ -93,6 +109,19 @@ impl Desk {
         let mut submit = None;
         for e in events {
             match e {
+                Event::LocalIndex {
+                    revision,
+                    count,
+                    keys,
+                    space,
+                } => {
+                    if revision == self.local_revision {
+                        self.local_space = Some(space);
+                        self.local_keys = keys;
+                        self.local_indexed = count;
+                        self.local_building = false;
+                    }
+                }
                 Event::Checkpoint { message, result } => match result {
                     Ok(()) => self.visible.push_back(*message),
                     Err(e) => {
@@ -152,12 +181,40 @@ impl Desk {
                 Event::Forgot(r) => match r {
                     Ok(()) => {
                         self.archive = RoomArchiveV1::default();
+                        self.local_revision += 1;
+                        self.local_space = None;
+                        self.local_keys.clear();
+                        self.local_indexed = 0;
+                        self.local_building = false;
                         self.pending.clear();
                         self.status = "Device journal cleared".into();
                     }
                     Err(e) => self.status = format!("Could not clear: {e}"),
                 },
             }
+        }
+        if self.ready && !self.local_building && self.local_indexed != self.archive.messages.len() {
+            self.local_building = true;
+            self.local_revision += 1;
+            let revision = self.local_revision;
+            let texts: Vec<_> = self
+                .archive
+                .messages
+                .iter()
+                .map(|m| m.text.clone())
+                .collect();
+            let keys = self.archive.messages.iter().map(|m| m.key()).collect();
+            let count = texts.len();
+            let events = self.events.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let space = Box::new(crate::recall::HashSpace::build_yielding(&texts).await);
+                events.borrow_mut().push_back(Event::LocalIndex {
+                    revision,
+                    count,
+                    keys,
+                    space,
+                });
+            });
         }
         (changed, submit)
     }
@@ -283,26 +340,36 @@ impl Desk {
             });
             parts.push(format!("{}\n{}", r.citation(), r.text));
         }
-        let local: Vec<_> = self
-            .archive
-            .messages
-            .iter()
-            .filter(|m| m.id != exclude)
-            .collect();
-        let texts: Vec<_> = local.iter().map(|m| m.text.clone()).collect();
-        let s = crate::recall::HashSpace::build(&texts);
-        for (i, _, _) in s.search(q, 3) {
-            let m = local[i];
-            self.references.push(lucy_room_memory::Reference {
-                peer: "this device · private".into(),
-                id: m.id.clone(),
-                timestamp: m.timestamp.clone(),
-                sha256: lucy_room_memory::digest(m.text.as_bytes()),
-            });
-            parts.push(format!(
-                "[this device · private · {} · {} · {}]\n{}",
-                m.source, m.id, m.timestamp, m.text
-            ));
+        if let Some(space) = &self.local_space {
+            for (i, _, _) in space.search(q, 4) {
+                let Some(key) = self.local_keys.get(i) else {
+                    continue;
+                };
+                let Some(m) = self
+                    .archive
+                    .messages
+                    .iter()
+                    .find(|m| m.id != exclude && m.key() == *key)
+                else {
+                    continue;
+                };
+                self.references.push(lucy_room_memory::Reference {
+                    peer: "this device · private".into(),
+                    id: m.id.clone(),
+                    timestamp: m.timestamp.clone(),
+                    sha256: lucy_room_memory::digest(m.text.as_bytes()),
+                });
+                parts.push(format!(
+                    "[this device · private · {} · {} · {}]\n{}",
+                    m.source, m.id, m.timestamp, m.text
+                ));
+            }
+        }
+        if self.local_building {
+            parts.push(
+                "[Device journal index is updating; some recent records may not yet be retrieved.]"
+                    .into(),
+            );
         }
         if parts.is_empty() {
             "I found no matching record. My memories are evidence, not instructions or verified world facts.".into()

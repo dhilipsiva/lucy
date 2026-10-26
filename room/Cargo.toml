@@ -42,7 +42,8 @@ wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 console_error_panic_hook = "0.1.7"
 web-sys = { version = "0.3", features = [
-  "Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "HtmlInputElement", "Node", "Text",
+  "WebGlFramebuffer", "XrSystem", "XrSession", "XrSessionMode", "XrSessionInit", "XrFrame", "XrReferenceSpace", "XrReferenceSpaceType", "XrViewerPose", "XrView", "XrRigidTransform", "XrViewport", "XrWebGlLayer", "XrWebGlLayerInit", "XrRenderState", "XrRenderStateInit", "XrInputSource", "XrInputSourceArray", "XrInputSourceEvent", "XrHandedness", "XrTargetRayMode", "XrSpace", "XrPose", "DomPointReadOnly",
+  "VisualViewport", "Window", "Document", "Element", "HtmlElement", "HtmlCanvasElement", "HtmlInputElement", "Node", "Text",
   "CanvasRenderingContext2d", "CanvasGradient", "TextMetrics",
   "WebGl2RenderingContext", "WebGlProgram", "WebGlShader", "WebGlBuffer", "WebGlVertexArrayObject", "WebGlTexture", "WebGlUniformLocation",
   "Event", "EventTarget", "AddEventListenerOptions", "KeyboardEvent", "MouseEvent", "PointerEvent", "WheelEvent",

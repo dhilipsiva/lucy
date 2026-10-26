@@ -9,6 +9,7 @@
 pub mod app;
 pub mod cast;
 pub mod colors;
+mod controls;
 pub mod creatures;
 pub mod desk;
 pub mod engine;
@@ -49,3 +50,5 @@ pub fn start() {
         )));
     }
 }
+
+pub mod xr;

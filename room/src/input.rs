@@ -160,6 +160,15 @@ pub fn attach(canvas: &HtmlCanvasElement, q: Queue) {
             .ok();
         cb.forget();
     }
+    if let Some(viewport) = window.visual_viewport() {
+        let queue = q.clone();
+        let cb =
+            Closure::<dyn FnMut(web_sys::Event)>::new(move |_| push(&queue, InputEvent::Resize));
+        viewport
+            .add_event_listener_with_callback("resize", cb.as_ref().unchecked_ref())
+            .ok();
+        cb.forget();
+    }
     {
         let q1 = q.clone();
         let cb = Closure::<dyn FnMut(web_sys::Event)>::new(move |_e: web_sys::Event| {

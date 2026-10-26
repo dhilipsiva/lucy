@@ -28,7 +28,7 @@ pub struct Engine {
     mode: Mode,
     pub replies: Replies,
     queue: VecDeque<(u64, String)>,
-    in_flight: Option<u64>,
+    in_flight: Option<(u64, String)>,
     next_id: u64,
     observations: std::collections::BTreeMap<String, bool>,
     created_ms: f64,
@@ -68,7 +68,9 @@ impl Engine {
     fn spawn(replies: &Replies) -> Option<Mode> {
         let opts = web_sys::WorkerOptions::new();
         opts.set_type(web_sys::WorkerType::Module);
-        let worker = web_sys::Worker::new_with_options("./worker.js", &opts).ok()?;
+        let worker =
+            web_sys::Worker::new_with_options(&crate::sources::worker_url("engine").ok()?, &opts)
+                .ok()?;
         let ready = Rc::new(Cell::new(false));
         {
             let replies = replies.clone();
@@ -162,7 +164,9 @@ impl Engine {
         self.mode = Mode::Local {
             mind: Box::new(None),
         };
-        self.in_flight = None;
+        if let Some(request) = self.in_flight.take() {
+            self.queue.push_front(request);
+        }
         if let Some(files) = self.files.clone() {
             self.load(files);
             for (a, p) in self.observations.clone() {
@@ -170,7 +174,7 @@ impl Engine {
             }
         }
     }
-    /// Once a frame: post what waits, or run one query here; a worker silent for 10 s falls back.
+    /// Once a frame: post what waits, or run one query here; a worker silent for 4 s falls back.
     pub fn pump(&mut self) {
         match &mut self.mode {
             Mode::Worker {
@@ -179,9 +183,9 @@ impl Engine {
                 pending_load,
             } => {
                 if !ready.get() {
-                    if pending_load.is_some() && now_ms() - self.created_ms > 10_000.0 {
+                    if pending_load.is_some() && now_ms() - self.created_ms > 4_000.0 {
                         self.replies.borrow_mut().push_back(FromWorker::Fault {
-                            error: "the worker gave no sign in 10 s".into(),
+                            error: "the worker gave no sign in 4 s".into(),
                         });
                     }
                     return;
@@ -191,7 +195,7 @@ impl Engine {
                 }
                 if self.in_flight.is_none() {
                     if let Some((id, query)) = self.queue.pop_front() {
-                        self.in_flight = Some(id);
+                        self.in_flight = Some((id, query.clone()));
                         self.frames = 0;
                         post(worker, &ToWorker::Ask { id, query });
                     }
@@ -208,7 +212,11 @@ impl Engine {
     /// The app tells the engine an answer or error for `id` was taken; how many frames it drew
     /// while the engine ran (none on the main thread: it could not draw).
     pub fn answered(&mut self, id: u64) -> u32 {
-        if self.in_flight == Some(id) {
+        if self
+            .in_flight
+            .as_ref()
+            .is_some_and(|(pending, _)| *pending == id)
+        {
             self.in_flight = None;
         }
         std::mem::take(&mut self.frames)

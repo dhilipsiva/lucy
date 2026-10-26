@@ -388,6 +388,14 @@ commit, the adjudicators and their models.
     the worker (11 frames drawn during a 321 ms query on dhilipsiva.dev). Evidence in
     `roadmap/N8-evidence.json`. Open: his desktop reading; the chair's seat and the cast's
     lines with the eyes (N8b).
+  - N8b / N8c1 / N8e implementation (2026-10-26): Standing, Cast, Facts and Talk;
+    private uncapped IndexedDB originals and legacy migration; local pinned Candle Words
+    with hashed retrieval, streaming and Stop; export/restore and `lucy room import` into
+    one enrolled private peer with a verified commit. Phone sheets, gamepad focus and drawn
+    keyboard, and stereo WebXR panels/rays are implemented. Native and browser evidence is
+    in `roadmap/N8-evidence.json`; physical Quest and BLE acceptance remain open. The user's
+    latest instruction retires the old Nell app now, retaining only its redirect and the
+    original journal migration; it supersedes the earlier Nell retention condition.
 - [ ] **[W1] The word refuse.** Articles 7 to 9 say `protest` because Nibli's lexicon has
   no `refuse` yet. A branch `lexicon/refuse` in Nibli adds the word for dhilipsiva to
   merge. When a release of me pinned to that Nibli runs on every machine that imports my
