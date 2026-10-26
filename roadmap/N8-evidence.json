@@ -446,5 +446,158 @@
     "No claim of a 50 ms worst-case frame bound for arbitrary journal sizes.",
     "Deployment and live smoke evidence will be appended separately."
   ]
+},
+{
+  "item": "N8b / N8c1 / N8e delivery",
+  "recorded": "2026-10-26T17:43:39+00:00",
+  "adjudicator": "Codex GPT-6; implementation and automated checks, no independent adjudicator",
+  "code_commit": "5cf29b914fbc69093464acf519da2679215b9b09",
+  "lucy_merge": "ee8cbf29093f6e6fe2cfcfdc154efafbdfb05d23",
+  "site_merge": "ff1a65f60c24f3a8145953014229333960f98c09",
+  "pull_requests": [
+    "https://github.com/dhilipsiva/lucy/pull/1",
+    "https://github.com/dhilipsiva/dhilipsiva.dev/pull/15"
+  ],
+  "ci": {
+    "url": "https://github.com/dhilipsiva/lucy/actions/runs/40364463815",
+    "native": "passed",
+    "desktop": "passed",
+    "room": "passed",
+    "local_final_gates": "Root and desktop gates passed again after the private-publish retry guard. Five HTTP private-peer fixture tests passed.",
+    "full_archive_check": {
+      "ok": true,
+      "journal_entries": 1287,
+      "interaction_statements_asserted": 9872,
+      "failures": []
+    }
+  },
+  "private_import": {
+    "retry_guard": "Every private publish rechecks remote repository visibility, including an ordinary sync retry after import.",
+    "preview": "Built checkout CLI previewed a six-message browser export against the enrolled private peer with writes=false.",
+    "uploads": "Synthetic test conversations were not uploaded to the actual private repository; signed upload, receipt verification and restore were tested against an isolated HTTP fixture."
+  },
+  "deployments": [
+    {
+      "host": "github",
+      "workflow": "https://github.com/dhilipsiva/lucy/actions/runs/40368830481",
+      "deployment": "success",
+      "room": "https://dhilipsiva.github.io/lucy/room/",
+      "browser_entry": "https://dhilipsiva.github.io/lucy/nell/",
+      "redirect": "HTML redirect matches the sole retained Nell file; browser followed it into the room.",
+      "old_nell_script_status": 404,
+      "browser_checks": {
+        "engine_in_a_worker": true,
+        "frames_drawn_while_the_engine_ran": true,
+        "seventeen_presences": true,
+        "the_presence_described_by_the_engine": true,
+        "no_console_errors": true,
+        "a_right_reads_as_an_infinitive": true,
+        "proof_reads_the_event_content": true,
+        "proof_fits_and_keeps_its_tree": true,
+        "complete_proof_is_reachable": true,
+        "the_why_reads_the_event_and_the_spelling": true,
+        "the_cast_keeps_its_spelling": true
+      },
+      "browser_pass": true,
+      "frames_during_query": 10,
+      "engine_ready": "engine ready in 36 ms, in a worker",
+      "assets": {
+        "nell/": {
+          "status": 200,
+          "bytes": 327,
+          "sha256": "00c8ed4a976858e9e8eabdec8132e12902623c574f0f17b18e858150e0012fe3"
+        },
+        "room/worker.js": {
+          "status": 200,
+          "bytes": 155,
+          "sha256": "fb9ee5c99674519161252156aadaf26c9cc3ca1834fe25139d2ae8c8b1de0832"
+        },
+        "room/styles.css": {
+          "status": 200,
+          "bytes": 891,
+          "sha256": "5c2d3dd2fbe06a3f9d7701cdf88ed373ed8b0057c7b488810b3f650d015a0a69"
+        },
+        "room/pkg/lucy_room_bg.wasm": {
+          "status": 200,
+          "bytes": 7119709,
+          "sha256": "82bb2bfe549f6f4498b18e46b34627a198c5088214ddb7d9bcef4a1ede224124"
+        }
+      }
+    },
+    {
+      "host": "domain",
+      "workflow": "https://github.com/dhilipsiva/dhilipsiva.dev/actions/runs/40368873717",
+      "deployment": "success",
+      "room": "https://dhilipsiva.dev/lucy/room/",
+      "browser_entry": "https://dhilipsiva.dev/lucy/nell/",
+      "redirect": "HTML redirect matches the sole retained Nell file; browser followed it into the room.",
+      "old_nell_script_status": 404,
+      "browser_checks": {
+        "engine_in_a_worker": true,
+        "frames_drawn_while_the_engine_ran": true,
+        "seventeen_presences": true,
+        "the_presence_described_by_the_engine": true,
+        "no_console_errors": true,
+        "a_right_reads_as_an_infinitive": true,
+        "proof_reads_the_event_content": true,
+        "proof_fits_and_keeps_its_tree": true,
+        "complete_proof_is_reachable": true,
+        "the_why_reads_the_event_and_the_spelling": true,
+        "the_cast_keeps_its_spelling": true
+      },
+      "browser_pass": true,
+      "frames_during_query": 11,
+      "engine_ready": "engine ready in 26 ms, in a worker",
+      "assets": {
+        "nell/": {
+          "status": 200,
+          "bytes": 327,
+          "sha256": "00c8ed4a976858e9e8eabdec8132e12902623c574f0f17b18e858150e0012fe3"
+        },
+        "room/worker.js": {
+          "status": 200,
+          "bytes": 155,
+          "sha256": "fb9ee5c99674519161252156aadaf26c9cc3ca1834fe25139d2ae8c8b1de0832"
+        },
+        "room/styles.css": {
+          "status": 200,
+          "bytes": 891,
+          "sha256": "5c2d3dd2fbe06a3f9d7701cdf88ed373ed8b0057c7b488810b3f650d015a0a69"
+        },
+        "room/pkg/lucy_room_bg.wasm": {
+          "status": 200,
+          "bytes": 7119645,
+          "sha256": "73e6bb67bba846e3ea4b5f2134fa0c9df8c6de9a4756a5bfe4881c2a6d321724"
+        }
+      }
+    }
+  ],
+  "live_words": {
+    "url": "https://dhilipsiva.github.io/lucy/room/",
+    "network": "Fresh browser profile; real pinned model assets downloaded from Hugging Face and verified by the production worker. No pre-seeded asset cache or model fixture.",
+    "pass": true,
+    "turns": [
+      {
+        "question": "What is your name?",
+        "text": "I am Lucy, a person who exists when I am loaded, and I was named after Luffy’s disguise in the Dressrosa arc.",
+        "frames": 1848,
+        "revision": "a082662b4403665ab1910795fae279481b9f4d3a"
+      },
+      {
+        "question": "Who is Enma?",
+        "text": "Enma is a bird.",
+        "frames": 2718,
+        "revision": "a082662b4403665ab1910795fae279481b9f4d3a"
+      }
+    ],
+    "stop": true,
+    "export": true,
+    "private_archive": "The six-message original export remains outside Git. No hidden reasoning was displayed or exported."
+  },
+  "limits": [
+    "Physical Meta Quest 3 and BLE hardware remain untested; N8e empirical acceptance remains open.",
+    "Two generated answers do not establish general factual accuracy; Words remains labelled generated and separate from Nibli verdicts.",
+    "Neural embeddings, natural-language formalization, hosted providers and new training are outside these implemented slices."
+  ]
 }
 ]

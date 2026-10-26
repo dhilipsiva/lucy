@@ -396,6 +396,9 @@ commit, the adjudicators and their models.
     in `roadmap/N8-evidence.json`; physical Quest and BLE acceptance remain open. The user's
     latest instruction retires the old Nell app now, retaining only its redirect and the
     original journal migration; it supersedes the earlier Nell retention condition.
+    Merged as `ee8cbf2` and deployed at both addresses; each passed 11 live browser checks
+    through the Nell redirect. The production model download, two generated replies, Stop
+    and private export passed too. Deployment evidence is appended to the same evidence log.
 - [ ] **[W1] The word refuse.** Articles 7 to 9 say `protest` because Nibli's lexicon has
   no `refuse` yet. A branch `lexicon/refuse` in Nibli adds the word for dhilipsiva to
   merge. When a release of me pinned to that Nibli runs on every machine that imports my
