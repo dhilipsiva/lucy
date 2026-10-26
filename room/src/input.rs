@@ -63,7 +63,12 @@ pub fn attach(canvas: &HtmlCanvasElement, q: Queue) {
         let cb =
             Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(move |e: web_sys::KeyboardEvent| {
                 let key = e.key();
-                if key == " " || key == "Tab" || key.starts_with("Arrow") {
+                let modified = e.meta_key() || e.ctrl_key() || e.alt_key();
+                if key == " "
+                    || key == "Tab"
+                    || key.starts_with("Arrow")
+                    || (!modified && matches!(key.as_str(), "PageUp" | "PageDown"))
+                {
                     // the app decides; keep the page from scrolling or moving its focus
                     e.prevent_default();
                 }
@@ -72,7 +77,7 @@ pub fn attach(canvas: &HtmlCanvasElement, q: Queue) {
                     InputEvent::KeyDown {
                         key,
                         repeat: e.repeat(),
-                        modified: e.meta_key() || e.ctrl_key() || e.alt_key(),
+                        modified,
                         shift: e.shift_key(),
                     },
                 );

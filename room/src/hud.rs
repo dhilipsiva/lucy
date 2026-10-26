@@ -63,6 +63,7 @@ pub struct AnswerCard {
     pub why: String,
     pub proof: String,
     pub proof_open: bool,
+    pub proof_page: usize,
 }
 
 pub struct HudState<'a> {
@@ -109,6 +110,7 @@ pub struct Hud {
     pub bubble_pos: Option<(f64, f64)>,
     pub bubble_fits: bool,
     pub dpr: f64,
+    proof_page: Option<crate::text::ProofPage>,
 }
 impl Hud {
     pub fn new(dpr: f64) -> Hud {
@@ -117,6 +119,7 @@ impl Hud {
             panels,
             textures: (0..N).map(|_| None).collect(),
             drawn_version: u64::MAX,
+            proof_page: None,
             drawn_size: (0.0, 0.0),
             bubble_pos: None,
             bubble_fits: true,
@@ -130,6 +133,18 @@ impl Hud {
         } else {
             None
         }
+    }
+    pub fn proof_page_action(&self, forward: bool) -> Option<Action> {
+        if !self.panels[DOCK].visible {
+            return None;
+        }
+        let page = self.proof_page?;
+        let target = if forward {
+            page.next()
+        } else {
+            page.previous()
+        };
+        target.map(Action::ProofPage)
     }
     /// Redraw what changed; `version` is the app's counter of visible state.
     pub fn draw(&mut self, st: &HudState, version: u64) {
@@ -371,6 +386,7 @@ impl Hud {
         self.bubble_fits = visible && fits;
     }
     fn draw_dock(&mut self, st: &HudState) {
+        self.proof_page = None;
         let two = st.answer.is_some() && st.w >= 1180.0 && !st.dock_min;
         let w = if two {
             1120f64.min(st.w - 32.0)
@@ -413,6 +429,7 @@ impl Hud {
         } else {
             10.0 + 36.0 + 8.0 + chip_rows as f64 * 42.0 + 12.0
         };
+        let foot_h = if st.dock_min { 0.0 } else { 30.0 };
         // the answer board's height
         let mut right_h = 0.0;
         let title_f = font(400, 15.0, SANS);
@@ -442,13 +459,10 @@ impl Hud {
                 crate::text::wrap_measured(&a.body, right_w - 32.0, |t| p.measure(t, &title_f))
             };
             body_lines.truncate(10);
-            if a.proof_open {
-                for l in a.proof.lines() {
-                    let wrapped =
-                        crate::text::wrap_measured(l, right_w - 56.0, |t| p.measure(t, &pre_f));
-                    proof_lines.extend(wrapped);
-                }
-                proof_lines.truncate(14);
+            if a.proof_open && !st.dock_min {
+                proof_lines = crate::text::wrap_preformatted(&a.proof, right_w - 56.0, |t| {
+                    p.measure(t, &pre_f)
+                });
             }
             right_h = 12.0
                 + 18.0
@@ -461,14 +475,18 @@ impl Hud {
                 + why_lines.len() as f64 * 20.0
                 + (if why_lines.is_empty() { 0.0 } else { 8.0 })
                 + 22.0
-                + (if a.proof_open {
-                    10.0 + proof_lines.len() as f64 * 19.2 + 20.0
-                } else {
-                    0.0
-                })
                 + 12.0;
+            if a.proof_open && !st.dock_min {
+                // Keep the proof below the top HUD, even when the controls and
+                // answer stack. Paging exposes every line without growing the canvas.
+                let stacked = if two { 0.0 } else { left_h };
+                let available = st.h - 84.0 - 16.0 - foot_h - stacked - right_h - 56.0;
+                let rows = (available / 19.2).floor().clamp(1.0, 14.0) as usize;
+                let page = crate::text::ProofPage::new(proof_lines.len(), a.proof_page, rows);
+                right_h += 56.0 + page.rows as f64 * 19.2;
+                self.proof_page = Some(page);
+            }
         }
-        let foot_h = if st.dock_min { 0.0 } else { 30.0 };
         let h = if two {
             left_h.max(right_h) + foot_h
         } else if st.answer.is_some() && !st.dock_min {
@@ -612,8 +630,8 @@ impl Hud {
                 );
                 p.hit_add(x - 4.0, y, sw + 24.0, 22.0, Action::ToggleProof);
                 y += 22.0;
-                if a.proof_open {
-                    let ph = proof_lines.len() as f64 * 19.2 + 20.0;
+                if let Some(page) = self.proof_page {
+                    let ph = page.rows as f64 * 19.2 + 46.0;
                     p.fill_rounded(
                         x,
                         y + 4.0,
@@ -632,7 +650,18 @@ impl Hud {
                         1.0,
                         false,
                     );
-                    for (i, l) in proof_lines.iter().enumerate() {
+                    // A glyph wider than the available width must still never
+                    // paint through the border. The source remains in the text mirror.
+                    p.ctx().save();
+                    p.ctx().begin_path();
+                    p.ctx().rect(
+                        x + 12.0,
+                        y + 12.0,
+                        right_w - 56.0,
+                        page.rows as f64 * 19.2 + 2.0,
+                    );
+                    p.ctx().clip();
+                    for (i, l) in proof_lines[page.start..page.end].iter().enumerate() {
                         p.text(
                             x + 12.0,
                             y + 14.0 + i as f64 * 19.2,
@@ -640,6 +669,34 @@ impl Hud {
                             &pre_f,
                             &col::css(col::PAPER_200),
                         );
+                    }
+                    p.ctx().restore();
+                    let nav_y = y + 14.0 + page.rows as f64 * 19.2;
+                    let range = format!(
+                        "{}–{} / {} lines",
+                        if proof_lines.is_empty() {
+                            0
+                        } else {
+                            page.start + 1
+                        },
+                        page.end,
+                        proof_lines.len()
+                    );
+                    p.text(
+                        x + 12.0,
+                        nav_y + 7.0,
+                        &range,
+                        &font(400, 10.5, MONO),
+                        &col::css(col::FG_MUTED),
+                    );
+                    let mut nav_x = x + right_w - 44.0;
+                    for (label, target) in [("Next ›", page.next()), ("‹ Prev", page.previous())]
+                    {
+                        if let Some(target) = target {
+                            let width = p.measure(label, &font(500, 12.0, MONO)) + 20.0;
+                            nav_x -= width;
+                            p.ghost(nav_x, nav_y, label, Action::ProofPage(target));
+                        }
                     }
                 }
             }

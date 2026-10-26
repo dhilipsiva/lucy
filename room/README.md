@@ -30,7 +30,9 @@ stays at `../nell/` until this one reaches parity (N8e), then its addresses redi
   detected inputs; the finder when I am off-screen; H hides the HUD, F is full screen, V voice.
 - Keyboard and mouse: arrows or WASD walk, Q and E turn, Shift runs, Enter calls me, 1 to 6
   press the standing controls, Home turns to me; drag to look, wheel to approach, click me to
-  come closer. Touch and a pad's sticks work; their layouts come with N8e.
+  come closer. P opens the proof; Previous/Next and Page Up/Page Down reach every line. Long
+  proof tokens wrap inside the board, and nested steps keep their indentation. Touch and a
+  pad's sticks work; their layouts come with N8e.
 - The cast (N8d, `roadmap/N8d.md`): every named entity of my direct memory stands on a ring
   around the plinth, read from the file on load, so a new fact brings a new presence. His
   household where his hand-off put it (Enma and Pity on the perch, Bucchi and Gundus, his empty
@@ -72,7 +74,9 @@ cargo check --target wasm32-unknown-unknown  # the browser build type-checks
 wasm-pack build --release --target web --out-dir pkg --out-name lucy_room
 cd .. && python3 -m http.server 8000         # from the repository root
 # then open http://localhost:8000/room/
-CHROME=google-chrome node room/test/headless.mjs --shot /tmp/room.png   # the headless check, by hand; exits 1 on a failed check
+CHROME=google-chrome node room/test/headless.mjs --shot /tmp/room.png --proof-shot /tmp/proof.png
+# The headless check also reads canvas draw calls at wide and narrow widths, checks
+# every page against the complete engine trace, and exits 1 on a failed check.
 ```
 
 Rust 1.96 or newer with the `wasm32-unknown-unknown` target, and wasm-pack 0.15 (it fetches the

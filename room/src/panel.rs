@@ -15,6 +15,7 @@ pub enum Action {
     Group(String),
     Mode(String),
     ToggleProof,
+    ProofPage(usize),
     ClearAnswer,
     ToggleMin,
     Voice,

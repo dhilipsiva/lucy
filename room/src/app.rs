@@ -650,6 +650,7 @@ impl App {
                     why: String::new(),
                     proof: String::new(),
                     proof_open: false,
+                    proof_page: 0,
                 });
                 self.mirrors.set_answer(&format!("→ {error}"));
                 self.log(&format!("query error: {error}"));
@@ -696,6 +697,7 @@ impl App {
             why: a.why.clone(),
             proof: a.proof_text.clone(),
             proof_open: false,
+            proof_page: 0,
         });
         self.mirrors.set_answer(&format!(
             "{}\n→ {}\n{}\n{}\n\n{}\n\n{}",
@@ -741,6 +743,7 @@ impl App {
                     why: String::new(),
                     proof: String::new(),
                     proof_open: false,
+                    proof_page: 0,
                 });
                 self.mirrors.set_answer(&format!("{title}\n{body}"));
             }
@@ -819,6 +822,11 @@ impl App {
             Action::ToggleProof => {
                 if let Some(a) = &mut self.answer {
                     a.proof_open = !a.proof_open;
+                }
+            }
+            Action::ProofPage(page) => {
+                if let Some(a) = &mut self.answer {
+                    a.proof_page = page;
                 }
             }
             Action::ClearAnswer => {
@@ -902,6 +910,12 @@ impl App {
                     }
                     "f" => self.toggle_fullscreen(),
                     "v" => self.action(Action::Voice),
+                    "p" if !modified => self.action(Action::ToggleProof),
+                    "pageup" | "pagedown" if !modified => {
+                        if let Some(action) = self.hud.proof_page_action(k == "pagedown") {
+                            self.action(action);
+                        }
+                    }
                     "home" => self.action(Action::Find),
                     "tab" => self.tab(shift),
                     "escape" => self.clear_subject(),
