@@ -282,5 +282,46 @@
         "console": []
       }
     }
-  }
+  },
+{
+  "item": "N8b",
+  "pre_registration": "34c16db:roadmap/N8b.md",
+  "code_commit": "a31cc1f",
+  "recorded": "2026-10-26",
+  "adjudicator": "Codex GPT-6 (implementation and automated checks; no independent adjudicator)",
+  "native": "nix develop --command just ci and nix develop .#desktop --command just ci-desktop passed; room clippy passed; 39 room unit and 6 integration tests passed; 3 shared archive tests passed",
+  "browser": {
+    "pass": true,
+    "checks": [
+      "typed Nibli proof",
+      "IME composition guard",
+      "exact Unicode and multiline",
+      "private room provenance",
+      "full journal text",
+      "reload identity",
+      "more than 2000 durable messages",
+      "legacy originals retained",
+      "quota failure and retry"
+    ],
+    "records": 2012
+  },
+  "baseline_browser_checks": {
+    "engine_in_a_worker": true,
+    "frames_drawn_while_the_engine_ran": true,
+    "seventeen_presences": true,
+    "the_presence_described_by_the_engine": true,
+    "no_console_errors": true,
+    "a_right_reads_as_an_infinitive": true,
+    "proof_reads_the_event_content": true,
+    "proof_fits_and_keeps_its_tree": true,
+    "complete_proof_is_reachable": true,
+    "the_why_reads_the_event_and_the_spelling": true,
+    "the_cast_keeps_its_spelling": true
+  },
+  "limits": [
+    "No physical BLE device exercised",
+    "Platform controls and actual model generation are the following slices",
+    "User now explicitly requests Nell retirement and redirect; this supersedes the earlier retention condition"
+  ]
+}
 ]
