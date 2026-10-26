@@ -223,16 +223,23 @@ fn concurrent_non_force_push_refetches_and_preserves_both_writers() {
     let q = p.clone();
     let mut raced = false;
     let mut blobs = 0;
+    let mut pending = BTreeMap::new();
+    let mut published: Option<BTreeMap<String, Operation>> = None;
     let mock = Mock::new(move |method, path, body| {
+        if method == "GET" && path == "/repos/example/memory" {
+            return (200, json!({"private":true}).to_string(), vec![]);
+        }
         if path.contains("/git/ref/") {
             return (
                 200,
-                json!({"ref":"refs/heads/lucy-memory","object":{"sha":if raced{"c1"}else{"c0"}}})
+                json!({"ref":"refs/heads/lucy-memory","object":{"sha":if published.is_some(){"candidate"}else if raced{"c1"}else{"c0"}}})
                     .to_string(),
                 vec![],
             );
         }
-        let log = if raced {
+        let log = if let Some(log) = &published {
+            log.clone()
+        } else if raced {
             concurrent.clone()
         } else {
             BTreeMap::new()
@@ -246,6 +253,11 @@ fn concurrent_non_force_push_refetches_and_preserves_both_writers() {
         }
         if path.ends_with("/git/blobs") {
             blobs += 1;
+            let text =
+                String::from_utf8(B64.decode(body["content"].as_str().unwrap()).unwrap()).unwrap();
+            if text.contains(", Operation, Json).") {
+                pending = decode(&text).unwrap();
+            }
             return (
                 201,
                 json!({"sha":format!("blob{blobs}")}).to_string(),
@@ -264,6 +276,7 @@ fn concurrent_non_force_push_refetches_and_preserves_both_writers() {
             raced = true;
             (409, "{}".into(), vec![])
         } else {
+            published = Some(pending.clone());
             (200, "{}".into(), vec![])
         }
     });
@@ -315,4 +328,130 @@ fn public_discovery_cannot_name_local_credentials_or_origin_routes() {
     let mut planted = peer;
     planted.credential_env = Some("LOCAL_SECRET".into());
     assert!(public_enrollment(&planted).is_err());
+}
+
+#[test]
+fn room_archive_import_publish_restore_and_recall_keep_origin() {
+    let (temp, p, _) = fixture();
+    let archive = lucy_room_memory::RoomArchiveV1 {
+        messages: vec![lucy_room_memory::Message {
+            id: "room-origin-uuid".into(),
+            source: "lucy-room".into(),
+            session: "browser-visit".into(),
+            role: "user".into(),
+            channel: "user".into(),
+            speaker: "visitor".into(),
+            text: "Remember the lavender bird 🐦\nExactly this line.".into(),
+            timestamp: "2026-10-26T10:00:00Z".into(),
+            timestamp_kind: "capture".into(),
+            private: true,
+            provenance: lucy_room_memory::Provenance {
+                room: "https://example.test/lucy/room/".into(),
+                device: "browser-device".into(),
+                status: "complete".into(),
+                ..Default::default()
+            },
+        }],
+        ..Default::default()
+    };
+    let bytes = archive.json().unwrap();
+    crate::room::import_local(temp.path(), bytes.as_bytes(), &p.name).unwrap();
+    let expected = Replica::open(temp.path()).unwrap().read(&p).unwrap();
+    let mut blobs = BTreeMap::<String, String>::new();
+    let mut tree = BTreeMap::<String, String>::new();
+    let mut published = false;
+    let mock = Mock::new(move |method, path, body| {
+        if path == "/repos/example/memory" {
+            return (200, json!({"private":true}).to_string(), vec![]);
+        }
+        if path.contains("/git/ref/") {
+            return if published {
+                (200,json!({"ref":"refs/heads/lucy-memory","object":{"sha":"1234567890123456789012345678901234567890"}}).to_string(),vec![])
+            } else {
+                (404, "{}".into(), vec![])
+            };
+        }
+        if method == "GET" && path.contains("/contents/") {
+            let name = path
+                .split("/contents/")
+                .nth(1)
+                .unwrap()
+                .split('?')
+                .next()
+                .unwrap();
+            return (200, blobs[&tree[name]].clone(), vec![]);
+        }
+        if path.ends_with("/git/blobs") {
+            let sha = format!("blob{}", blobs.len());
+            blobs.insert(
+                sha.clone(),
+                String::from_utf8(B64.decode(body["content"].as_str().unwrap()).unwrap()).unwrap(),
+            );
+            return (201, json!({"sha":sha}).to_string(), vec![]);
+        }
+        if path.ends_with("/git/trees") {
+            for entry in body["tree"].as_array().unwrap() {
+                tree.insert(
+                    entry["path"].as_str().unwrap().into(),
+                    entry["sha"].as_str().unwrap().into(),
+                );
+            }
+            return (201, json!({"sha":"tree"}).to_string(), vec![]);
+        }
+        if path.ends_with("/git/commits") {
+            return (
+                201,
+                json!({"sha":"1234567890123456789012345678901234567890"}).to_string(),
+                vec![],
+            );
+        }
+        assert_eq!(path, "/repos/example/memory/git/refs");
+        assert_eq!(body["ref"], "refs/heads/lucy-memory");
+        published = true;
+        (201, "{}".into(), vec![])
+    });
+    let report = sync_private_with(temp.path(), &p, &mock.api).unwrap();
+    assert_eq!(report["pending"], false);
+    assert_eq!(report["head"], "1234567890123456789012345678901234567890");
+    let restored = tempfile::tempdir().unwrap();
+    let rep = Replica::open(restored.path()).unwrap();
+    let mut read_peer = p.clone();
+    read_peer.upload = false;
+    rep.enroll(read_peer.clone()).unwrap();
+    drop(rep);
+    sync_with(restored.path(), &read_peer, &mock.api).unwrap();
+    let rep = Replica::open(restored.path()).unwrap();
+    assert_eq!(rep.read(&read_peer).unwrap(), expected);
+    drop(rep);
+    let recalled = super::super::recall(restored.path(), "lavender", Some(&p.scope)).unwrap();
+    assert!(recalled.iter().any(|r|r.to_string().contains("lucy-room")&&r.to_string().contains("browser-visit")));
+    let public = Mock::new(|_, _, _| (200, json!({"private":false}).to_string(), vec![]));
+    assert!(
+        sync_private_with(temp.path(), &p, &public.api)
+            .unwrap_err()
+            .contains("private repository")
+    );
+    assert_eq!(public.requests.lock().unwrap().len(), 1);
+    // General sync retries reach publish directly, and must refuse before POSTing blobs too.
+    assert!(
+        public
+            .api
+            .publish(&p, None, &expected)
+            .unwrap_err()
+            .contains("private repository")
+    );
+    assert!(
+        public
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|r| r["method"] == "GET")
+    );
+    let missing = Mock::new(|_, _, _| (503, "{}".into(), vec![]));
+    assert!(sync_private_with(temp.path(), &p, &missing.api).is_err());
+    assert_eq!(
+        Replica::open(temp.path()).unwrap().read(&p).unwrap(),
+        expected
+    );
 }

@@ -28,6 +28,22 @@ pub enum Action {
     Find,
     Xr,
     Focus,
+    ChipPage(i32),
+    Submit,
+    ClearDraft,
+    Keyboard,
+    Key(String),
+    DrawerPage(i32),
+    Export(bool),
+    Restore,
+    Forget,
+    Persist,
+    RetryStorage,
+    Seat,
+    Eye(String),
+    Relay(String),
+    LoadWords,
+    StopWords,
 }
 #[derive(Clone, Debug)]
 pub struct Hit {
@@ -38,6 +54,10 @@ pub struct Hit {
     pub action: Action,
 }
 
+thread_local! {static TEXTURE_LIMIT:std::cell::Cell<f64> = const {std::cell::Cell::new(4096.0)};}
+pub fn texture_limit(limit: f64) {
+    TEXTURE_LIMIT.with(|l| l.set(limit.max(1.0)));
+}
 pub const MONO: &str = "'IBM Plex Mono', ui-monospace, Menlo, monospace";
 pub const SANS: &str = "'IBM Plex Sans', system-ui, sans-serif";
 pub const DISPLAY: &str = "'Space Grotesk', 'IBM Plex Sans', sans-serif";
@@ -51,6 +71,8 @@ pub struct Panel {
     pub w: f64,
     pub h: f64,
     pub dpr: f64,
+    requested_dpr: f64,
+    pub control_h: f64,
     pub tex: Option<usize>,
     pub hits: Vec<Hit>,
     pub x: f64,
@@ -75,6 +97,8 @@ impl Panel {
             w: 1.0,
             h: 1.0,
             dpr,
+            requested_dpr: dpr,
+            control_h: 34.0,
             tex: None,
             hits: Vec::new(),
             x: 0.0,
@@ -86,10 +110,19 @@ impl Panel {
         p.resize(w, h);
         p
     }
+    pub fn pixel_ratio(&mut self, dpr: f64) {
+        self.requested_dpr = dpr;
+        self.resize(self.w, self.h);
+    }
     /// Size in CSS pixels; the canvas backs it at the device ratio.
     pub fn resize(&mut self, w: f64, h: f64) {
         self.w = w.max(1.0);
         self.h = h.max(1.0);
+        self.dpr = TEXTURE_LIMIT.with(|l| {
+            self.requested_dpr
+                .min(l.get() / self.w)
+                .min(l.get() / self.h)
+        });
         self.canvas.set_width((self.w * self.dpr).ceil() as u32);
         self.canvas.set_height((self.h * self.dpr).ceil() as u32);
         self.ctx
@@ -264,7 +297,7 @@ impl Panel {
             .unwrap_or(0.0);
         let tw = self.measure(label, &f);
         let w = tw + glyph_w + 24.0;
-        let h = 34.0;
+        let h = self.control_h;
         if focused {
             self.stroke_rounded(
                 x - 3.0,
@@ -294,7 +327,11 @@ impl Panel {
     pub fn ghost(&mut self, x: f64, y: f64, label: &str, action: Action) -> f64 {
         let f = font(500, 12.0, MONO);
         let tw = self.measure(label, &f);
-        let (w, h) = (tw + 20.0, 28.0);
+        let (w, h) = if self.control_h >= 44.0 {
+            ((tw + 20.0).max(44.0), 44.0)
+        } else {
+            (tw + 20.0, 28.0)
+        };
         self.text(x + 10.0, y + 7.0, label, &f, &col::css(col::FG_MUTED));
         self.hit_add(x, y, w, h, action);
         w
@@ -308,7 +345,7 @@ impl Panel {
         on: Option<u32>,
         action: Action,
     ) -> f64 {
-        let s = 36.0;
+        let s = self.control_h.max(36.0);
         let border = on.unwrap_or(col::VOID_500);
         self.stroke_rounded(x, y, s, s, 6.0, &col::css(border), 1.0, false);
         let f = font(600, 15.0, MONO);
@@ -340,7 +377,7 @@ impl Panel {
             .map(|n| self.measure(&n.to_string(), &fc) + 6.0)
             .unwrap_or(0.0);
         let w = tw + cw + 24.0;
-        let h = 36.0;
+        let h = self.control_h.max(36.0);
         self.text(
             x + 12.0,
             y + 11.0,

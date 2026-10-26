@@ -64,6 +64,7 @@ pub struct World {
     pub pitch: f32,
     focus: Option<Focus>,
     pub eyes_watching: bool,
+    observations: std::collections::BTreeMap<String, (NodeId, bool, f32)>,
     pub wake_p: f32,
     dust_t: f32,
 }
@@ -251,11 +252,34 @@ impl World {
             pitch: -0.37,
             focus: None,
             eyes_watching: false,
+            observations: Default::default(),
             wake_p: 0.0,
             dust_t: 0.0,
         };
         w.wake(scene, 0.0);
         w
+    }
+    pub fn observation(&mut self, gl: &Gl, scene: &mut Scene, atom: &str, present: bool) {
+        if !self.observations.contains_key(atom) {
+            let root = scene.root;
+            let id = match atom {
+                "Bird" => Bird::build(gl, scene, root, creatures::UNKNOWN_BIRD, 42).group,
+                "Dog" => Dog::build(gl, scene, root, creatures::UNKNOWN_DOG, 42).group,
+                "Person" => Figure::build(gl, scene, root).group,
+                _ => return,
+            };
+            scene.set_pos(
+                id,
+                Vec3::new(
+                    1.3 + 0.65 * self.observations.len() as f32,
+                    if atom == "Bird" { 0.9 } else { 0.0 },
+                    -0.4,
+                ),
+            );
+            self.observations.insert(atom.into(), (id, false, 0.0));
+        }
+        self.observations.get_mut(atom).unwrap().1 = present;
+        self.eyes_watching = self.observations.values().any(|(_, p, _)| *p);
     }
     // ── the camera ──
     pub fn camera_world(&self) -> Mat4 {
@@ -507,6 +531,13 @@ impl World {
     }
     /// Per frame: the glide, the dust, the rings, and her.
     pub fn step(&mut self, scene: &mut Scene, t: f32, dt: f32) {
+        for (id, p, scale) in self.observations.values_mut() {
+            let target = if *p { 1.0 } else { 0.0 };
+            *scale += (target - *scale) * (dt * 7.0).min(1.0);
+            scene.set_scale(*id, Vec3::splat((*scale).max(0.001)));
+            scene.set_visible(*id, *scale > 0.005);
+        }
+
         if let Some(f) = &self.focus {
             let k = 1.0 - (-dt * 4.5).exp();
             self.rig = self.rig.lerp(f.pos, k);

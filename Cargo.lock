@@ -1137,6 +1137,7 @@ dependencies = [
  "ed25519-dalek",
  "getrandom 0.4.1",
  "gtk4",
+ "lucy-room-memory",
  "nibli-engine",
  "nibli-kr",
  "nibli-lexicon",
@@ -1154,6 +1155,15 @@ dependencies = [
  "sha2",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "lucy-room-memory"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

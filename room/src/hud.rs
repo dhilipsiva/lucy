@@ -67,6 +67,9 @@ pub struct AnswerCard {
 }
 
 pub struct HudState<'a> {
+    pub desk: &'a crate::desk::Desk,
+    pub words_status: &'a str,
+    pub drawer_body: &'a str,
     pub phase: Phase,
     pub w: f64,
     pub h: f64,
@@ -86,16 +89,21 @@ pub struct HudState<'a> {
     pub wake_progress: f32,
     pub wake_animating: bool,
     pub focus: Option<usize>,
+    pub gamepad: bool,
+    pub xr_active: bool,
+    pub xr_supported: bool,
 }
 
 const TOP_L: usize = 0;
-const TOP_R: usize = 1;
-const BUBBLE: usize = 2;
-const DOCK: usize = 3;
+pub const TOP_R: usize = 1;
+pub const BUBBLE: usize = 2;
+pub const DOCK: usize = 3;
 const WAKE: usize = 4;
 const RESTORE: usize = 5;
 const FINDER: usize = 6;
-const N: usize = 7;
+pub const MIND: usize = 7;
+pub const KEYBOARD: usize = 8;
+const N: usize = 9;
 
 pub enum HitResult {
     Nothing,
@@ -124,6 +132,12 @@ impl Hud {
             bubble_pos: None,
             bubble_fits: true,
             dpr,
+        }
+    }
+    pub fn pixel_ratio(&mut self, dpr: f64) {
+        self.dpr = dpr;
+        for p in &mut self.panels {
+            p.pixel_ratio(dpr);
         }
     }
     pub fn dock_top(&self) -> Option<f64> {
@@ -156,6 +170,11 @@ impl Hud {
         self.drawn_size = (st.w, st.h);
         for p in &mut self.panels {
             p.visible = false;
+            p.control_h = if st.w < 600.0 || st.gamepad || st.xr_active {
+                44.0
+            } else {
+                34.0
+            };
         }
         match st.phase {
             Phase::Wake => {
@@ -173,9 +192,18 @@ impl Hud {
                     self.draw_restore(st);
                 } else {
                     self.draw_top(st);
-                    self.draw_dock(st);
+                    if st.w < 600.0 || st.gamepad || st.xr_active {
+                        self.draw_platform_dock(st);
+                    } else {
+                        self.draw_dock(st);
+                    }
+                    self.draw_mind(st);
+                    self.draw_keyboard(st);
                 }
             }
+        }
+        if let Some(index) = st.focus {
+            self.focus_ring(index);
         }
     }
     fn draw_top(&mut self, st: &HudState) {
@@ -213,7 +241,11 @@ impl Hud {
         } else {
             14.0 + dots_w + line_w + 14.0
         };
-        let w = 14.0 + 6.0 + 14.0 + name_w + 8.0 + alias_w + right_part;
+        let w = if st.w < 600.0 {
+            96.0
+        } else {
+            14.0 + 6.0 + 14.0 + name_w + 8.0 + alias_w + right_part
+        };
         let h = 52.0;
         p.resize(w.min(st.w - 32.0).max(120.0), h);
         p.x = 16.0;
@@ -225,7 +257,9 @@ impl Hud {
         let mut x = 34.0;
         x += p.text(x, 15.0, "Lucy", &name_f, &col::css(col::PAPER_100));
         x += p.text(x, 15.0, ".", &name_f, &col::css(col::EMBER_500)) + 8.0;
-        x += p.text(x, 22.0, "alias Nell", &alias_f, &col::css(col::FG_FAINT)) + 14.0;
+        if st.w >= 600.0 {
+            x += p.text(x, 22.0, "alias Nell", &alias_f, &col::css(col::FG_FAINT)) + 14.0;
+        }
         if !compact {
             p.line(x, 14.0, x, h - 14.0, &col::css(col::VOID_500), 1.0);
             x += 14.0;
@@ -248,17 +282,28 @@ impl Hud {
             }
             p.text(x, 20.0, &line, &line_f, &col::css(col::FG_MUTED));
         }
+        p.hit_add(0.0, 0.0, p.w, p.h, Action::Find);
         p.dirty = true;
         // right group: voice ∿ · full screen ⤢ · hide H
         let r = &mut self.panels[TOP_R];
-        let bw = 36.0 * 3.0 + 6.0 * 2.0 + 12.0;
-        r.resize(bw, 48.0);
+        let count = if st.xr_supported || st.xr_active {
+            5.0
+        } else {
+            4.0
+        };
+        let size = r.control_h.max(36.0);
+        let bw = size * count + 6.0 * (count - 1.0) + 12.0;
+        r.resize(bw, size + 12.0);
         r.x = st.w - 16.0 - bw;
         r.y = 16.0;
         r.visible = true;
         r.begin();
         r.glass(0.0, 0.0, r.w, r.h, 10.0);
         let mut x = 6.0;
+        x += r.icon_button(x, 6.0, "M", None, Action::Mind) + 6.0;
+        if st.xr_supported || st.xr_active {
+            x += r.icon_button(x, 6.0, "VR", None, Action::Xr) + 6.0;
+        }
         x += r.icon_button(
             x,
             6.0,
@@ -279,6 +324,187 @@ impl Hud {
         ) + 6.0;
         r.icon_button(x, 6.0, "H", None, Action::HideHud);
         r.dirty = true;
+    }
+    fn composer(p: &mut Panel, st: &HudState, w: f64, y: f64) {
+        let mut x = 14.0;
+        for (id, label) in [
+            ("words", "Words"),
+            ("recall", "Recall"),
+            ("nibli", "Nibli"),
+            ("ask", "Ask · soon"),
+        ] {
+            x += p.tab(
+                x,
+                y,
+                label,
+                None,
+                st.desk.mode == id,
+                Action::Mode(id.into()),
+            );
+        }
+        let fy = y + 38.0;
+        p.fill_rounded(14.0, fy, w - 28.0, 55.0, 6.0, &col::css(col::VOID_900));
+        p.hit_add(14.0, fy, w - 28.0, 55.0, Action::Focus);
+        let hint = if st.desk.draft.is_empty() {
+            "Write a question…"
+        } else {
+            &st.desk.draft
+        };
+        let f = font(400, 14.0, SANS);
+        let lines = crate::text::wrap_measured(hint, w - 55.0, |s| p.measure(s, &f));
+        for (i, l) in lines
+            .iter()
+            .rev()
+            .take(2)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .enumerate()
+        {
+            p.text(
+                22.0,
+                fy + 8.0 + i as f64 * 19.0,
+                l,
+                &f,
+                &col::css(col::PAPER_100),
+            );
+        }
+        p.ghost(
+            14.0,
+            fy + 62.0,
+            if st.desk.generating {
+                "Stop"
+            } else {
+                "Send ↵"
+            },
+            if st.desk.generating {
+                Action::StopWords
+            } else {
+                Action::Submit
+            },
+        );
+        p.ghost(100.0, fy + 62.0, "×", Action::ClearDraft);
+        p.ghost(140.0, fy + 62.0, "⌨", Action::Keyboard);
+        p.text(
+            14.0,
+            fy + 96.0,
+            if st.desk.generating {
+                st.words_status
+            } else {
+                &st.desk.status
+            },
+            &font(400, 10.5, MONO),
+            &col::css(col::FG_MUTED),
+        );
+    }
+    fn draw_mind(&mut self, st: &HudState) {
+        let Some(tab) = &st.desk.drawer else { return };
+        self.panels[DOCK].visible = false;
+        self.panels[BUBBLE].visible = false;
+        let p = &mut self.panels[MIND];
+        let w = (st.w - 24.0).min(760.0);
+        let h = if st.w < 600.0 {
+            st.h * 0.78
+        } else {
+            (st.h - 100.0).max(240.0)
+        };
+        p.resize(w, h);
+        p.x = (st.w - w) / 2.0;
+        p.y = if st.w < 600.0 { st.h - h } else { 80.0 };
+        p.visible = true;
+        p.begin();
+        p.glass(0.0, 0.0, w, h, 12.0);
+        p.ghost(w - 42.0, 8.0, "×", Action::CloseMind);
+        let mut x = 8.0;
+        for name in ["standing", "memory", "journal", "log", "about"] {
+            let width = (w - 16.0) / 5.0;
+            p.text(
+                x + 4.0,
+                58.0,
+                name,
+                &font(500, if w < 500.0 { 11.0 } else { 13.0 }, MONO),
+                &col::css(if tab == name {
+                    col::EMBER_500
+                } else {
+                    col::PAPER_100
+                }),
+            );
+            p.hit_add(x, 44.0, width, 44.0, Action::MindTab(name.into()));
+            x += width;
+        }
+        p.text(
+            16.0,
+            16.0,
+            "My mind",
+            &font(600, 18.0, DISPLAY),
+            &col::css(col::PAPER_100),
+        );
+        let actions = if tab == "journal" {
+            vec![
+                ("Export all", Action::Export(false)),
+                ("This visit", Action::Export(true)),
+                ("Restore", Action::Restore),
+                ("Keep storage", Action::Persist),
+                ("Retry storage", Action::RetryStorage),
+                (
+                    if st.desk.forget_confirm {
+                        "Confirm forget"
+                    } else {
+                        "Forget"
+                    },
+                    Action::Forget,
+                ),
+            ]
+        } else if tab == "standing" {
+            vec![("Verify standing", Action::Group("standing".into()))]
+        } else {
+            vec![]
+        };
+        let mut x = 12.0;
+        let mut y = 88.0;
+        for (label, a) in actions {
+            let size = p.measure(label, &font(400, 12.0, MONO)) + 24.0;
+            if x + size > w - 12.0 {
+                x = 12.0;
+                y += 48.0;
+            }
+            p.ghost(x, y, label, a);
+            x += size;
+        }
+        if tab == "journal" {
+            y += 48.0;
+            p.ghost(
+                12.0,
+                y,
+                if st.desk.seat {
+                    "Seat: dhilipsiva (self-report)"
+                } else {
+                    "Seat: visitor · I am dhilipsiva"
+                },
+                Action::Seat,
+            );
+        }
+        y += 48.0;
+        let f = font(400, 13.0, MONO);
+        let lines = crate::text::wrap_preformatted(st.drawer_body, w - 32.0, |s| p.measure(s, &f));
+        let rows = ((h - y - 48.0) / 20.0).max(1.0) as usize;
+        let page = crate::text::ProofPage::new(lines.len(), st.desk.page, rows);
+        for (i, l) in lines.iter().skip(page.start).take(rows).enumerate() {
+            p.text(16.0, y + i as f64 * 20.0, l, &f, &col::css(col::PAPER_100));
+        }
+        if page.previous().is_some() {
+            p.ghost(16.0, h - 48.0, "‹ Previous", Action::DrawerPage(-1));
+        }
+        if page.next().is_some() {
+            p.ghost(w - 110.0, h - 48.0, "Next ›", Action::DrawerPage(1));
+        }
+        p.text(
+            w / 2.0 - 32.0,
+            h - 28.0,
+            &format!("{} / {}", page.index + 1, page.count),
+            &f,
+            &col::css(col::FG_MUTED),
+        );
     }
     fn draw_bubble(&mut self, st: &HudState) {
         let Some(sp) = st.speech else {
@@ -385,6 +611,326 @@ impl Hud {
         p.y = py - p.h;
         self.bubble_fits = visible && fits;
     }
+    fn draw_platform_dock(&mut self, st: &HudState) {
+        self.proof_page = None;
+        let p = &mut self.panels[DOCK];
+        p.control_h = 44.0;
+        let w = (st.w - 24.0).min(if st.gamepad { 1280.0 } else { 760.0 });
+        let expanded = !st.dock_min;
+        let group = st
+            .groups
+            .iter()
+            .find(|g| g.id == st.group)
+            .or(st.groups.first());
+        let mut rows: Vec<Vec<(usize, f64)>> = vec![];
+        let mut row = vec![];
+        let mut used = 0.0;
+        if let Some(g) = group {
+            for (i, item) in g.items.iter().enumerate() {
+                let width = (p.measure(&item.label, &font(400, 13.0, MONO)) + 32.0).min(w - 28.0);
+                if used + width > w - 28.0 && !row.is_empty() {
+                    rows.push(std::mem::take(&mut row));
+                    used = 0.0;
+                }
+                row.push((i, width));
+                used += width + 8.0;
+            }
+            if !row.is_empty() {
+                rows.push(row);
+            }
+        }
+        let page = st.desk.chip_page.min(rows.len().saturating_sub(1));
+        let composer = expanded && st.group == "talk";
+        let mut y = 96.0;
+        if expanded {
+            y += 52.0;
+            if rows.len() > 1 {
+                y += 44.0;
+            }
+            if composer {
+                y += 144.0;
+            }
+        }
+        let answer_y = y;
+        let available = (st.h * 0.78 - y - 48.0).max(70.0);
+        let answer_h = if expanded && st.answer.is_some() {
+            available.min(if st.answer.is_some_and(|a| a.proof_open) {
+                270.0
+            } else {
+                150.0
+            })
+        } else {
+            0.0
+        };
+        let h = y + answer_h + if st.gamepad { 48.0 } else { 12.0 };
+        p.resize(w, h);
+        p.x = (st.w - w) / 2.0;
+        p.y = st.h - 12.0 - h;
+        p.visible = true;
+        p.begin();
+        p.glass(0.0, 0.0, w, h, 12.0);
+        p.ghost(
+            14.0,
+            0.0,
+            if expanded {
+                "Controls ▾"
+            } else {
+                "Controls ▴"
+            },
+            Action::ToggleMin,
+        );
+        if st.xr_active {
+            p.ghost(w - 98.0, 0.0, "Exit VR", Action::Xr);
+            p.ghost(160.0, 0.0, "Turn to Lucy", Action::Find);
+        }
+        let mut x = 8.0;
+        for g in st.groups {
+            x += p.tab(
+                x,
+                44.0,
+                &g.label,
+                None,
+                st.group == g.id,
+                Action::Group(g.id.clone()),
+            );
+        }
+        if expanded {
+            let mut x = 14.0;
+            if let (Some(g), Some(row)) = (group, rows.get(page)) {
+                for &(i, cw) in row {
+                    let label = &g.items[i].label;
+                    let mut short = label.clone();
+                    while p.measure(&short, &font(400, 13.0, MONO)) + 24.0 > cw
+                        && short.chars().count() > 3
+                    {
+                        short.pop();
+                    }
+                    if short != *label {
+                        short.pop();
+                        short.push('…');
+                    }
+                    p.chip(
+                        x,
+                        96.0,
+                        &short,
+                        ChipStyle::plain(),
+                        Action::Control(i),
+                        false,
+                    );
+                    x += cw + 8.0;
+                }
+            }
+            y = 148.0;
+            if rows.len() > 1 {
+                p.ghost(14.0, y, "‹ Chips", Action::ChipPage(-1));
+                p.ghost(w - 100.0, y, "Chips ›", Action::ChipPage(1));
+                y += 44.0;
+            }
+            if composer {
+                let mut x = 8.0;
+                for (id, label) in [
+                    ("words", "Words"),
+                    ("recall", "Recall"),
+                    ("nibli", "Nibli"),
+                    ("ask", "Ask"),
+                ] {
+                    x += p.tab(
+                        x,
+                        y,
+                        label,
+                        None,
+                        st.desk.mode == id,
+                        Action::Mode(id.into()),
+                    );
+                }
+                y += 48.0;
+                p.fill_rounded(14.0, y, w - 28.0, 44.0, 6.0, &col::css(col::VOID_900));
+                p.hit_add(14.0, y, w - 28.0, 44.0, Action::Focus);
+                let hint = if st.desk.draft.is_empty() {
+                    "Write a question…"
+                } else {
+                    &st.desk.draft
+                };
+                let tail = hint
+                    .chars()
+                    .rev()
+                    .take(((w - 48.0) / 8.0) as usize)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect::<String>();
+                p.text(
+                    22.0,
+                    y + 12.0,
+                    &tail,
+                    &font(400, 14.0, SANS),
+                    &col::css(col::PAPER_100),
+                );
+                y += 48.0;
+                p.ghost(
+                    14.0,
+                    y,
+                    if st.desk.generating {
+                        "Stop"
+                    } else {
+                        "Send ↵"
+                    },
+                    if st.desk.generating {
+                        Action::StopWords
+                    } else {
+                        Action::Submit
+                    },
+                );
+                p.ghost(116.0, y, "Clear", Action::ClearDraft);
+                p.ghost(w - 58.0, y, "⌨", Action::Keyboard);
+            }
+        }
+        if answer_h > 0.0 {
+            if let Some(a) = st.answer {
+                y = answer_y;
+                p.line(14.0, y, w - 14.0, y, &col::css(col::VOID_500), 1.0);
+                y += 6.0;
+                p.ghost(
+                    8.0,
+                    y,
+                    if a.proof_open {
+                        "FULL TEXT ▾"
+                    } else {
+                        "FULL TEXT ▸"
+                    },
+                    Action::ToggleProof,
+                );
+                p.ghost(w - 46.0, y, "×", Action::ClearAnswer);
+                y += 44.0;
+                let text = if a.proof_open { &a.proof } else { &a.title };
+                let f = font(400, 13.0, MONO);
+                let lines = crate::text::wrap_preformatted(text, w - 32.0, |s| p.measure(s, &f));
+                let rows = ((answer_y + answer_h - y - 44.0) / 19.2).floor().max(1.0) as usize;
+                let page = crate::text::ProofPage::new(lines.len(), a.proof_page, rows);
+                for (i, l) in lines.iter().skip(page.start).take(rows).enumerate() {
+                    p.text(16.0, y + i as f64 * 19.2, l, &f, &col::css(col::PAPER_100));
+                }
+                if a.proof_open {
+                    self.proof_page = Some(page);
+                    let py = answer_y + answer_h - 44.0;
+                    if let Some(prev) = page.previous() {
+                        p.ghost(14.0, py, "‹ Previous", Action::ProofPage(prev));
+                    }
+                    if let Some(next) = page.next() {
+                        p.ghost(w - 100.0, py, "Next ›", Action::ProofPage(next));
+                    }
+                }
+            }
+        }
+        if st.gamepad {
+            p.text(
+                14.0,
+                h - 36.0,
+                if w < 700.0 {
+                    "A Select · B Back · Menu Mind"
+                } else {
+                    "A Select · B Back · X Recall · Y Mode · L1/R1 Group · Menu Mind"
+                },
+                &font(400, 12.0, MONO),
+                &col::css(col::FG_MUTED),
+            );
+        }
+    }
+    fn draw_keyboard(&mut self, st: &HudState) {
+        if !st.desk.keyboard {
+            return;
+        }
+        let dock_top = self.panels[DOCK].y;
+        let p = &mut self.panels[KEYBOARD];
+        let w = (st.w - 24.0).min(760.0);
+        let kw = (w - 20.0) / 12.0;
+        let mobile = w < 540.0;
+        let rows = if mobile { 10 } else { 5 };
+        let h = rows as f64 * 48.0 + 12.0;
+        p.control_h = 44.0;
+        p.resize(w, h);
+        p.x = (st.w - w) / 2.0;
+        p.y = (dock_top - h - 8.0).max(76.0);
+        p.visible = true;
+        p.begin();
+        p.glass(0.0, 0.0, w, h, 10.0);
+        // On phones use six 44px-wide keys per row instead of tiny targets.
+        let keys = [
+            "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "(", ")", "q", "w", "e", "r", "t",
+            "y", "u", "i", "o", "p", "{", "}", "a", "s", "d", "f", "g", "h", "j", "k", "l", ":",
+            "\"", "'", "⇧", "z", "x", "c", "v", "b", "n", "m", ",", ".", "?", "⌫", "$", "_", "¬",
+            "∧", "∨", "→", "Space", "Clear", "Hide", "↵", "Send", "Nibli",
+        ];
+        let cols = if mobile { 6 } else { 12 };
+        let kw = if mobile { (w - 20.0) / 6.0 } else { kw };
+        for (i, key) in keys.iter().enumerate() {
+            let (x, y) = (
+                10.0 + (i % cols) as f64 * kw,
+                6.0 + (i / cols) as f64 * 48.0,
+            );
+            p.fill_rounded(x + 2.0, y, kw - 4.0, 44.0, 5.0, &col::css(col::VOID_700));
+            p.text(
+                x + 6.0,
+                y + 13.0,
+                key,
+                &font(400, if key.len() > 3 { 11.0 } else { 14.0 }, MONO),
+                &col::css(col::PAPER_100),
+            );
+            p.hit_add(x, y, kw, 44.0, Action::Key((*key).into()));
+        }
+        p.dirty = true;
+    }
+    pub fn focus_targets(&self) -> Vec<(usize, usize, f64, f64)> {
+        let indices: Vec<usize> = if self.panels[KEYBOARD].visible {
+            vec![KEYBOARD]
+        } else if self.panels[MIND].visible {
+            vec![MIND]
+        } else {
+            vec![DOCK, TOP_R, TOP_L, RESTORE]
+        };
+        indices
+            .into_iter()
+            .flat_map(|i| {
+                let p = &self.panels[i];
+                p.hits
+                    .iter()
+                    .enumerate()
+                    .filter(move |_| p.visible)
+                    .map(move |(j, h)| (i, j, p.x + h.x + h.w / 2.0, p.y + h.y + h.h / 2.0))
+            })
+            .collect()
+    }
+    pub fn focus_action(&self, index: usize) -> Option<Action> {
+        let targets = self.focus_targets();
+        let &(i, j, _, _) = targets.get(index)?;
+        Some(self.panels[i].hits[j].action.clone())
+    }
+    pub fn move_focus(&self, current: usize, dx: f64, dy: f64) -> usize {
+        let points = self
+            .focus_targets()
+            .iter()
+            .map(|t| (t.2, t.3))
+            .collect::<Vec<_>>();
+        crate::controls::navigate(&points, current, dx, dy)
+    }
+    fn focus_ring(&mut self, index: usize) {
+        if let Some(&(i, j, _, _)) = self.focus_targets().get(index) {
+            let p = &mut self.panels[i];
+            let h = &p.hits[j];
+            p.stroke_rounded(
+                h.x + 1.0,
+                h.y + 1.0,
+                h.w - 2.0,
+                h.h - 2.0,
+                5.0,
+                &col::css(col::EMBER_500),
+                2.0,
+                false,
+            );
+            p.dirty = true;
+        }
+    }
+
     fn draw_dock(&mut self, st: &HudState) {
         self.proof_page = None;
         let two = st.answer.is_some() && st.w >= 1180.0 && !st.dock_min;
@@ -423,11 +969,16 @@ impl Hud {
                 rows.push(row);
             }
         }
-        let chip_rows = rows.len().min(3);
+        let page_rows = if st.w < 600.0 { 1 } else { 2 };
+        let pages = rows.len().div_ceil(page_rows).max(1);
+        let page = st.desk.chip_page.min(pages - 1);
+        let chip_rows = rows.len().saturating_sub(page * page_rows).min(page_rows);
+        let composer_h = if st.group == "talk" { 156.0 } else { 0.0 };
+        let paging_h = if pages > 1 { 28.0 } else { 0.0 };
         let left_h = if st.dock_min {
             44.0
         } else {
-            10.0 + 36.0 + 8.0 + chip_rows as f64 * 42.0 + 12.0
+            10.0 + 36.0 + 8.0 + chip_rows as f64 * 42.0 + 12.0 + paging_h + composer_h
         };
         let foot_h = if st.dock_min { 0.0 } else { 30.0 };
         // the answer board's height
@@ -518,7 +1069,11 @@ impl Hud {
                     x,
                     10.0,
                     &g.label,
-                    Some(g.items.len()),
+                    if st.w < 600.0 {
+                        None
+                    } else {
+                        Some(g.items.len())
+                    },
                     sel,
                     Action::Group(g.id.clone()),
                 );
@@ -534,7 +1089,7 @@ impl Hud {
             p.ghost(left_w - 42.0, 8.0, "▾", Action::ToggleMin);
             if let Some(g) = group {
                 let mut y = 54.0;
-                for row in rows.iter().take(chip_rows) {
+                for row in rows.iter().skip(page * page_rows).take(chip_rows) {
                     let mut x = 14.0;
                     for (i, _) in row {
                         let it = &g.items[*i];
@@ -556,6 +1111,25 @@ impl Hud {
                     }
                     y += 42.0;
                 }
+            }
+            let y = 54.0 + chip_rows as f64 * 42.0;
+            if pages > 1 {
+                if page > 0 {
+                    p.ghost(14.0, y, "‹", Action::ChipPage(-1));
+                }
+                p.text(
+                    60.0,
+                    y + 4.0,
+                    &format!("{} / {pages}", page + 1),
+                    &font(400, 12.0, MONO),
+                    &col::css(col::FG_MUTED),
+                );
+                if page + 1 < pages {
+                    p.ghost(140.0, y, "›", Action::ChipPage(1));
+                }
+            }
+            if st.group == "talk" {
+                Self::composer(p, st, left_w, y + paging_h);
             }
             if two {
                 p.line(
@@ -616,7 +1190,13 @@ impl Hud {
                 if !why_lines.is_empty() {
                     y += 8.0;
                 }
-                let summary = if a.proof_open {
+                let summary = if matches!(a.verdict, Verdict::Words | Verdict::Recall) {
+                    if a.proof_open {
+                        "FULL TEXT ▾"
+                    } else {
+                        "FULL TEXT ▸"
+                    }
+                } else if a.proof_open {
                     "PROOF ▾"
                 } else {
                     "PROOF ▸"
@@ -847,10 +1427,102 @@ impl Hud {
         p.hit_add(0.0, 0.0, w, h, Action::Find);
         p.dirty = true;
     }
+    pub fn upload(&mut self, gl: &Gl) {
+        for (i, p) in self.panels.iter_mut().enumerate() {
+            if p.visible && (p.dirty || self.textures[i].is_none()) {
+                match &self.textures[i] {
+                    Some(t) => gl.update_texture(t, &p.canvas, true),
+                    None => self.textures[i] = Some(gl.texture_from_canvas(&p.canvas, true)),
+                }
+                p.dirty = false;
+            }
+        }
+    }
+    pub fn xr_poses(&self, rig: Mat4, head: Vec3) -> Vec<crate::xr::PanelPose> {
+        use glam::Quat;
+        let mut poses = vec![];
+        for (i, width, position, rotation) in [
+            (
+                DOCK,
+                1.3,
+                Vec3::new(0.0, 0.88, -0.92),
+                Quat::from_rotation_x(-28.0f32.to_radians()),
+            ),
+            (
+                KEYBOARD,
+                1.05,
+                Vec3::new(0.0, 0.40, -0.60),
+                Quat::from_rotation_x(-42.0f32.to_radians()),
+            ),
+            (
+                MIND,
+                1.15,
+                Vec3::new(0.88, 1.18, -0.95),
+                Quat::from_rotation_y(-26.0f32.to_radians()),
+            ),
+            (TOP_R, 0.65, Vec3::new(0.0, 1.65, -1.15), Quat::IDENTITY),
+        ] {
+            let p = &self.panels[i];
+            if p.visible {
+                let mut pose = crate::xr::panel(i, (p.w, p.h), width, position, rotation);
+                pose.model = rig * pose.model;
+                poses.push(pose);
+            }
+        }
+        let p = &self.panels[BUBBLE];
+        if p.visible {
+            let position = crate::world::LUCY_HOME + Vec3::new(0.0, 1.55, 0.25);
+            let d = head - position;
+            poses.push(crate::xr::panel(
+                BUBBLE,
+                (p.w, p.h),
+                1.1,
+                position,
+                Quat::from_rotation_y(d.x.atan2(d.z)),
+            ));
+        }
+        poses
+    }
+    pub fn ray_hit(
+        &self,
+        poses: &[crate::xr::PanelPose],
+        origin: Vec3,
+        direction: Vec3,
+    ) -> Option<(f32, Option<Action>)> {
+        poses
+            .iter()
+            .filter_map(|p| {
+                p.hit(origin, direction)
+                    .map(|(t, x, y)| (t, self.panels[p.index].hit(x, y)))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+    }
+    pub fn render_xr(
+        &self,
+        gl: &Gl,
+        quad: &crate::gl::GpuMesh,
+        view: &Mat4,
+        proj: &Mat4,
+        poses: &[crate::xr::PanelPose],
+    ) {
+        for pose in poses {
+            gl.draw_flat(
+                quad,
+                &(*proj * *view * pose.model),
+                self.textures[pose.index].as_ref(),
+                [1.0, 1.0, 1.0, 1.0],
+                Blend::Premultiplied,
+                true,
+                true,
+            );
+        }
+    }
     /// Upload the changed panels and draw every visible one in screen space.
     pub fn render(&mut self, gl: &Gl, quad: &crate::gl::GpuMesh, w: f64, h: f64) {
         let ortho = Mat4::orthographic_rh_gl(0.0, w as f32, h as f32, 0.0, -1.0, 1.0);
-        let order = [WAKE, DOCK, TOP_L, TOP_R, RESTORE, FINDER, BUBBLE];
+        let order = [
+            WAKE, DOCK, TOP_L, TOP_R, RESTORE, FINDER, BUBBLE, MIND, KEYBOARD,
+        ];
         for &i in &order {
             let p = &mut self.panels[i];
             if !p.visible {
@@ -889,7 +1561,7 @@ impl Hud {
     }
     /// What is under a screen point: nothing, or a panel (with its action, if any).
     pub fn hit(&self, sx: f64, sy: f64) -> HitResult {
-        for &i in &[RESTORE, FINDER, DOCK, TOP_R, TOP_L] {
+        for &i in &[KEYBOARD, MIND, RESTORE, FINDER, DOCK, TOP_R, TOP_L] {
             let p = &self.panels[i];
             if p.contains(sx, sy) {
                 return HitResult::Panel(p.hit(sx - p.x, sy - p.y));

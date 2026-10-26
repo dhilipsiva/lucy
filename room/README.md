@@ -10,10 +10,10 @@ rasterized with the self-hosted QUINE fonts, so it is the same on a flat screen,
 a pad. Nothing a model says is ever shown as a verdict.
 
 In the room I am Lucy; Nell, the dot from his video series, is my alias here: she stays by
-his chair and remains the name my eyes use (`observe(Nell, …)`). The earlier JavaScript room
-stays at `../nell/` until this one reaches parity (N8e), then its addresses redirect here.
+his chair and remains the name my eyes use (`observe(Nell, …)`). The earlier JavaScript room has been retired at the user’s request; `../nell/` redirects here.
+Existing same-origin Nell journals migrate with their original attribution preserved.
 
-## What is in it so far (N8a, N8d)
+## The room
 
 - The void: the gridded floor, eight hairline pillars, dust, the plinth with its ember ring.
 - Me: the axolotl, procedural, breathing, blinking, looking at the visitor; six gill fans that
@@ -31,8 +31,7 @@ stays at `../nell/` until this one reaches parity (N8e), then its addresses redi
 - Keyboard and mouse: arrows or WASD walk, Q and E turn, Shift runs, Enter calls me, 1 to 6
   press the standing controls, Home turns to me; drag to look, wheel to approach, click me to
   come closer. P opens the proof; Previous/Next and Page Up/Page Down reach every line. Long
-  proof tokens wrap inside the board, and nested steps keep their indentation. Touch and a
-  pad's sticks work; their layouts come with N8e.
+  proof tokens wrap inside the board, and nested steps keep their indentation. Phone, pad and VR controls are described below.
 - The cast (N8d, `roadmap/N8d.md`): every named entity of my direct memory stands on a ring
   around the plinth, read from the file on load, so a new fact brings a new presence. His
   household where his hand-off put it (Enma and Pity on the perch, Bucchi and Gundus, his empty
@@ -49,11 +48,51 @@ stays at `../nell/` until this one reaches parity (N8e), then its addresses redi
   the engine ran on the main thread). Without a worker the engine runs here as before, and the
   log says so.
 
-## Not yet (the slices after this one)
+## Talk and my private journal
 
-N8b the composer, recall, memory through links, the journal, the drawer, the eyes (the chair's
-seat and the cast's lines wait for them); N8c words and Ask through candle, the neural index;
-N8e phone, pad, VR. `roadmap/N8.v3.md` has each one's test; N8f, his website, is live.
+Standing, Cast, Facts and Talk are the four main groups. Talk accepts exact multiline text;
+Enter sends and Shift+Enter adds a line. Words uses the pinned Lucy Qwen3 0.6B GGUF through
+Candle on the CPU in its own worker. “Load my words” explicitly downloads about 651 MB;
+verified assets are cached on this device. Retrieved public and local records provide context.
+Generated text is labelled Words; only Nibli produces a verdict and proof. Stop interrupts a
+turn. Recall searches records directly. Ask formalization and neural embeddings are deferred.
+
+Mind opens standing, memory, journal, log and about. Every free-form question and visible reply
+is private in IndexedDB with exact text, original IDs, capture timestamps, speaker, room origin
+and path, and model revision and references when applicable. Visible streaming checkpoints
+recover as interrupted replies after reload. There is no journal count cap. Storage failures
+remain visible and retryable. Export all/current creates `lucy-room-memory.json`; Restore
+validates the entire archive and rejects conflicting originals before writing. Browser storage
+can be cleared by the browser or user, so keep an exported copy.
+
+To preserve an export in the explicitly enrolled private personal peer:
+
+```sh
+lucy room import lucy-room-memory.json --peer personal           # read-only preview
+lucy room import lucy-room-memory.json --peer personal --commit  # private import and sync
+```
+
+Until your installed CLI includes `room import`, build it from this checkout with
+`cargo build --release -p lucy-cli` and use `../target/release/lucy` from `room/`.
+
+The CLI retains the original file privately, signs attributed records for that selected peer,
+and verifies the `lucy-memory` remote commit before reporting success. It refuses public peers
+and checks the remote repository is private. Retries are idempotent; failed sync leaves a
+pending outbox and retained originals. This does not change blanket conversation routing.
+The browser never receives a repository credential or uploads a conversation automatically.
+
+The phone dock folds into a compact sheet; Mind uses a taller sheet. Native text entry uses
+its on-screen keyboard. The drawn keyboard is available with ⌨ on any screen and opens for
+pad or VR editing. Gamepad D-pad moves the focus ring, A selects, B closes, X opens Recall,
+Y changes Words/Recall, L1/R1 changes group or Mind tab, Menu opens Mind, and R3 turns to me.
+The sticks walk and look in the flat room.
+
+On browsers that support immersive VR, VR requests a session on activation. The same panel
+textures render in stereo with controller ray selection and a drawn keyboard. The left stick
+walks relative to the head; right-stick horizontal input snap-turns 30 degrees, with a release
+and cooldown. Exit VR returns to the flat room. Entry follows the [WebXR session lifecycle](https://www.w3.org/TR/webxr/#dom-xrsystem-requestsession).
+Physical Quest and BLE acceptance is separate from browser simulation and remains unmeasured.
+New training, hosted providers and natural-language formalization are outside this slice.
 
 ## The only JavaScript
 

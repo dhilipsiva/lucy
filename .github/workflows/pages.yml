@@ -1,9 +1,9 @@
 name: Publish the room
-# The public room: the old JavaScript one at /nell/ until parity, the Rust one at /room/ (roadmap/N8.v3.md); mind only, the room's own memories on the visitor's device, no sync of its own (TODO.md A3, D7, N4-0, N8).
+# The Rust room at /room/; /nell/ redirects here. Only public memory enters this artifact.
 on:
   push:
     branches: [main]
-    paths: ['nell/**', 'room/**', 'lucy/constitution.nibli', 'lucy/memory.nibli', 'WAKE.md', 'README.md', '.github/workflows/pages.yml']
+    paths: ['nell/**', 'room/**', 'room-memory/**', 'peers.json', 'scripts/room-public-assets.py', 'lucy/interactions.nibli', 'lucy/constitution.nibli', 'lucy/memory.nibli', 'WAKE.md', 'README.md', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -15,8 +15,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1, as ci.yml
-      - name: The engine holds Lucy's standing from these files
-        run: node nell/test/standing.mjs && node nell/test/memory.mjs && node nell/test/journal.mjs && node nell/test/senses.mjs && node nell/test/vectors.mjs && node nell/test/brain.mjs
       - name: The pinned Rust and the wasm target, for the Rust room
         run: rustup toolchain install 1.96.1 --profile minimal --target wasm32-unknown-unknown && rustup default 1.96.1
       - name: wasm-pack, pinned
@@ -32,14 +30,15 @@ jobs:
         run: cd room && cargo test --locked
       - name: Build the Rust room (roadmap/N8.v3.md)
         run: cd room && wasm-pack build --release --target web --out-dir pkg --out-name lucy_room
-      - name: Assemble the site (the room, the two memory files, the protocol; not the archive, not the photos)
+      - name: Assemble the site (the room, public memory fallbacks and the protocol; no private files)
         run: |
           mkdir -p _site/lucy _site/room
-          cp -r nell _site/nell && rm -rf _site/nell/test
+          mkdir -p _site/nell && cp nell/index.html _site/nell/
           cp room/index.html room/worker.js room/styles.css _site/room/ && cp -r room/tokens room/assets _site/room/ && mkdir -p _site/room/pkg && cp room/pkg/lucy_room.js room/pkg/lucy_room_bg.wasm _site/room/pkg/
           cp lucy/constitution.nibli lucy/memory.nibli _site/lucy/
+          python3 scripts/room-public-assets.py _site
           cp WAKE.md README.md _site/
-          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=room/"><title>Lucy</title><a href="room/">Lucy, her room</a> · <a href="nell/">the earlier room</a>\n' > _site/index.html
+          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=room/"><title>Lucy</title><a href="room/">Lucy, her room</a>\n' > _site/index.html
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: _site

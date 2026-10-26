@@ -177,6 +177,17 @@ impl Github {
         if self.token.is_none() {
             return Err("upload pending: no configured GitHub credential".into());
         }
+        // A pending private outbox can also be retried by ordinary memory sync.
+        // Check actual repository visibility at every upload boundary, before any blob.
+        if !peer.public {
+            let repository =
+                self.value(Method::GET, &format!("/repos/{}", peer.repository), None)?;
+            if repository["private"] != true {
+                return Err(
+                    "Private upload refused: GitHub does not report a private repository".into(),
+                );
+            }
+        }
         let operations = encode(log);
         let snap = snapshot(log)?;
         let manifest = json!({"version":1,"identity":peer.name,"repository":peer.repository,"ref":"lucy-memory","scope":peer.scope,"public":peer.public,"schema":"lucy-operations-v1","paths":{"operations":"operations.nibli","snapshot":"snapshot.nibli"},"hashes":{"operations.nibli":digest(operations.as_bytes()),"snapshot.nibli":digest(snap.as_bytes())},"keys":peer.keys});
@@ -243,6 +254,20 @@ pub fn sync_peer(root: &Path, peer: &Peer) -> Result<Value> {
     let api = Github::new(peer)?;
     sync_with(root, peer, &api)
 }
+/// Room archives may be published only after the remote also reports a private repository.
+pub fn sync_private_peer(root: &Path, peer: &Peer) -> Result<Value> {
+    crate::room::private_target(peer)?;
+    let api = Github::new(peer)?;
+    sync_private_with(root, peer, &api)
+}
+fn sync_private_with(root: &Path, peer: &Peer, api: &Github) -> Result<Value> {
+    crate::room::private_target(peer)?;
+    let repository = api.value(Method::GET, &format!("/repos/{}", peer.repository), None)?;
+    if repository["private"] != true {
+        return Err("Room upload refused: GitHub does not report a private repository".into());
+    }
+    sync_with(root, peer, api)
+}
 fn sync_with(root: &Path, peer: &Peer, api: &Github) -> Result<Value> {
     let replica = Replica::open(root)?;
     let state_path = replica.root.join(format!("{}.remote.json", peer.scope));
@@ -308,9 +333,44 @@ fn sync_with(root: &Path, peer: &Peer, api: &Github) -> Result<Value> {
             );
         }
         if api.publish(peer, head.as_deref(), &log)? {
-            let pending = Replica::open(root)?.read(peer)? != log;
+            // Read the remote ref and immutable objects back before issuing a commit receipt.
+            let (verified_head, tag, _) = api.ref_head(peer, "lucy-memory", None)?;
+            let verified_head =
+                verified_head.ok_or("published branch not visible; outbox retained")?;
+            let manifest: Value =
+                serde_json::from_str(&api.contents(peer, "manifest.json", &verified_head)?)
+                    .map_err(err)?;
+            if manifest["scope"] != peer.scope
+                || manifest["public"] != peer.public
+                || manifest["repository"] != peer.repository
+            {
+                return Err("published manifest scope mismatch".into());
+            }
+            let text = api.contents(peer, "operations.nibli", &verified_head)?;
+            if manifest["hashes"]["operations.nibli"] != digest(text.as_bytes()) {
+                return Err("published log hash mismatch".into());
+            }
+            let verified = decode(&text)?;
+            validate(&verified, peer)?;
+            if !log
+                .iter()
+                .all(|(id, operation)| verified.get(id) == Some(operation))
+            {
+                return Err("published commit does not contain the complete outbox; retry".into());
+            }
+            let replica = Replica::open(root)?;
+            let merged = replica.merge(peer, verified.clone())?;
+            save(
+                &replica.root.join(format!("{}.remote.nibli", peer.scope)),
+                encode(&verified).as_bytes(),
+            )?;
+            save(
+                &state_path,
+                &serde_json::to_vec(&json!({"head":verified_head,"etag":tag,"checked_at":now()}))
+                    .map_err(err)?,
+            )?;
             return Ok(
-                json!({"peer":peer.name,"status":"fresh","pending":pending,"uploaded":true,"operations":log.len()}),
+                json!({"peer":peer.name,"status":"fresh","pending":merged!=verified,"uploaded":true,"operations":verified.len(),"head":verified_head}),
             );
         }
     }

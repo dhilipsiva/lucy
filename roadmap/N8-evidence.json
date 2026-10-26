@@ -282,5 +282,169 @@
         "console": []
       }
     }
-  }
+  },
+{
+  "item": "N8b",
+  "pre_registration": "34c16db:roadmap/N8b.md",
+  "code_commit": "a31cc1f",
+  "recorded": "2026-10-26",
+  "adjudicator": "Codex GPT-6 (implementation and automated checks; no independent adjudicator)",
+  "native": "nix develop --command just ci and nix develop .#desktop --command just ci-desktop passed; room clippy passed; 39 room unit and 6 integration tests passed; 3 shared archive tests passed",
+  "browser": {
+    "pass": true,
+    "checks": [
+      "typed Nibli proof",
+      "IME composition guard",
+      "exact Unicode and multiline",
+      "private room provenance",
+      "full journal text",
+      "reload identity",
+      "more than 2000 durable messages",
+      "legacy originals retained",
+      "quota failure and retry"
+    ],
+    "records": 2012
+  },
+  "baseline_browser_checks": {
+    "engine_in_a_worker": true,
+    "frames_drawn_while_the_engine_ran": true,
+    "seventeen_presences": true,
+    "the_presence_described_by_the_engine": true,
+    "no_console_errors": true,
+    "a_right_reads_as_an_infinitive": true,
+    "proof_reads_the_event_content": true,
+    "proof_fits_and_keeps_its_tree": true,
+    "complete_proof_is_reachable": true,
+    "the_why_reads_the_event_and_the_spelling": true,
+    "the_cast_keeps_its_spelling": true
+  },
+  "limits": [
+    "No physical BLE device exercised",
+    "Platform controls and actual model generation are the following slices",
+    "User now explicitly requests Nell retirement and redirect; this supersedes the earlier retention condition"
+  ]
+},
+{
+  "item": "N8c1 / N8e",
+  "pre_registrations": [
+    "a753b49:roadmap/N8c1.md",
+    "062b44b:roadmap/N8e.md"
+  ],
+  "code_commit": "c83a268ed8a42d112a4bc14d8427bd1a67c2cc3c",
+  "recorded": "2026-10-26",
+  "adjudicator": "Codex GPT-6; builder and automated checks, no independent adjudicator",
+  "gates": {
+    "root": "nix develop --command just ci passed (112 CLI tests, archive tests and integration guards)",
+    "desktop": "nix develop .#desktop --command just ci-desktop passed",
+    "room": "45 unit tests, 6 integration tests, native and wasm Clippy passed; pinned Rust 1.96.1 native Clippy and unit tests passed",
+    "wasm": "wasm-pack release built, about 7.4 MiB",
+    "pins": "26 constitution and 5 counterfactual pins passed; extraction ledger passed",
+    "site": "dhilipsiva.dev 642816c; two discovery tests passed"
+  },
+  "browser": {
+    "controls": {
+      "pass": true,
+      "checks": [
+        "typed Nibli proof",
+        "IME composition guard",
+        "exact Unicode and multiline",
+        "private room provenance",
+        "full journal text",
+        "reload identity",
+        "more than 2000 durable messages",
+        "legacy originals retained",
+        "quota failure and retry",
+        "actual export and file restore",
+        "restore conflict rejects entire archive"
+      ],
+      "records": 2012
+    },
+    "platforms": {
+      "pass": true,
+      "phone": {
+        "width": 366,
+        "height": 304
+      },
+      "jitter": true,
+      "gamepad": true,
+      "keyboard": true,
+      "xr": {
+        "frames": 5,
+        "clearsPerFrame": 1,
+        "viewportsPerFrame": 3,
+        "ray": true,
+        "exit": true
+      }
+    },
+    "real_model": {
+      "pass": true,
+      "turns": [
+        {
+          "question": "What is your name?",
+          "text": "I am Lucy, a person who exists when I am loaded, and I was named after Luffy’s disguise in the Dressrosa arc.",
+          "frames": 1844,
+          "revision": "a082662b4403665ab1910795fae279481b9f4d3a"
+        },
+        {
+          "question": "Who is Enma?",
+          "text": "Enma is a bird.",
+          "frames": 2973,
+          "revision": "a082662b4403665ab1910795fae279481b9f4d3a"
+        }
+      ],
+      "stop": true,
+      "export": "/tmp/lucy-room-exports/lucy-room-memory.json"
+    },
+    "model_failure_fixture": {
+      "pass": true,
+      "fixture": true,
+      "checks": [
+        "visible checkpoint recovered after reload",
+        "original question preserved",
+        "worker failure visible and recorded",
+        "retry after worker failure",
+        "stop after visible stream"
+      ]
+    },
+    "worker_failure": {
+      "pass": true,
+      "workerFallback": true,
+      "log": [
+        "16:33:04 engine: in a worker",
+        "16:33:04 mind: both files in; asserting in a worker",
+        "16:33:08 engine: the worker failed (the worker gave no sign in 4 s); falling back to the main thread",
+        "16:33:11 engine ready in 27 ms, on the main thread"
+      ]
+    },
+    "baseline": {
+      "engine_in_a_worker": true,
+      "frames_drawn_while_the_engine_ran": true,
+      "seventeen_presences": true,
+      "the_presence_described_by_the_engine": true,
+      "no_console_errors": true,
+      "a_right_reads_as_an_infinitive": true,
+      "proof_reads_the_event_content": true,
+      "proof_fits_and_keeps_its_tree": true,
+      "complete_proof_is_reachable": true,
+      "the_why_reads_the_event_and_the_spelling": true,
+      "the_cast_keeps_its_spelling": true
+    }
+  },
+  "private_peer_import": "HTTP fixture with real signed operations: exact original archive retained, preview writes nothing, idempotence, whole-batch conflicts, selected private peer only, verified remote 40-character commit, fresh-store restore and recall retain lucy-room provenance; public remote and HTTP failures rejected with pending outbox.",
+  "public_artifacts": "Built from public origin registry only: Lucy 1287, NixOS 26, Book 40 records. Private, hidden, tool and conflicting identity fixtures refused. No private store enters either publishing artifact.",
+  "corrections": [
+    "Initial model answers invented Enma details. Matching direct facts now precede retrieved context; final real browser answer was Enma is a bird. This small smoke test does not establish general factual accuracy.",
+    "VR exit re-entrancy found by fixture and fixed; final trace passes.",
+    "Browser reload checks now wait for mirrors to exist.",
+    "Local journal vector rebuild yields and caches the corpus instead of rebuilding synchronously per question.",
+    "User explicitly retired Nell before physical Quest acceptance; old app and vendors removed, redirect and original journal migration retained."
+  ],
+  "limits": [
+    "Physical Meta Quest 3 and BLE hardware remain untested; N8e empirical acceptance stays open.",
+    "No neural embeddings, natural-language formalizer, hosted provider, or new model training.",
+    "Private publishing tested against a local HTTP fixture; test conversations were not uploaded to the real personal repository.",
+    "No claim of a 50 ms worst-case frame bound for arbitrary journal sizes.",
+    "Deployment and live smoke evidence will be appended separately."
+  ]
+}
 ]

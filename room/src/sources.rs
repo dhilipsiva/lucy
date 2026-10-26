@@ -121,6 +121,25 @@ pub fn js_error(e: &wasm_bindgen::JsValue) -> String {
         .unwrap_or_else(|| format!("{e:?}"))
 }
 
+/// Resolve against the page directory, including extensionless /room links.
+pub fn worker_url(role: &str) -> Result<String, String> {
+    let location = web_sys::window().ok_or("no window")?.location();
+    let path = location.pathname().map_err(|e| js_error(&e))?;
+    let directory = if path.ends_with('/') {
+        path
+    } else if path.ends_with(".html") {
+        path.rsplit_once('/')
+            .map(|(p, _)| format!("{p}/"))
+            .unwrap_or_else(|| "/".into())
+    } else {
+        format!("{path}/")
+    };
+    Ok(format!(
+        "{}{directory}worker.js?role={role}",
+        location.origin().map_err(|e| js_error(&e))?
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
