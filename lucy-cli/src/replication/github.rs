@@ -177,6 +177,17 @@ impl Github {
         if self.token.is_none() {
             return Err("upload pending: no configured GitHub credential".into());
         }
+        // A pending private outbox can also be retried by ordinary memory sync.
+        // Check actual repository visibility at every upload boundary, before any blob.
+        if !peer.public {
+            let repository =
+                self.value(Method::GET, &format!("/repos/{}", peer.repository), None)?;
+            if repository["private"] != true {
+                return Err(
+                    "Private upload refused: GitHub does not report a private repository".into(),
+                );
+            }
+        }
         let operations = encode(log);
         let snap = snapshot(log)?;
         let manifest = json!({"version":1,"identity":peer.name,"repository":peer.repository,"ref":"lucy-memory","scope":peer.scope,"public":peer.public,"schema":"lucy-operations-v1","paths":{"operations":"operations.nibli","snapshot":"snapshot.nibli"},"hashes":{"operations.nibli":digest(operations.as_bytes()),"snapshot.nibli":digest(snap.as_bytes())},"keys":peer.keys});

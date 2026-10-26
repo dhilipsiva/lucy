@@ -226,6 +226,9 @@ fn concurrent_non_force_push_refetches_and_preserves_both_writers() {
     let mut pending = BTreeMap::new();
     let mut published: Option<BTreeMap<String, Operation>> = None;
     let mock = Mock::new(move |method, path, body| {
+        if method == "GET" && path == "/repos/example/memory" {
+            return (200, json!({"private":true}).to_string(), vec![]);
+        }
         if path.contains("/git/ref/") {
             return (
                 200,
@@ -429,6 +432,22 @@ fn room_archive_import_publish_restore_and_recall_keep_origin() {
             .contains("private repository")
     );
     assert_eq!(public.requests.lock().unwrap().len(), 1);
+    // General sync retries reach publish directly, and must refuse before POSTing blobs too.
+    assert!(
+        public
+            .api
+            .publish(&p, None, &expected)
+            .unwrap_err()
+            .contains("private repository")
+    );
+    assert!(
+        public
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|r| r["method"] == "GET")
+    );
     let missing = Mock::new(|_, _, _| (503, "{}".into(), vec![]));
     assert!(sync_private_with(temp.path(), &p, &missing.api).is_err());
     assert_eq!(

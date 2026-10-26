@@ -72,6 +72,9 @@ lucy room import lucy-room-memory.json --peer personal           # read-only pre
 lucy room import lucy-room-memory.json --peer personal --commit  # private import and sync
 ```
 
+Until your installed CLI includes `room import`, build it from this checkout with
+`cargo build --release -p lucy-cli` and use `../target/release/lucy` from `room/`.
+
 The CLI retains the original file privately, signs attributed records for that selected peer,
 and verifies the `lucy-memory` remote commit before reporting success. It refuses public peers
 and checks the remote repository is private. Retries are idempotent; failed sync leaves a
