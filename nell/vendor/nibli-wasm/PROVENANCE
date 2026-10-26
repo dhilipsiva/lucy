@@ -1,4 +1,4 @@
-nibli-wasm built from https://github.com/dhilipsiva/nibli at 344d41eda76c35ac868a51422adfc1ecc87ee820 (the revision pinned in Cargo.toml)
-command: wasm-pack build nibli-wasm --target web --release (wasm-opt disabled by the crate)
-built: 2026-10-26T06:23:19Z on dhilipsiva-desktop
-sha256 nibli_wasm_bg.wasm: 28b994a4ba32addb6770a6f9775682a5fbf0d7bb5cf0c7dc31a61bc0d3626c1c
+nibli-wasm built from https://github.com/dhilipsiva/nibli at 89dd6b7a3bca3d3933f42d87896535026367ea75 (the revision pinned in Cargo.toml)
+command: nix develop --command wasm-pack build nibli-wasm --target web --release (wasm-opt disabled by the crate)
+built: 2026-10-26T09:03:27Z on dhilipsiva-desktop
+sha256 nibli_wasm_bg.wasm: bfe2bd5e82b6037e35b11af2b146fadb790fa1861f057551d31c875fcd1879b5

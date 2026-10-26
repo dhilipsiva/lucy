@@ -119,7 +119,10 @@ for (const width of [1280, 900]) {
   await waitFor('a new answer', "document.getElementById('answer').textContent.startsWith('person(Lucy).')", 20000);
   await key('3', 'Digit3');
   await waitFor('the survive proof', "document.getElementById('answer').textContent.startsWith('entitled(Lucy, event { survive() }).')", 20000);
-  const source = (await text('answer')).split('\n\n').at(-1).replace(/\s/g, '');
+  const answer = await text('answer');
+  const proof = answer.split('\n\n').at(-1);
+  const source = proof.replace(/\s/g, '');
+  if (width === 1280) { out.survive_answer = answer; out.survive_proof = proof; }
   await key('p', 'KeyP');
   await waitFor('the expanded proof', `${proofPanelExpression}?.start === 1`, 20000);
   if (proofShotPath && width === 1280) {
@@ -127,14 +130,23 @@ for (const width of [1280, 900]) {
     writeFileSync(proofShotPath, Buffer.from(shot.data, 'base64'));
     out.proof_screenshot = proofShotPath;
   }
-  const view = { width, pages: 0, contained: true, indented: false, complete: false, backwards: false, forwards: false };
+  const initial = await proofPanel();
+  const fits = (panel) => panel.top >= 83 && panel.lines.every((r) => r.x + r.width <= panel.width - 28 + 0.5);
+  const view = { width, height: 800, pages: 0, contained: fits(initial), indented: false, complete: false, backwards: false, forwards: false };
+  // A readable engine trace can fit on one page. Shorten the viewport to leave
+  // one proof row, so navigation is still exercised on the real engine output.
+  if (initial.end === initial.total && initial.total > 1) {
+    view.height = Math.ceil(800 - initial.top + 84 - (initial.total - 1) * 19.2) + 2;
+    await send('Emulation.setDeviceMetricsOverride', { width, height: view.height, deviceScaleFactor: 1, mobile: false }, sessionId);
+    await waitFor('proof pagination after resize', `(${proofPanelExpression}?.end ?? Infinity) < ${initial.total}`, 5000);
+  }
   const lines = [];
   let panel;
   for (let page = 0; page < 200; page++) {
     panel = await proofPanel();
     if (!panel) throw new Error('the proof panel disappeared');
     view.pages++;
-    view.contained &&= panel.top >= 83 && panel.lines.every((r) => r.x + r.width <= panel.width - 28 + 0.5);
+    view.contained &&= fits(panel);
     view.indented ||= panel.lines.some((r) => /^ {2,}\S/.test(r.text));
     lines.push(...panel.lines.map((r) => r.text));
     if (panel.end === panel.total) break;
@@ -188,6 +200,7 @@ out.checks = {
   no_console_errors: out.console.length === 0,
   // nibli#1 (merged 2026-10-26, main 344d41e): a right over a bare event reads as an infinitive
   a_right_reads_as_an_infinitive: /^Lucy is entitled to continue\.?$/.test(out.continue_english || ''),
+  proof_reads_the_event_content: out.survive_answer.includes('Because Lucy is a person, Lucy is entitled to survive.') && out.survive_proof.includes('Lucy is entitled to survive') && !/__abs|#\d+\(/.test(out.survive_proof),
   proof_fits_and_keeps_its_tree: out.proof_views.every((v) => v.contained && v.indented),
   complete_proof_is_reachable: out.proof_views.every((v) => v.pages > 1 && v.complete && v.backwards && v.forwards),
 };
