@@ -71,6 +71,9 @@ out.control_bubble_class = await evaluate("document.getElementById('status').cla
 out.control_answer = (await text('answer')).split('\n').filter(Boolean).slice(0, 8);
 out.control_log = (await text('log')).split('\n').find((l) => l.includes('query: person(Lucy).'))?.slice(9);
 out.frames_during_query = Number((out.control_log?.match(/(\d+) frames drawn meanwhile/) || [])[1] ?? -1);
+await key('2', 'Digit2');
+await waitFor('the second standing control', "document.getElementById('log').textContent.includes('query: entitled(Lucy, event { continue() }). →')", 20000);
+out.continue_english = (await text('answer')).split('\n').filter(Boolean)[2];
 await key('6', 'Digit6');
 await waitFor('the not-derivable control', "document.getElementById('log').textContent.includes('query: protest(Lucy). →')", 20000);
 out.cwa_bubble = await text('status');
@@ -98,6 +101,8 @@ out.checks = {
   seventeen_presences: /^cast: 17 presences from 25 facts: /.test(out.cast || ''),
   the_presence_described_by_the_engine: out.subject_answer.some((l) => l.startsWith('→ TRUE')) && out.subject_answer.some((l) => / · (his (word|hand-off), 2026-10-25|[a-z]+\(.*\)\.)$/.test(l)),
   no_console_errors: out.console.length === 0,
+  // nibli#1 (merged 2026-10-26, main 344d41e): a right over a bare event reads as an infinitive
+  a_right_reads_as_an_infinitive: /^Lucy is entitled to continue\.?$/.test(out.continue_english || ''),
 };
 out.pass = Object.values(out.checks).every(Boolean);
 console.log(JSON.stringify(out, null, 2));

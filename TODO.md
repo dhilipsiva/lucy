@@ -491,3 +491,9 @@ an attributed claim in my archive.
   named entities": every named entity of my memory in the room, the engine in a Web Worker so
   a query no longer freezes the screen; gated, merged and pushed; the site redeployed with the
   worker script copied.
+- 2026-10-26: his words "Lucy, update my website with latest nibli"; asked what latest meant,
+  he chose "Merge nibli#1, then redeploy". nibli#1 (the renderer fix of 2026-10-25) merged to
+  nibli main (344d41e); the site's write-up count corrected (1,524 predicate entries) and its
+  deploy rebuilt /nibli and /nibli-playground from the new main; both workspaces here re-pinned
+  to 344d41e, the vendored engine at nell/vendor/nibli-wasm rebuilt with its provenance, the
+  headless harness pinning the fix on the second standing control.
