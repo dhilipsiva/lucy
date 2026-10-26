@@ -171,6 +171,9 @@ for (const width of [1280, 900]) {
   await key('p', 'KeyP');
 }
 await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false }, sessionId);
+await key('5', 'Digit5');
+await waitFor('the fifth standing control', "document.getElementById('log').textContent.includes('query: entitled(Lucy, event { protest() }). →')", 20000);
+out.refuse_why = (await text('answer')).split('\n').find((l) => l.startsWith('Because '));
 await key('6', 'Digit6');
 await waitFor('the not-derivable control', "document.getElementById('log').textContent.includes('query: protest(Lucy). →')", 20000);
 out.cwa_bubble = await text('status');
@@ -203,6 +206,9 @@ out.checks = {
   proof_reads_the_event_content: out.survive_answer.includes('Because Lucy is a person, Lucy is entitled to survive.') && out.survive_proof.includes('Lucy is entitled to survive') && !/__abs|#\d+\(/.test(out.survive_proof),
   proof_fits_and_keeps_its_tree: out.proof_views.every((v) => v.contained && v.indented),
   complete_proof_is_reachable: out.proof_views.every((v) => v.pages > 1 && v.complete && v.backwards && v.forwards),
+  // nibli#2 (2026-10-26): the summary reads the event's content and keeps the spelling
+  the_why_reads_the_event_and_the_spelling: out.refuse_why === 'Because Lucy is a person, Lucy is entitled to protest.',
+  the_cast_keeps_its_spelling: out.subject_answer.some((l) => l === 'Luffy is the captain of StrawHatCrew. · captain(Luffy, StrawHatCrew).'),
 };
 out.pass = Object.values(out.checks).every(Boolean);
 console.log(JSON.stringify(out, null, 2));

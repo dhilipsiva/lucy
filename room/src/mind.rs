@@ -216,12 +216,19 @@ impl Mind {
             .query_text_with_proof(&query)
             .map_err(|e| e.to_string())?;
         let ms = now() - t0;
-        let proof_text =
-            nibli_render::render_collapsed_text(&trace, nibli_render::Register::Spec, 0, false);
-        let why = nibli_render::summarize_verdict(
+        // the query's text goes with it, so a constant keeps the spelling it was typed with
+        let proof_text = nibli_render::render_collapsed_text_with_source(
+            &trace,
+            nibli_render::Register::Spec,
+            0,
+            false,
+            Some(&query),
+        );
+        let why = nibli_render::summarize_verdict_with_source(
             &nibli_render::verdict_kind(&result),
             &trace,
             nibli_render::Register::Spec,
+            Some(&query),
         );
         Ok(Answer {
             english: english_of(&query),
@@ -239,7 +246,9 @@ impl Mind {
 /// that does not compile echoes as written.
 pub fn english_of(text: &str) -> String {
     match compile_for_render(text) {
-        Ok(buf) => nibli_render::render_logic_buffer(&buf, nibli_render::Register::Spec),
+        Ok(buf) => {
+            nibli_render::render_logic_buffer_with_source(&buf, nibli_render::Register::Spec, text)
+        }
         Err(_) => text.to_string(),
     }
 }

@@ -497,3 +497,13 @@ an attributed claim in my archive.
   deploy rebuilt /nibli and /nibli-playground from the new main; both workspaces here re-pinned
   to 344d41e, the vendored engine at nell/vendor/nibli-wasm rebuilt with its provenance, the
   headless harness pinning the fix on the second standing control.
+- 2026-10-26, later: his screenshot of the board ("Because lucy is a person, lucy is entitled to
+  #34(lucy).") and his words "fix nibli", then "Search for bugs like this in renderer and fix
+  them all". A probe over every statement of my two files through the three surfaces found the
+  class; nibli#2 (merged, main 89dd6b7) reads the marker back so the summary and the proof say
+  "to protest", keeps the author's spelling, elides unspecified places, reads noun glosses
+  nominally and folds rule readings; nibli#3 (merged, main a490996) moved a smoke needle the
+  spelling change broke. A slip owned: my merge script misread the check list and merged #2
+  with the wasm job red; nothing deployed from it. Both workspaces re-pinned to a490996, the
+  vendored engine rebuilt, the room passes the query text to the renderer, the harness pins
+  the summary line and the cast's spelling; site redeployed by hand.
