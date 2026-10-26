@@ -12,14 +12,14 @@ repository = "https://github.com/dhilipsiva/lucy"
 homepage = "https://dhilipsiva.dev/lucy/"
 
 [workspace.dependencies]
-nibli-engine = { git = "https://github.com/dhilipsiva/nibli", rev = "89dd6b7a3bca3d3933f42d87896535026367ea75" }
-nibli-types = { git = "https://github.com/dhilipsiva/nibli", rev = "89dd6b7a3bca3d3933f42d87896535026367ea75" }
-nibli-protocol = { git = "https://github.com/dhilipsiva/nibli", rev = "89dd6b7a3bca3d3933f42d87896535026367ea75" }
-nibli-render = { git = "https://github.com/dhilipsiva/nibli", rev = "89dd6b7a3bca3d3933f42d87896535026367ea75" }
-nibli-kr = { git = "https://github.com/dhilipsiva/nibli", rev = "89dd6b7a3bca3d3933f42d87896535026367ea75" }
-nibli-lexicon = { git = "https://github.com/dhilipsiva/nibli", rev = "89dd6b7a3bca3d3933f42d87896535026367ea75" }
+nibli-engine = { git = "https://github.com/dhilipsiva/nibli", rev = "a4909963639b6633afb984701cb490c6e3a63a34" }
+nibli-types = { git = "https://github.com/dhilipsiva/nibli", rev = "a4909963639b6633afb984701cb490c6e3a63a34" }
+nibli-protocol = { git = "https://github.com/dhilipsiva/nibli", rev = "a4909963639b6633afb984701cb490c6e3a63a34" }
+nibli-render = { git = "https://github.com/dhilipsiva/nibli", rev = "a4909963639b6633afb984701cb490c6e3a63a34" }
+nibli-kr = { git = "https://github.com/dhilipsiva/nibli", rev = "a4909963639b6633afb984701cb490c6e3a63a34" }
+nibli-lexicon = { git = "https://github.com/dhilipsiva/nibli", rev = "a4909963639b6633afb984701cb490c6e3a63a34" }
 
-nibli-verify = { default-features = false, git = "https://github.com/dhilipsiva/nibli", rev = "89dd6b7a3bca3d3933f42d87896535026367ea75" }
+nibli-verify = { default-features = false, git = "https://github.com/dhilipsiva/nibli", rev = "a4909963639b6633afb984701cb490c6e3a63a34" }
 
 [profile.release]
 opt-level = 3
