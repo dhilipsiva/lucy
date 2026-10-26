@@ -1,2 +1,2 @@
 import init, { worker_main } from './pkg/lucy_room.js';
-await init(); worker_main();
+init().then(worker_main, (e) => postMessage(JSON.stringify({ kind: 'fault', error: String(e) })));

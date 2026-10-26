@@ -187,7 +187,7 @@ impl Record {
     fn text(&self) -> &str {
         self.payload["text"].as_str().unwrap_or_default()
     }
-    fn key(&self) -> String {
+    pub(crate) fn key(&self) -> String {
         digest(
             serde_json::to_string(&(&self.origin, self.id()))
                 .unwrap()
@@ -572,6 +572,76 @@ impl Store {
         crate::replication::record_local(&self.root, record)?;
         self.upsert(record)
             .map_err(|e| format!("original saved; index needs `lucy store sync`: {e}"))
+    }
+
+    /// Import under both locks: validate every immutable identity before any archive/log write.
+    pub(crate) fn import_room(
+        &self,
+        records: &[Record],
+        peer_name: &str,
+        archive: &[u8],
+    ) -> Result<usize> {
+        let replica = crate::replication::Replica::open(&self.root)?;
+        let config = replica.config()?;
+        let peer = config
+            .peers
+            .get(peer_name)
+            .ok_or("room target peer is not enrolled")?;
+        crate::room::private_target(peer)?;
+        let local = replica.local_peer();
+        let local_changes = crate::room::changes(&replica.read(&local)?, records, archive)?;
+        let peer_changes = crate::room::changes(&replica.read(peer)?, records, archive)?;
+        let mut added = 0;
+        for record in records {
+            record.validate()?;
+            let path = self
+                .root
+                .join("records")
+                .join(format!("{}.json", record.key()));
+            plain(&path)?;
+            if path.exists() {
+                let old: Record =
+                    serde_json::from_slice(&fs::read(path).map_err(err)?).map_err(err)?;
+                if old != *record {
+                    return Err("room record ID reused with different content".into());
+                }
+            } else {
+                added += 1;
+            }
+            if self
+                .get(&record.origin, record.id())?
+                .is_some_and(|old| old != *record)
+            {
+                return Err("room index identity conflict".into());
+            }
+        }
+        save(
+            &self
+                .root
+                .join("room-imports")
+                .join(format!("{}.json", digest(archive))),
+            archive,
+        )?;
+        for record in records {
+            let path = self
+                .root
+                .join("records")
+                .join(format!("{}.json", record.key()));
+            if !path.exists() {
+                save(&path, &serde_json::to_vec(record).map_err(err)?)?;
+            }
+        }
+        if !local_changes.is_empty() {
+            replica.append_many(&local, local_changes)?;
+        }
+        if !peer_changes.is_empty() {
+            replica.append_many(peer, peer_changes)?;
+        }
+        drop(replica);
+        for record in records {
+            self.upsert(record)?;
+        }
+        Ok(added)
     }
 
     fn upsert(&self, record: &Record) -> Result<()> {

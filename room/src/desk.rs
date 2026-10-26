@@ -12,6 +12,10 @@ pub struct Submission {
     pub id: String,
 }
 enum Event {
+    Checkpoint {
+        message: Box<Message>,
+        result: Result<(), String>,
+    },
     Journal(Result<RoomArchiveV1, String>),
     Peers(Memory),
     Saved {
@@ -40,6 +44,9 @@ pub struct Desk {
     pub forget_confirm: bool,
     pub references: Vec<lucy_room_memory::Reference>,
     pub keyboard: bool,
+    pub generating: bool,
+    pub visible: VecDeque<Message>,
+    pub stream_failed: bool,
     events: Rc<RefCell<VecDeque<Event>>>,
 }
 impl Desk {
@@ -74,6 +81,9 @@ impl Desk {
             forget_confirm: false,
             references: vec![],
             keyboard: false,
+            generating: false,
+            visible: VecDeque::new(),
+            stream_failed: false,
             events,
         }
     }
@@ -83,6 +93,13 @@ impl Desk {
         let mut submit = None;
         for e in events {
             match e {
+                Event::Checkpoint { message, result } => match result {
+                    Ok(()) => self.visible.push_back(*message),
+                    Err(e) => {
+                        self.status = format!("Could not save streamed reply: {e}");
+                        self.stream_failed = true;
+                    }
+                },
                 Event::Journal(r) => match r {
                     Ok(a) => {
                         self.archive = a;
@@ -103,7 +120,14 @@ impl Desk {
                         for m in &messages {
                             self.pending.retain(|p| p.key() != m.key());
                         }
-                        self.status = "Saved on this device · private".into();
+                        self.status = if self.pending.is_empty() {
+                            "Saved on this device · private".into()
+                        } else {
+                            format!(
+                                "{} messages not yet saved; retry storage",
+                                self.pending.len()
+                            )
+                        };
                         if self
                             .submitting
                             .as_ref()
@@ -195,7 +219,11 @@ impl Desk {
         }
     }
     pub fn submit(&mut self) {
-        if !self.ready || self.submitting.is_some() || self.draft.trim().is_empty() {
+        if !self.ready
+            || self.generating
+            || self.submitting.is_some()
+            || self.draft.trim().is_empty()
+        {
             return;
         }
         let m = self.message("user", &self.draft, "complete");
@@ -207,6 +235,16 @@ impl Desk {
         self.store(m);
         self.draft.clear();
         self.sync_input();
+    }
+    pub fn checkpoint(&self, message: Message) {
+        let e = self.events.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = journal::checkpoint(&message).await;
+            e.borrow_mut().push_back(Event::Checkpoint {
+                message: Box::new(message),
+                result,
+            });
+        });
     }
     pub fn record_answer(&mut self, text: &str) {
         if text.is_empty() {
@@ -273,6 +311,10 @@ impl Desk {
         }
     }
     pub fn export(&mut self, current: bool) {
+        if self.generating {
+            self.status = "Stop the reply before exporting finalized messages".into();
+            return;
+        }
         let mut a = self.archive.clone();
         if current {
             a.messages.retain(|m| m.session == self.session);
@@ -325,7 +367,7 @@ impl Desk {
         });
     }
     pub fn forget(&mut self) {
-        if self.submitting.is_some() || !self.pending.is_empty() {
+        if self.generating || self.submitting.is_some() || !self.pending.is_empty() {
             self.status = "Save or export pending messages before clearing".into();
             return;
         }

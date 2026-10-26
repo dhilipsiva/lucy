@@ -131,7 +131,10 @@ pub async fn save(messages: &[Message]) -> Result<(), String> {
     }
     let db = open().await?;
     let tx = db
-        .transaction_with_str_and_mode("messages", IdbTransactionMode::Readwrite)
+        .transaction_with_str_sequence_and_mode(
+            &js_sys::Array::of2(&"messages".into(), &"drafts".into()),
+            IdbTransactionMode::Readwrite,
+        )
         .map_err(error)?;
     let done = transaction_done(&tx);
     let store = tx.object_store("messages").map_err(error)?;
@@ -152,6 +155,10 @@ pub async fn save(messages: &[Message]) -> Result<(), String> {
                     )
                     .map_err(error)?;
             }
+            tx.object_store("drafts")
+                .map_err(error)?
+                .delete(&key)
+                .map_err(error)?;
         }
         Ok::<_, String>(())
     }
@@ -161,6 +168,44 @@ pub async fn save(messages: &[Message]) -> Result<(), String> {
         let _ = JsFuture::from(done).await;
         db.close();
         return Err(e);
+    }
+    let result = JsFuture::from(done).await.map_err(error).map(|_| ());
+    db.close();
+    result
+}
+pub async fn checkpoint(m: &Message) -> Result<(), String> {
+    m.validate()?;
+    let db = open().await?;
+    let tx = db
+        .transaction_with_str_sequence_and_mode(
+            &js_sys::Array::of2(&"messages".into(), &"drafts".into()),
+            IdbTransactionMode::Readwrite,
+        )
+        .map_err(error)?;
+    let done = transaction_done(&tx);
+    let store = tx.object_store("drafts").map_err(error)?;
+    let complete = request(
+        &tx.object_store("messages")
+            .map_err(error)?
+            .get(&m.key().into())
+            .map_err(error)?,
+    )
+    .await?;
+    let old = request(&store.get(&m.key().into()).map_err(error)?)
+        .await?
+        .as_string()
+        .and_then(|s| serde_json::from_str::<Message>(&s).ok());
+    if complete.is_undefined()
+        && old
+            .as_ref()
+            .is_none_or(|old| old.text.len() <= m.text.len())
+    {
+        store
+            .put_with_key(
+                &serde_json::to_string(m).map_err(|e| e.to_string())?.into(),
+                &m.key().into(),
+            )
+            .map_err(error)?;
     }
     let result = JsFuture::from(done).await.map_err(error).map(|_| ());
     db.close();
@@ -206,6 +251,25 @@ pub async fn load() -> Result<RoomArchiveV1, String> {
             archive.messages.push(m);
         }
         cache_remove("visible-draft").await?;
+    }
+    let db = open().await?;
+    let tx = db.transaction_with_str("drafts").map_err(error)?;
+    let drafts = request(
+        &tx.object_store("drafts")
+            .map_err(error)?
+            .get_all()
+            .map_err(error)?,
+    )
+    .await?;
+    db.close();
+    for v in js_sys::Array::from(&drafts).iter() {
+        let mut m: Message = serde_json::from_str(&v.as_string().ok_or("invalid draft")?)
+            .map_err(|e| e.to_string())?;
+        m.provenance.status = "interrupted".into();
+        if !m.text.is_empty() && !archive.messages.iter().any(|old| old.key() == m.key()) {
+            save(&[m.clone()]).await?;
+            archive.messages.push(m);
+        }
     }
     archive
         .messages

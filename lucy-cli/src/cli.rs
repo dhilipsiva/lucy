@@ -27,6 +27,8 @@ pub struct Outcome {
 pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli text
 
   lucy peer enroll|list|change       enroll scoped peers or append signed changes (--stdin)
+  lucy room import FILE --peer NAME [--commit]
+                                     preview or preserve and publish a private room archive
   lucy sync                          refresh every enrolled peer; retain pending uploads
   lucy doctor                        inspect local integrity without invoking a model
   lucy continuity since|ack          durable events (--consumer ID --scope S --cursor C)
@@ -147,6 +149,12 @@ pub fn run(args: &[String], stdin: &str, env_override: Option<Env>) -> Outcome {
             };
         }
         _ => {}
+    }
+    if command == "room" {
+        return match crate::room::command(&args[1..]) {
+            Ok(v) => json_out(if v["pending"] == true { 1 } else { 0 }, v),
+            Err(e) => harness(&e),
+        };
     }
     let refresh = if command == "wake" && env_override.is_none() {
         Some(crate::store::default_root().and_then(|root| {

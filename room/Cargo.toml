@@ -21,6 +21,10 @@ wasm-opt = false
 
 [dependencies]
 lucy-room-memory = { path = "../room-memory" }
+candle = { package = "candle-core", version = "=0.10.2" }
+candle-transformers = "=0.10.2"
+tokenizers = { version = "=0.22.2", default-features = false, features = ["unstable_wasm"] }
+getrandom = { version = "0.3", features = ["wasm_js"] }
 # The engine I think with, compiled in: the same crates `lucy-cli` and the native tests use,
 # at the revision the root workspace pins.
 nibli-session = { git = "https://github.com/dhilipsiva/nibli", rev = "a4909963639b6633afb984701cb490c6e3a63a34" }
@@ -47,7 +51,7 @@ web-sys = { version = "0.3", features = [
   "FontFaceSet", "MediaQueryList", "CssStyleDeclaration", "DomRect",
   "SpeechSynthesis", "SpeechSynthesisUtterance",
   "Worker", "WorkerOptions", "WorkerType", "MessageEvent", "ErrorEvent", "DedicatedWorkerGlobalScope", "WorkerGlobalScope",
-  "console",
+  "console", "Cache", "CacheStorage", "ReadableStream", "ReadableStreamDefaultReader", "WorkerLocation", "AbortController", "AbortSignal",
   "Storage", "StorageManager", "Crypto", "HtmlTextAreaElement", "HtmlAnchorElement", "HtmlInputElement", "File", "FileList", "Blob", "BlobPropertyBag", "Url", "FocusEvent", "InputEvent", "CompositionEvent", "DomException",
   "IdbFactory", "IdbOpenDbRequest", "IdbVersionChangeEvent", "IdbDatabase", "IdbObjectStore", "IdbTransaction", "IdbTransactionMode", "IdbRequest", "DomStringList",
 ] }

@@ -54,6 +54,8 @@ struct InputFlags {
 
 pub struct App {
     desk: crate::desk::Desk,
+    words: crate::words::Words,
+    generation: Option<crate::journal::Message>,
     eyes: crate::eyes::Eyes,
     eye_lines: crate::eyes::Lines,
     typed_queries: HashSet<u64>,
@@ -159,6 +161,8 @@ pub fn boot() -> Result<(), String> {
     let t0 = now_ms();
     let mut app = App {
         desk: crate::desk::Desk::new(&window.location().search().unwrap_or_default()),
+        words: Default::default(),
+        generation: None,
         eyes: Default::default(),
         eye_lines: Default::default(),
         typed_queries: HashSet::new(),
@@ -444,9 +448,23 @@ impl App {
             );
         }
         out[3].items.push(Item {
-            label: "Load my words".into(),
+            label: if self.words.busy {
+                "Stop words"
+            } else if self.words.ready {
+                "Words ready"
+            } else {
+                "Load my words · 651 MB"
+            }
+            .into(),
             kind: ItemKind::Words,
-            query: Some("load:words".into()),
+            query: Some(
+                if self.words.busy {
+                    "stop:words"
+                } else {
+                    "load:words"
+                }
+                .into(),
+            ),
             disabled: false,
         });
         if self.relay.is_some() {
@@ -920,6 +938,10 @@ impl App {
                             self.action(Action::Relay(mode.into()));
                             return;
                         }
+                        if q == "stop:words" {
+                            self.action(Action::StopWords);
+                            return;
+                        }
                         if q == "load:words" {
                             self.action(Action::LoadWords);
                             return;
@@ -1030,11 +1052,19 @@ impl App {
                 self.desk.draft.push_str(&key);
                 self.desk.sync_input();
             }
-            Action::LoadWords => self.say(
-                "Local Words loading arrives with the next implementation slice.",
-                Verdict::Words,
-                Some("WORDS"),
-            ),
+            Action::LoadWords => {
+                if let Err(e) = self.words.load() {
+                    self.words.busy = false;
+                    self.say(&e, Verdict::Words, Some("MODEL ERROR"));
+                } else {
+                    self.say(
+                        &self.words.status.clone(),
+                        Verdict::Words,
+                        Some("LOCAL WORDS"),
+                    );
+                }
+            }
+            Action::StopWords => self.words.stop(),
             Action::Eye(atom) => {
                 if atom == "ble" {
                     if let Err(e) = crate::eyes::connect(self.eye_lines.clone()) {
@@ -1047,7 +1077,7 @@ impl App {
                     }
                 }
             }
-            Action::Xr | Action::StopWords => {}
+            Action::Xr => {}
         }
         self.version += 1;
     }
@@ -1076,6 +1106,70 @@ impl App {
                 });
                 self.mirrors.set_answer(&text);
             }
+            "words" => {
+                let recalled = self.desk.recall(&s.text, &s.id);
+                let direct = self
+                    .facts
+                    .iter()
+                    .map(|f| format!("[direct memory] {}", f.kr))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let verdict = self
+                    .answer
+                    .as_ref()
+                    .filter(|a| matches!(a.verdict, Verdict::True | Verdict::False))
+                    .map(|a| {
+                        format!(
+                            "[engine verdict] {} {}\n{}",
+                            a.query,
+                            if a.verdict == Verdict::True {
+                                "TRUE"
+                            } else {
+                                "FALSE"
+                            },
+                            a.why
+                        )
+                    })
+                    .unwrap_or_default();
+                let context = format!("{verdict}\n{recalled}\n{direct}");
+                let history = self
+                    .desk
+                    .archive
+                    .messages
+                    .iter()
+                    .rev()
+                    .filter(|m| m.id != s.id && m.session == self.desk.session)
+                    .take(4)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .map(|m| format!("{}: {}", m.speaker, m.text))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let mut message = self.desk.message("assistant", "", "interrupted");
+                message.provenance.model = Some(crate::model::MODEL.into());
+                message.provenance.revision = Some(crate::model::REVISION.into());
+                message.provenance.references = self.desk.references.clone();
+                match self
+                    .words
+                    .generate(&message.id, &s.text, &context, &history)
+                {
+                    Ok(()) => {
+                        self.generation = Some(message);
+                        self.desk.generating = true;
+                        self.desk.stream_failed = false;
+                        self.say(
+                            "Reading my records…",
+                            Verdict::Words,
+                            Some("WORDS · LOCAL MODEL"),
+                        );
+                    }
+                    Err(e) => {
+                        self.say(&e, Verdict::Words, Some("NOTE"));
+                        self.desk.record_answer(&e);
+                    }
+                }
+            }
             _ => {
                 let text = if s.mode == "ask" {
                     "Natural-language formalization is not available. Choose Nibli for a formal query, or Recall to search my records."
@@ -1085,6 +1179,105 @@ impl App {
                 self.say(text, Verdict::Words, Some("NOTE"));
                 self.desk.record_answer(text);
             }
+        }
+    }
+    fn finish_words(&mut self, text: &str, status: &str) {
+        self.desk.generating = false;
+        if let Some(mut message) = self.generation.take() {
+            message.text = text.into();
+            message.provenance.status = status.into();
+            if !text.is_empty() {
+                self.desk.store(message);
+                self.say(text, Verdict::Words, Some("WORDS · LOCAL MODEL"));
+                self.mirrors.set_answer(text);
+                self.answer = Some(AnswerCard {
+                    verdict: Verdict::Words,
+                    label: Some("WORDS".into()),
+                    meta: "generated text · local model".into(),
+                    title: "My words".into(),
+                    query: String::new(),
+                    body: text.into(),
+                    why: String::new(),
+                    proof: format!(
+                        "{text}\n\nRetrieved context sources (evidence, not verification):\n{}",
+                        self.desk
+                            .references
+                            .iter()
+                            .map(|r| format!("{} · {} · {}", r.peer, r.id, r.timestamp))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    ),
+                    proof_open: false,
+                    proof_page: 0,
+                });
+            } else {
+                let note = "The model returned no visible reply. Your question remains saved.";
+                self.say(note, Verdict::Words, Some("NOTE"));
+                self.desk.record_answer(note);
+            }
+        }
+    }
+    fn poll_words(&mut self) {
+        for reply in self.words.poll() {
+            self.version += 1;
+            match reply {
+                crate::words::Reply::Delta { id, text, .. } => {
+                    if !text.is_empty() {
+                        if let Some(m) = self.generation.as_mut().filter(|m| m.id == id) {
+                            m.text = text;
+                            self.desk.checkpoint(m.clone());
+                        }
+                    }
+                }
+                crate::words::Reply::Done {
+                    id,
+                    text,
+                    interrupted,
+                } => {
+                    if self.generation.as_ref().is_some_and(|m| m.id == id) {
+                        self.finish_words(
+                            &text,
+                            if interrupted {
+                                "interrupted"
+                            } else {
+                                "complete"
+                            },
+                        );
+                    }
+                }
+                crate::words::Reply::Error { error, .. } | crate::words::Reply::Fault { error } => {
+                    let text = self
+                        .generation
+                        .as_ref()
+                        .map(|m| m.text.clone())
+                        .unwrap_or_default();
+                    self.finish_words(&text, "interrupted");
+                    self.say(&error, Verdict::Words, Some("MODEL ERROR"));
+                    self.desk
+                        .record_answer(&format!("Local model error: {error}"));
+                }
+                crate::words::Reply::Progress { .. } | crate::words::Reply::Ready => {
+                    self.say(
+                        &self.words.status.clone(),
+                        Verdict::Words,
+                        Some("LOCAL WORDS"),
+                    );
+                }
+                _ => {}
+            }
+        }
+        while let Some(m) = self.desk.visible.pop_front() {
+            if self.generation.as_ref().is_some_and(|g| g.id == m.id) {
+                self.say(&m.text, Verdict::Words, Some("WORDS · LOCAL MODEL"));
+                if let Some(s) = &mut self.speech {
+                    s.streaming = true;
+                }
+                self.mirrors.set_answer(&m.text);
+            }
+        }
+        if self.desk.stream_failed && self.words.busy {
+            self.words.stop();
+            self.desk.stream_failed = false;
         }
     }
     fn toggle_fullscreen(&mut self) {
@@ -1366,6 +1559,7 @@ impl App {
         if changed {
             self.version += 1;
         }
+        self.poll_words();
         if let Some(s) = submit {
             if self.subject.is_some() {
                 self.relay = Some(s);
@@ -1461,6 +1655,9 @@ impl App {
                 String::new()
             };
             if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+                if let Some(el) = doc.get_element_by_id("words-status") {
+                    el.set_text_content(Some(&self.words.status));
+                }
                 if let Some(el) = doc.get_element_by_id("journal-status") {
                     el.set_text_content(Some(&self.desk.status));
                 }
@@ -1470,6 +1667,7 @@ impl App {
             }
         }
         let App {
+            words,
             drawer_body,
             desk,
             hud,
@@ -1490,6 +1688,7 @@ impl App {
             ..
         } = self;
         let st = HudState {
+            words_status: &words.status,
             desk,
             drawer_body,
             phase: *phase,
@@ -1518,6 +1717,7 @@ impl App {
             self.world.head_on_screen(&self.scene, self.w, self.h);
         self.hud.place_bubble(hx, hy, visible, self.w, self.h);
         let st2 = HudState {
+            words_status: &self.words.status,
             desk: &self.desk,
             drawer_body: &self.drawer_body,
             phase: self.phase,

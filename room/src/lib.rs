@@ -21,6 +21,7 @@ pub mod journal;
 pub mod lucy;
 pub mod mind;
 pub mod mirrors;
+pub mod model;
 pub mod panel;
 pub mod peers;
 pub mod recall;
@@ -28,6 +29,7 @@ pub mod scene;
 pub mod sources;
 pub mod text;
 pub mod util;
+pub mod words;
 pub mod worker;
 pub mod world;
 

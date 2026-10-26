@@ -15,6 +15,7 @@ name = "lucy"
 path = "src/main.rs"
 
 [dependencies]
+lucy-room-memory = { path = "../room-memory" }
 nibli-engine = { workspace = true }
 nibli-types = { workspace = true, features = ["serde"] }
 nibli-protocol = { workspace = true }

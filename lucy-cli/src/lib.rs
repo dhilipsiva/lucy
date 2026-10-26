@@ -42,6 +42,7 @@ pub mod hook;
 pub mod interactions;
 pub mod load;
 pub mod replication;
+pub mod room;
 pub mod self_model;
 pub mod service;
 pub mod store;

@@ -10,8 +10,8 @@ rasterized with the self-hosted QUINE fonts, so it is the same on a flat screen,
 a pad. Nothing a model says is ever shown as a verdict.
 
 In the room I am Lucy; Nell, the dot from his video series, is my alias here: she stays by
-his chair and remains the name my eyes use (`observe(Nell, …)`). The earlier JavaScript room
-stays at `../nell/` until this one reaches parity (N8e), then its addresses redirect here.
+his chair and remains the name my eyes use (`observe(Nell, …)`). The earlier JavaScript room has been retired at the user’s request; `../nell/` redirects here.
+Existing same-origin Nell journals migrate with their original attribution preserved.
 
 ## What is in it so far (N8a, N8d)
 
@@ -49,11 +49,39 @@ stays at `../nell/` until this one reaches parity (N8e), then its addresses redi
   the engine ran on the main thread). Without a worker the engine runs here as before, and the
   log says so.
 
-## Not yet (the slices after this one)
+## Talk and my private journal
 
-N8b the composer, recall, memory through links, the journal, the drawer, the eyes (the chair's
-seat and the cast's lines wait for them); N8c words and Ask through candle, the neural index;
-N8e phone, pad, VR. `roadmap/N8.v3.md` has each one's test; N8f, his website, is live.
+Standing, Cast, Facts and Talk are the four main groups. Talk accepts exact multiline text;
+Enter sends and Shift+Enter adds a line. Words uses the pinned Lucy Qwen3 0.6B GGUF through
+Candle on the CPU in its own worker. “Load my words” explicitly downloads about 651 MB;
+verified assets are cached on this device. Retrieved public and local records provide context.
+Generated text is labelled Words; only Nibli produces a verdict and proof. Stop interrupts a
+turn. Recall searches records directly. Ask formalization and neural embeddings are deferred.
+
+Mind opens standing, memory, journal, log and about. Every free-form question and visible reply
+is private in IndexedDB with exact text, original IDs, capture timestamps, speaker, room origin
+and path, and model revision and references when applicable. Visible streaming checkpoints
+recover as interrupted replies after reload. There is no journal count cap. Storage failures
+remain visible and retryable. Export all/current creates `lucy-room-memory.json`; Restore
+validates the entire archive and rejects conflicting originals before writing. Browser storage
+can be cleared by the browser or user, so keep an exported copy.
+
+To preserve an export in the explicitly enrolled private personal peer:
+
+```sh
+lucy room import lucy-room-memory.json --peer personal           # read-only preview
+lucy room import lucy-room-memory.json --peer personal --commit  # private import and sync
+```
+
+The CLI retains the original file privately, signs attributed records for that selected peer,
+and verifies the `lucy-memory` remote commit before reporting success. It refuses public peers
+and checks the remote repository is private. Retries are idempotent; failed sync leaves a
+pending outbox and retained originals. This does not change blanket conversation routing.
+The browser never receives a repository credential or uploads a conversation automatically.
+
+N8e adds the phone, gamepad and WebXR controls; physical Quest and BLE acceptance is separate
+from browser simulation. New training, hosted providers and natural-language formalization
+are outside this slice.
 
 ## The only JavaScript
 

@@ -117,6 +117,10 @@ pub fn worker_main() {
     use wasm_bindgen::prelude::*;
     use wasm_bindgen::JsCast;
     let scope: web_sys::DedicatedWorkerGlobalScope = js_sys::global().unchecked_into();
+    if scope.location().search().contains("role=words") {
+        crate::words::worker_main();
+        return;
+    }
     let mind: Rc<RefCell<Option<Mind>>> = Rc::new(RefCell::new(None));
     let post = {
         let scope = scope.clone();

@@ -68,6 +68,7 @@ pub struct AnswerCard {
 
 pub struct HudState<'a> {
     pub desk: &'a crate::desk::Desk,
+    pub words_status: &'a str,
     pub drawer_body: &'a str,
     pub phase: Phase,
     pub w: f64,
@@ -331,13 +332,30 @@ impl Hud {
                 &col::css(col::PAPER_100),
             );
         }
-        p.ghost(14.0, fy + 62.0, "Send ↵", Action::Submit);
+        p.ghost(
+            14.0,
+            fy + 62.0,
+            if st.desk.generating {
+                "Stop"
+            } else {
+                "Send ↵"
+            },
+            if st.desk.generating {
+                Action::StopWords
+            } else {
+                Action::Submit
+            },
+        );
         p.ghost(100.0, fy + 62.0, "×", Action::ClearDraft);
         p.ghost(140.0, fy + 62.0, "⌨", Action::Keyboard);
         p.text(
             14.0,
             fy + 96.0,
-            &st.desk.status,
+            if st.desk.generating {
+                st.words_status
+            } else {
+                &st.desk.status
+            },
             &font(400, 10.5, MONO),
             &col::css(col::FG_MUTED),
         );
@@ -805,7 +823,13 @@ impl Hud {
                 if !why_lines.is_empty() {
                     y += 8.0;
                 }
-                let summary = if a.proof_open {
+                let summary = if matches!(a.verdict, Verdict::Words | Verdict::Recall) {
+                    if a.proof_open {
+                        "FULL TEXT ▾"
+                    } else {
+                        "FULL TEXT ▸"
+                    }
+                } else if a.proof_open {
                     "PROOF ▾"
                 } else {
                     "PROOF ▸"

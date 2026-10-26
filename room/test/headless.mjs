@@ -93,7 +93,7 @@ try { out.chromium = (await send('Browser.getVersion')).product; } catch {}
 await send('Page.navigate', { url: process.env.ROOM_URL || `http://127.0.0.1:${PORT}/room/?fresh=0` }, sessionId);
 await waitFor('the engine', "document.getElementById('log').textContent.includes('engine ready')", 90000);
 await waitFor('the wake to finish', "document.getElementById('status').textContent.startsWith(\"I'm Lucy\")", 20000);
-if (process.argv.includes('--controls')) {
+if (process.argv.includes('--controls') || process.argv.includes('--words')) {
   const assert = (ok,msg)=>{if(!ok)throw new Error(msg);};
   const click = async (label,marker='Standing')=>{
     await waitFor('drawn '+label,`Array.from(window.__roomPanelText.values()).some(rows=>rows.some(r=>r.text===${JSON.stringify(marker)})&&rows.some(r=>r.text===${JSON.stringify(label)}))`,5000);
@@ -104,6 +104,26 @@ if (process.argv.includes('--controls')) {
   };
   const records=()=>evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('lucy-room-memory-v1');r.onsuccess=()=>{const db=r.result;const q=db.transaction('messages').objectStore('messages').getAll();q.onsuccess=()=>{resolve(q.result.map(JSON.parse));db.close();};q.onerror=()=>reject(q.error);};r.onerror=()=>reject(r.error);})`);
   await waitFor('journal',"document.getElementById('journal-status').textContent.includes('private')");
+  if(process.argv.includes('--words')) {
+    await evaluate(`(async()=>{const c=await caches.open('lucy-room-model-v1');for(const name of ['lucy-0.6b-q8_0.gguf','tokenizer.json','system.txt']){const r=await fetch('/target/room-model/'+name);if(!r.ok)throw new Error('missing real test model asset '+name);await c.put('https://huggingface.co/dhilipsiva/lucy-slm/resolve/a082662b4403665ab1910795fae279481b9f4d3a/'+name,r);}window.__frames=0;function frame(){window.__frames++;requestAnimationFrame(frame)}requestAnimationFrame(frame);})()`);
+    await click('Talk');await click('Load my words · 651 MB');
+    await waitFor('real model ready',"document.getElementById('words-status').textContent.includes('My words are ready')",300000);
+    const turns=[];
+    for(const question of ['What is your name?','Who is Enma?']){
+      const previousIds = new Set((await records()).map(m=>m.id));
+      await evaluate(`(()=>{const i=document.getElementById('composer-input');i.focus();i.value=${JSON.stringify(question)};i.dispatchEvent(new Event('input',{bubbles:true}));window.__before=window.__frames;})()`);
+      await key('Enter');await waitFor('generation starts',"document.getElementById('words-status').textContent.includes('Reading context') || document.getElementById('words-status').textContent.includes('Writing')",20000);
+      await waitFor('real model completes',"document.getElementById('words-status').textContent.startsWith('Reply complete')",300000);
+      const frames=await evaluate('window.__frames-window.__before');assert(frames>20,'rendering stalled during real generation');await waitFor('reply saved',"document.getElementById('journal-status').textContent.startsWith('Saved')");const all=await records();const answer=all.find(m=>m.role==='assistant'&&m.provenance.model&&!previousIds.has(m.id));assert(answer&&!answer.text.includes('<think>')&&!answer.text.includes('</think>'),'missing/unfiltered model answer');turns.push({question,text:answer.text,frames,revision:answer.provenance.revision});
+    }
+    await evaluate(`(()=>{const i=document.getElementById('composer-input');i.focus();i.value='Explain everything you remember about your memory and the people in this room.';i.dispatchEvent(new Event('input',{bubbles:true}));})()`);await key('Enter');await key('Escape');
+    await waitFor('generation can stop',"document.getElementById('words-status').textContent.includes('Reading context') || document.getElementById('words-status').textContent.includes('Writing')",20000);await click('Stop');await waitFor('stop acknowledgement',"document.getElementById('words-status').textContent.startsWith('Stopped')",120000);
+    await key('m');await click('journal','My mind');
+    await send('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:'/tmp/lucy-room-exports'},undefined);await click('Export all','My mind');await sleep(1000);
+    if(shotPath){const shot=await send('Page.captureScreenshot',{format:'png'},sessionId);writeFileSync(shotPath,Buffer.from(shot.data,'base64'));}
+    assert(!consoleLines.some(l=>/panicked|exception:/.test(l)),'model worker exception');
+    console.log(JSON.stringify({pass:true,turns,stop:true,export:'/tmp/lucy-room-exports/lucy-room-memory.json'},null,2));cleanup();process.exit(0);
+  }
   await click('Talk'); await click('Nibli');
   await evaluate(`(()=>{const i=document.getElementById('composer-input');i.focus();i.value='person(Lucy).';i.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   await key('Enter','Enter');
