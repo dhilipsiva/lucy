@@ -16,6 +16,9 @@
 <div id="status" class="sr" aria-live="polite">Loading the engine…</div>
 <div id="mindline" class="sr"></div>
 <div id="answer" class="sr" aria-live="polite"></div>
+<textarea id="composer-input" class="sr" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Talk to Lucy. Enter sends; Shift Enter adds a line."></textarea>
+<div id="journal-status" class="sr" aria-live="polite"></div>
+<div id="drawer" class="sr"></div>
 <pre id="log" class="sr"></pre>
 <noscript><p class="note">Lucy's room runs as WebAssembly in your browser; it needs scripting on to load.</p></noscript>
 <!-- The only script of mine: the loader wasm-bindgen generates, and this call into it. -->

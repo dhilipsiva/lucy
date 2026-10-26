@@ -10,6 +10,9 @@ use web_sys::HtmlCanvasElement;
 
 #[derive(Clone, Debug)]
 pub enum InputEvent {
+    Draft(String),
+    Submit,
+    Typing,
     KeyDown {
         key: String,
         repeat: bool,
@@ -51,8 +54,18 @@ pub enum InputEvent {
 }
 pub type Queue = Rc<RefCell<VecDeque<InputEvent>>>;
 
+type Dispatch = Rc<dyn Fn(InputEvent)>;
+thread_local! {static DISPATCH:RefCell<Option<Dispatch>>=RefCell::new(None);}
+pub fn direct(dispatch: Dispatch) {
+    DISPATCH.with(|d| *d.borrow_mut() = Some(dispatch));
+}
 fn push(q: &Queue, e: InputEvent) {
-    q.borrow_mut().push_back(e);
+    let dispatch = DISPATCH.with(|d| d.borrow().clone());
+    if let Some(f) = dispatch {
+        f(e);
+    } else {
+        q.borrow_mut().push_back(e);
+    }
 }
 
 /// Attach the listeners; they live for the page.
@@ -63,6 +76,23 @@ pub fn attach(canvas: &HtmlCanvasElement, q: Queue) {
         let cb =
             Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(move |e: web_sys::KeyboardEvent| {
                 let key = e.key();
+                if e.target()
+                    .is_some_and(|t| t.dyn_ref::<web_sys::HtmlTextAreaElement>().is_some())
+                {
+                    if key == "Enter" && !e.shift_key() && !e.is_composing() {
+                        e.prevent_default();
+                        push(&q, InputEvent::Submit);
+                    }
+                    if key == "Escape" {
+                        if let Some(t) = e
+                            .target()
+                            .and_then(|t| t.dyn_into::<web_sys::HtmlTextAreaElement>().ok())
+                        {
+                            let _ = t.blur();
+                        }
+                    }
+                    return;
+                }
                 let modified = e.meta_key() || e.ctrl_key() || e.alt_key();
                 if key == " "
                     || key == "Tab"
@@ -84,6 +114,28 @@ pub fn attach(canvas: &HtmlCanvasElement, q: Queue) {
             });
         window
             .add_event_listener_with_callback("keydown", cb.as_ref().unchecked_ref())
+            .ok();
+        cb.forget();
+    }
+    if let Some(input) = window
+        .document()
+        .and_then(|d| d.get_element_by_id("composer-input"))
+        .and_then(|e| e.dyn_into::<web_sys::HtmlTextAreaElement>().ok())
+    {
+        let queue = q.clone();
+        let copy = input.clone();
+        let cb = Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
+            push(&queue, InputEvent::Draft(copy.value()))
+        });
+        input
+            .add_event_listener_with_callback("input", cb.as_ref().unchecked_ref())
+            .ok();
+        cb.forget();
+        let queue = q.clone();
+        let cb =
+            Closure::<dyn FnMut(web_sys::Event)>::new(move |_| push(&queue, InputEvent::Typing));
+        input
+            .add_event_listener_with_callback("focus", cb.as_ref().unchecked_ref())
             .ok();
         cb.forget();
     }
@@ -149,7 +201,9 @@ pub fn attach(canvas: &HtmlCanvasElement, q: Queue) {
         let cb =
             Closure::<dyn FnMut(web_sys::PointerEvent)>::new(move |e: web_sys::PointerEvent| {
                 let touch = e.pointer_type() == "touch";
-                let (x, y, id) = (e.client_x(), e.client_y(), e.pointer_id());
+                #[allow(clippy::unnecessary_cast)]
+                // web-sys unstable APIs use f64; stable uses i32.
+                let (x, y, id) = (e.client_x() as f64, e.client_y() as f64, e.pointer_id());
                 match kind {
                     0 => {
                         if !touch {

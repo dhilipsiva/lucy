@@ -30,6 +30,7 @@ pub struct Engine {
     queue: VecDeque<(u64, String)>,
     in_flight: Option<u64>,
     next_id: u64,
+    observations: std::collections::BTreeMap<String, bool>,
     created_ms: f64,
     files: Option<Vec<FileText>>,
     /// Frames the room drew between posting a query and taking its answer: the fix made visible.
@@ -58,6 +59,7 @@ impl Engine {
             queue: VecDeque::new(),
             in_flight: None,
             next_id: 1,
+            observations: Default::default(),
             created_ms: now_ms(),
             files: None,
             frames: 0,
@@ -131,6 +133,20 @@ impl Engine {
             }
         }
     }
+    pub fn see(&mut self, atom: &str, present: bool) {
+        self.observations.insert(atom.into(), present);
+        let msg = ToWorker::See {
+            atom: atom.into(),
+            present,
+        };
+        match &mut self.mode {
+            Mode::Worker { worker, .. } => post(worker, &msg),
+            Mode::Local { mind } => {
+                let r = handle(mind, msg, now_ms);
+                self.replies.borrow_mut().push_back(r);
+            }
+        }
+    }
     /// Queue a query; returns its id. The answer comes back through `replies`.
     pub fn ask(&mut self, query: &str) -> u64 {
         let id = self.next_id;
@@ -149,6 +165,9 @@ impl Engine {
         self.in_flight = None;
         if let Some(files) = self.files.clone() {
             self.load(files);
+            for (a, p) in self.observations.clone() {
+                self.see(&a, p);
+            }
         }
     }
     /// Once a frame: post what waits, or run one query here; a worker silent for 10 s falls back.

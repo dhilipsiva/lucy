@@ -28,6 +28,22 @@ pub enum Action {
     Find,
     Xr,
     Focus,
+    ChipPage(i32),
+    Submit,
+    ClearDraft,
+    Keyboard,
+    Key(String),
+    DrawerPage(i32),
+    Export(bool),
+    Restore,
+    Forget,
+    Persist,
+    RetryStorage,
+    Seat,
+    Eye(String),
+    Relay(String),
+    LoadWords,
+    StopWords,
 }
 #[derive(Clone, Debug)]
 pub struct Hit {

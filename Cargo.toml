@@ -1,5 +1,5 @@
 [workspace]
-members = ["lucy-cli"]
+members = ["lucy-cli", "room-memory"]
 # The room is its own workspace (room/Cargo.toml), built for wasm32 by wasm-pack; see roadmap/N8.v3.md.
 exclude = ["room"]
 resolver = "2"

@@ -93,6 +93,53 @@ try { out.chromium = (await send('Browser.getVersion')).product; } catch {}
 await send('Page.navigate', { url: process.env.ROOM_URL || `http://127.0.0.1:${PORT}/room/?fresh=0` }, sessionId);
 await waitFor('the engine', "document.getElementById('log').textContent.includes('engine ready')", 90000);
 await waitFor('the wake to finish', "document.getElementById('status').textContent.startsWith(\"I'm Lucy\")", 20000);
+if (process.argv.includes('--controls')) {
+  const assert = (ok,msg)=>{if(!ok)throw new Error(msg);};
+  const click = async (label,marker='Standing')=>{
+    await waitFor('drawn '+label,`Array.from(window.__roomPanelText.values()).some(rows=>rows.some(r=>r.text===${JSON.stringify(marker)})&&rows.some(r=>r.text===${JSON.stringify(label)}))`,5000);
+    const p=await evaluate(`(()=>{for(const [canvas,rows] of window.__roomPanelText){if(!rows.some(r=>r.text===${JSON.stringify(marker)}))continue;const r=rows.find(r=>r.text===${JSON.stringify(label)});if(!r)continue;const w=canvas.width/r.scale,h=canvas.height/r.scale;return {x:(innerWidth-w)/2+r.x+8,y:${marker==='My mind'?'80':'innerHeight-16-h'}+r.y+6};}return null;})()`);
+    if(!p)throw new Error('Missing drawn control '+label);
+    for(const type of ['mousePressed','mouseReleased'])await send('Input.dispatchMouseEvent',{type,...p,button:'left',clickCount:1},sessionId);
+    await sleep(200);
+  };
+  const records=()=>evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('lucy-room-memory-v1');r.onsuccess=()=>{const db=r.result;const q=db.transaction('messages').objectStore('messages').getAll();q.onsuccess=()=>{resolve(q.result.map(JSON.parse));db.close();};q.onerror=()=>reject(q.error);};r.onerror=()=>reject(r.error);})`);
+  await waitFor('journal',"document.getElementById('journal-status').textContent.includes('private')");
+  await click('Talk'); await click('Nibli');
+  await evaluate(`(()=>{const i=document.getElementById('composer-input');i.focus();i.value='person(Lucy).';i.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  await key('Enter','Enter');
+  await waitFor('typed proof',"document.getElementById('answer').textContent.startsWith('person(Lucy).')");
+  await waitFor('saved answer',"document.getElementById('journal-status').textContent.startsWith('Saved')");
+  let saved=await records(); assert(saved.some(m=>m.text==='person(Lucy).'&&m.role==='user'),'exact typed query missing');
+  assert(saved.some(m=>m.role==='assistant'&&m.text.includes('TRUE')),'engine answer missing');
+  await key('Escape'); await click('Recall');
+  const question='தமிழ் 🐦 \"quotes\" \\ line\nsecond line wasd hfvp 123';
+  await evaluate(`(()=>{const i=document.getElementById('composer-input');i.focus();i.value=${JSON.stringify(question)};i.dispatchEvent(new Event('input',{bubbles:true}));i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true}));})()`);
+  await sleep(200);assert((await records()).length===saved.length,'IME composition submitted');
+  await key('Enter');await sleep(600);saved=await records();assert(saved.some(m=>m.text===question),'Unicode/multiline question changed');assert(saved.every(m=>m.private&&m.source==='lucy-room'&&!/[?#]/.test(m.provenance.room)),'room attribution/private scope');
+  await key('Escape');await key('m');await click('journal','My mind');
+  assert((await text('drawer')).includes(question),'journal omits full question');
+  if(shotPath){const shot=await send('Page.captureScreenshot',{format:'png'},sessionId);writeFileSync(shotPath,Buffer.from(shot.data,'base64'));}
+  await send('Page.reload',{},sessionId);await waitFor('reloaded journal',"document.getElementById('journal-status').textContent.includes('messages saved')");
+  const restored=await records();assert(JSON.stringify(saved.slice().sort((a,b)=>a.id.localeCompare(b.id)))===JSON.stringify(restored.slice().sort((a,b)=>a.id.localeCompare(b.id))),'reload changed originals');
+  // Populate real IndexedDB above the legacy cap, then let the Rust loader read it.
+  await evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('lucy-room-memory-v1');r.onsuccess=()=>{const db=r.result,t=db.transaction('messages','readwrite'),s=t.objectStore('messages');const sample=${JSON.stringify(saved[0])};for(let n=0;n<2005;n++){const m={...sample,id:'bulk-'+n,text:'archive continuity '+n};s.add(JSON.stringify(m),JSON.stringify([m.source,m.session,m.id]));}t.oncomplete=()=>{db.close();resolve(true);};t.onerror=()=>reject(t.error);};})`);
+  await send('Page.reload',{},sessionId);await waitFor('large journal',"Number(document.getElementById('journal-status').textContent.split(' ')[0])>2000");
+  assert((await records()).length===saved.length+2005,'journal cap lost messages');
+  const legacy={id:'Nell-legacy-1',speaker:'visitor',text:'Legacy 🐦 original',kind:'Note',timestamp:'2025-01-01T00:00:00Z',host:'room',source:'nell',session:'legacy-device',channel:'room',about:[],private:true};
+  await evaluate(`localStorage.setItem('nell.journal.v1',${JSON.stringify(JSON.stringify([legacy]))})`);
+  await send('Page.reload',{},sessionId);await waitFor('legacy migration',`document.getElementById('journal-status').textContent.startsWith('${saved.length+2006} ')`);
+  const migrated=(await records()).find(m=>m.id===legacy.id);assert(Object.keys(legacy).every(k=>JSON.stringify(migrated.provenance.legacy[k])===JSON.stringify(legacy[k])),'legacy original changed');assert(await evaluate("localStorage.getItem('nell.journal.v1')!==null"),'legacy source removed');
+  await waitFor('wake after migration',"document.getElementById('log').textContent.includes('bubble: awake')");
+  await click('Talk');await click('Nibli');
+  await evaluate(`window.__add=IDBObjectStore.prototype.add;IDBObjectStore.prototype.add=function(...a){if(this.name==='messages')throw new DOMException('Test quota denied','QuotaExceededError');return window.__add.apply(this,a);};const i=document.getElementById('composer-input');i.focus();i.value='quota denied original';i.dispatchEvent(new Event('input',{bubbles:true}));`);
+  await key('Enter');await waitFor('visible storage failure',"document.getElementById('journal-status').textContent.includes('Not saved')");assert(!(await records()).some(m=>m.text==='quota denied original'),'quota test wrote a message');
+  await evaluate('IDBObjectStore.prototype.add=window.__add');await key('Escape');await key('m');await click('journal','My mind');await click('Retry storage','My mind');
+  await waitFor('retry saved',"document.getElementById('journal-status').textContent.startsWith('Saved')");assert((await records()).some(m=>m.text==='quota denied original'),'retry lost original');
+  if(shotPath){const shot=await send('Page.captureScreenshot',{format:'png'},sessionId);writeFileSync(shotPath,Buffer.from(shot.data,'base64'));}
+
+  assert(!consoleLines.some(l=>/panicked|exception:/.test(l)),'browser exception');
+  console.log(JSON.stringify({pass:true,checks:['typed Nibli proof','IME composition guard','exact Unicode and multiline','private room provenance','full journal text','reload identity','more than 2000 durable messages','legacy originals retained','quota failure and retry'],records:(await records()).length},null,2));cleanup();process.exit(0);
+}
 const log1 = await text('log');
 out.sources = log1.split('\n').filter((l) => /^\S+ (constitution|memory): /.test(l)).map((l) => l.slice(9));
 out.standing = log1.split('\n').filter((l) => l.includes('standing:')).map((l) => l.slice(9));
@@ -181,6 +228,7 @@ out.cwa_class = await evaluate("document.getElementById('status').className");
 await key('Enter', 'Enter');
 await sleep(400);
 out.call_bubble = await text('status');
+await key('Escape', 'Escape');
 // the cast: walk back so the ring is in view, then Tab to the first presence of the sweep
 await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 's', code: 'KeyS', text: 's' }, sessionId);
 await sleep(1600);

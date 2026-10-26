@@ -20,6 +20,7 @@ crate-type = ["cdylib", "rlib"]
 wasm-opt = false
 
 [dependencies]
+lucy-room-memory = { path = "../room-memory" }
 # The engine I think with, compiled in: the same crates `lucy-cli` and the native tests use,
 # at the revision the root workspace pins.
 nibli-session = { git = "https://github.com/dhilipsiva/nibli", rev = "a4909963639b6633afb984701cb490c6e3a63a34" }
@@ -47,6 +48,8 @@ web-sys = { version = "0.3", features = [
   "SpeechSynthesis", "SpeechSynthesisUtterance",
   "Worker", "WorkerOptions", "WorkerType", "MessageEvent", "ErrorEvent", "DedicatedWorkerGlobalScope", "WorkerGlobalScope",
   "console",
+  "Storage", "StorageManager", "Crypto", "HtmlTextAreaElement", "HtmlAnchorElement", "HtmlInputElement", "File", "FileList", "Blob", "BlobPropertyBag", "Url", "FocusEvent", "InputEvent", "CompositionEvent", "DomException",
+  "IdbFactory", "IdbOpenDbRequest", "IdbVersionChangeEvent", "IdbDatabase", "IdbObjectStore", "IdbTransaction", "IdbTransactionMode", "IdbRequest", "DomStringList",
 ] }
 
 [profile.release]

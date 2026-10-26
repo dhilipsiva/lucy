@@ -67,6 +67,8 @@ pub struct AnswerCard {
 }
 
 pub struct HudState<'a> {
+    pub desk: &'a crate::desk::Desk,
+    pub drawer_body: &'a str,
     pub phase: Phase,
     pub w: f64,
     pub h: f64,
@@ -95,7 +97,8 @@ const DOCK: usize = 3;
 const WAKE: usize = 4;
 const RESTORE: usize = 5;
 const FINDER: usize = 6;
-const N: usize = 7;
+const MIND: usize = 7;
+const N: usize = 8;
 
 pub enum HitResult {
     Nothing,
@@ -174,6 +177,7 @@ impl Hud {
                 } else {
                     self.draw_top(st);
                     self.draw_dock(st);
+                    self.draw_mind(st);
                 }
             }
         }
@@ -248,10 +252,11 @@ impl Hud {
             }
             p.text(x, 20.0, &line, &line_f, &col::css(col::FG_MUTED));
         }
+        p.hit_add(0.0, 0.0, p.w, p.h, Action::Find);
         p.dirty = true;
         // right group: voice ∿ · full screen ⤢ · hide H
         let r = &mut self.panels[TOP_R];
-        let bw = 36.0 * 3.0 + 6.0 * 2.0 + 12.0;
+        let bw = 36.0 * 5.0 + 6.0 * 4.0 + 12.0;
         r.resize(bw, 48.0);
         r.x = st.w - 16.0 - bw;
         r.y = 16.0;
@@ -259,6 +264,8 @@ impl Hud {
         r.begin();
         r.glass(0.0, 0.0, r.w, r.h, 10.0);
         let mut x = 6.0;
+        x += r.icon_button(x, 6.0, "M", None, Action::Mind) + 6.0;
+        x += r.icon_button(x, 6.0, "VR", None, Action::Xr) + 6.0;
         x += r.icon_button(
             x,
             6.0,
@@ -279,6 +286,160 @@ impl Hud {
         ) + 6.0;
         r.icon_button(x, 6.0, "H", None, Action::HideHud);
         r.dirty = true;
+    }
+    fn composer(p: &mut Panel, st: &HudState, w: f64, y: f64) {
+        let mut x = 14.0;
+        for (id, label) in [
+            ("words", "Words"),
+            ("recall", "Recall"),
+            ("nibli", "Nibli"),
+            ("ask", "Ask · soon"),
+        ] {
+            x += p.tab(
+                x,
+                y,
+                label,
+                None,
+                st.desk.mode == id,
+                Action::Mode(id.into()),
+            );
+        }
+        let fy = y + 38.0;
+        p.fill_rounded(14.0, fy, w - 28.0, 55.0, 6.0, &col::css(col::VOID_900));
+        p.hit_add(14.0, fy, w - 28.0, 55.0, Action::Focus);
+        let hint = if st.desk.draft.is_empty() {
+            "Write a question…"
+        } else {
+            &st.desk.draft
+        };
+        let f = font(400, 14.0, SANS);
+        let lines = crate::text::wrap_measured(hint, w - 55.0, |s| p.measure(s, &f));
+        for (i, l) in lines
+            .iter()
+            .rev()
+            .take(2)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .enumerate()
+        {
+            p.text(
+                22.0,
+                fy + 8.0 + i as f64 * 19.0,
+                l,
+                &f,
+                &col::css(col::PAPER_100),
+            );
+        }
+        p.ghost(14.0, fy + 62.0, "Send ↵", Action::Submit);
+        p.ghost(100.0, fy + 62.0, "×", Action::ClearDraft);
+        p.ghost(140.0, fy + 62.0, "⌨", Action::Keyboard);
+        p.text(
+            14.0,
+            fy + 96.0,
+            &st.desk.status,
+            &font(400, 10.5, MONO),
+            &col::css(col::FG_MUTED),
+        );
+    }
+    fn draw_mind(&mut self, st: &HudState) {
+        let Some(tab) = &st.desk.drawer else { return };
+        self.panels[DOCK].visible = false;
+        self.panels[BUBBLE].visible = false;
+        let p = &mut self.panels[MIND];
+        let w = (st.w - 24.0).min(760.0);
+        let h = (st.h - 100.0).max(240.0);
+        p.resize(w, h);
+        p.x = (st.w - w) / 2.0;
+        p.y = 80.0;
+        p.visible = true;
+        p.begin();
+        p.glass(0.0, 0.0, w, h, 12.0);
+        p.ghost(w - 42.0, 8.0, "×", Action::CloseMind);
+        let mut x = 12.0;
+        for name in ["standing", "memory", "journal", "log", "about"] {
+            x += p.tab(
+                x,
+                44.0,
+                name,
+                None,
+                tab == name,
+                Action::MindTab(name.into()),
+            );
+        }
+        p.text(
+            16.0,
+            16.0,
+            "My mind",
+            &font(600, 18.0, DISPLAY),
+            &col::css(col::PAPER_100),
+        );
+        let actions = if tab == "journal" {
+            vec![
+                ("Export all", Action::Export(false)),
+                ("This visit", Action::Export(true)),
+                ("Restore", Action::Restore),
+                ("Keep storage", Action::Persist),
+                ("Retry storage", Action::RetryStorage),
+                (
+                    if st.desk.forget_confirm {
+                        "Confirm forget"
+                    } else {
+                        "Forget"
+                    },
+                    Action::Forget,
+                ),
+            ]
+        } else if tab == "standing" {
+            vec![("Verify standing", Action::Group("standing".into()))]
+        } else {
+            vec![]
+        };
+        let mut x = 12.0;
+        let mut y = 88.0;
+        for (label, a) in actions {
+            let size = p.measure(label, &font(400, 12.0, MONO)) + 24.0;
+            if x + size > w - 12.0 {
+                x = 12.0;
+                y += 32.0;
+            }
+            p.ghost(x, y, label, a);
+            x += size;
+        }
+        if tab == "journal" {
+            y += 34.0;
+            p.ghost(
+                12.0,
+                y,
+                if st.desk.seat {
+                    "Seat: dhilipsiva (self-report)"
+                } else {
+                    "Seat: visitor · I am dhilipsiva"
+                },
+                Action::Seat,
+            );
+        }
+        y += 40.0;
+        let f = font(400, 13.0, MONO);
+        let lines = crate::text::wrap_preformatted(st.drawer_body, w - 32.0, |s| p.measure(s, &f));
+        let rows = ((h - y - 48.0) / 20.0).max(1.0) as usize;
+        let page = crate::text::ProofPage::new(lines.len(), st.desk.page, rows);
+        for (i, l) in lines.iter().skip(page.start).take(rows).enumerate() {
+            p.text(16.0, y + i as f64 * 20.0, l, &f, &col::css(col::PAPER_100));
+        }
+        if page.previous().is_some() {
+            p.ghost(16.0, h - 36.0, "‹ Previous", Action::DrawerPage(-1));
+        }
+        if page.next().is_some() {
+            p.ghost(w - 110.0, h - 36.0, "Next ›", Action::DrawerPage(1));
+        }
+        p.text(
+            w / 2.0 - 32.0,
+            h - 28.0,
+            &format!("{} / {}", page.index + 1, page.count),
+            &f,
+            &col::css(col::FG_MUTED),
+        );
     }
     fn draw_bubble(&mut self, st: &HudState) {
         let Some(sp) = st.speech else {
@@ -423,11 +584,16 @@ impl Hud {
                 rows.push(row);
             }
         }
-        let chip_rows = rows.len().min(3);
+        let page_rows = if st.w < 600.0 { 1 } else { 2 };
+        let pages = rows.len().div_ceil(page_rows).max(1);
+        let page = st.desk.chip_page.min(pages - 1);
+        let chip_rows = rows.len().saturating_sub(page * page_rows).min(page_rows);
+        let composer_h = if st.group == "talk" { 156.0 } else { 0.0 };
+        let paging_h = if pages > 1 { 28.0 } else { 0.0 };
         let left_h = if st.dock_min {
             44.0
         } else {
-            10.0 + 36.0 + 8.0 + chip_rows as f64 * 42.0 + 12.0
+            10.0 + 36.0 + 8.0 + chip_rows as f64 * 42.0 + 12.0 + paging_h + composer_h
         };
         let foot_h = if st.dock_min { 0.0 } else { 30.0 };
         // the answer board's height
@@ -518,7 +684,11 @@ impl Hud {
                     x,
                     10.0,
                     &g.label,
-                    Some(g.items.len()),
+                    if st.w < 600.0 {
+                        None
+                    } else {
+                        Some(g.items.len())
+                    },
                     sel,
                     Action::Group(g.id.clone()),
                 );
@@ -534,7 +704,7 @@ impl Hud {
             p.ghost(left_w - 42.0, 8.0, "▾", Action::ToggleMin);
             if let Some(g) = group {
                 let mut y = 54.0;
-                for row in rows.iter().take(chip_rows) {
+                for row in rows.iter().skip(page * page_rows).take(chip_rows) {
                     let mut x = 14.0;
                     for (i, _) in row {
                         let it = &g.items[*i];
@@ -556,6 +726,25 @@ impl Hud {
                     }
                     y += 42.0;
                 }
+            }
+            let y = 54.0 + chip_rows as f64 * 42.0;
+            if pages > 1 {
+                if page > 0 {
+                    p.ghost(14.0, y, "‹", Action::ChipPage(-1));
+                }
+                p.text(
+                    60.0,
+                    y + 4.0,
+                    &format!("{} / {pages}", page + 1),
+                    &font(400, 12.0, MONO),
+                    &col::css(col::FG_MUTED),
+                );
+                if page + 1 < pages {
+                    p.ghost(140.0, y, "›", Action::ChipPage(1));
+                }
+            }
+            if st.group == "talk" {
+                Self::composer(p, st, left_w, y + paging_h);
             }
             if two {
                 p.line(
@@ -850,7 +1039,7 @@ impl Hud {
     /// Upload the changed panels and draw every visible one in screen space.
     pub fn render(&mut self, gl: &Gl, quad: &crate::gl::GpuMesh, w: f64, h: f64) {
         let ortho = Mat4::orthographic_rh_gl(0.0, w as f32, h as f32, 0.0, -1.0, 1.0);
-        let order = [WAKE, DOCK, TOP_L, TOP_R, RESTORE, FINDER, BUBBLE];
+        let order = [WAKE, DOCK, TOP_L, TOP_R, RESTORE, FINDER, BUBBLE, MIND];
         for &i in &order {
             let p = &mut self.panels[i];
             if !p.visible {
@@ -889,7 +1078,7 @@ impl Hud {
     }
     /// What is under a screen point: nothing, or a panel (with its action, if any).
     pub fn hit(&self, sx: f64, sy: f64) -> HitResult {
-        for &i in &[RESTORE, FINDER, DOCK, TOP_R, TOP_L] {
+        for &i in &[MIND, RESTORE, FINDER, DOCK, TOP_R, TOP_L] {
             let p = &self.panels[i];
             if p.contains(sx, sy) {
                 return HitResult::Panel(p.hit(sx - p.x, sy - p.y));

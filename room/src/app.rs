@@ -53,6 +53,11 @@ struct InputFlags {
 }
 
 pub struct App {
+    desk: crate::desk::Desk,
+    eyes: crate::eyes::Eyes,
+    eye_lines: crate::eyes::Lines,
+    typed_queries: HashSet<u64>,
+    relay: Option<crate::desk::Submission>,
     gl: Gl,
     scene: Scene,
     world: World,
@@ -97,6 +102,8 @@ pub struct App {
     h: f64,
     dpr: f64,
     source_label: String,
+    drawer_body: String,
+    mirrored_version: u64,
 }
 
 fn now_ms() -> f64 {
@@ -151,6 +158,11 @@ pub fn boot() -> Result<(), String> {
     let engine = Engine::new(replies);
     let t0 = now_ms();
     let mut app = App {
+        desk: crate::desk::Desk::new(&window.location().search().unwrap_or_default()),
+        eyes: Default::default(),
+        eye_lines: Default::default(),
+        typed_queries: HashSet::new(),
+        relay: None,
         gl,
         scene,
         world,
@@ -195,6 +207,8 @@ pub fn boot() -> Result<(), String> {
         h,
         dpr,
         source_label: String::new(),
+        drawer_body: String::new(),
+        mirrored_version: 0,
     };
     app.detect_input();
     app.log(&format!(
@@ -253,6 +267,17 @@ pub fn boot() -> Result<(), String> {
         });
     }
     let app = Rc::new(RefCell::new(app));
+    let weak = Rc::downgrade(&app);
+    let q = app.borrow().input.clone();
+    input::direct(Rc::new(move |e| {
+        if let Some(a) = weak.upgrade() {
+            if let Ok(mut a) = a.try_borrow_mut() {
+                a.handle(e);
+            } else {
+                q.borrow_mut().push_back(e);
+            }
+        }
+    }));
     let f: FrameClosure = Rc::new(RefCell::new(None));
     let g = f.clone();
     *g.borrow_mut() = Some(Closure::new(move |t: f64| {
@@ -343,7 +368,6 @@ impl App {
         let facts: Vec<Item> = self
             .facts
             .iter()
-            .take(12)
             .map(|f| Item {
                 label: f.kr.clone(),
                 kind: ItemKind::Plain,
@@ -351,37 +375,8 @@ impl App {
                 disabled: false,
             })
             .collect();
-        let mut out = vec![Group {
-            id: "standing".into(),
-            label: "standing".into(),
-            items: standing,
-        }];
-        if !facts.is_empty() {
-            out.push(Group {
-                id: "facts".into(),
-                label: "facts".into(),
-                items: facts,
-            });
-        }
-        if !self.entities.is_empty() {
-            out.push(Group {
-                id: "cast".into(),
-                label: "cast".into(),
-                items: self
-                    .entities
-                    .iter()
-                    .map(|e| Item {
-                        label: e.name.clone(),
-                        kind: ItemKind::Plain,
-                        query: None,
-                        disabled: false,
-                    })
-                    .collect(),
-            });
-        }
-        if let Some(e) = self.subject.and_then(|i| self.entities.get(i)) {
-            let mut items: Vec<Item> = e
-                .facts
+        let mut cast: Vec<Item> = if let Some(e) = self.subject.and_then(|i| self.entities.get(i)) {
+            e.facts
                 .iter()
                 .map(|f| Item {
                     label: english_of(&f.kr),
@@ -389,18 +384,84 @@ impl App {
                     query: Some(f.kr.clone()),
                     disabled: false,
                 })
-                .collect();
-            items.push(Item {
+                .collect()
+        } else {
+            self.entities
+                .iter()
+                .map(|e| Item {
+                    label: e.name.clone(),
+                    kind: ItemKind::Plain,
+                    query: None,
+                    disabled: false,
+                })
+                .collect()
+        };
+        if self.subject.is_some() {
+            cast.push(Item {
                 label: "back".into(),
                 kind: ItemKind::Plain,
                 query: None,
                 disabled: false,
             });
-            out.push(Group {
-                id: e.name.clone(),
-                label: e.name.clone(),
-                items,
-            });
+        }
+        let mut out = vec![
+            Group {
+                id: "standing".into(),
+                label: "Standing".into(),
+                items: standing,
+            },
+            Group {
+                id: "cast".into(),
+                label: "Cast".into(),
+                items: cast,
+            },
+            Group {
+                id: "facts".into(),
+                label: "Facts".into(),
+                items: facts,
+            },
+            Group {
+                id: "talk".into(),
+                label: "Talk".into(),
+                items: vec![],
+            },
+        ];
+        for (label, q) in [
+            ("Bird arrives", "eye:Bird"),
+            ("Dog arrives", "eye:Dog"),
+            ("Person arrives", "eye:Person"),
+            ("Clear eyes", "eye:clear"),
+            ("Connect BLE eye", "eye:ble"),
+        ] {
+            out[2].items.insert(
+                0,
+                Item {
+                    label: label.into(),
+                    kind: ItemKind::Eyes,
+                    query: Some(q.into()),
+                    disabled: false,
+                },
+            );
+        }
+        out[3].items.push(Item {
+            label: "Load my words".into(),
+            kind: ItemKind::Words,
+            query: Some("load:words".into()),
+            disabled: false,
+        });
+        if self.relay.is_some() {
+            for (label, q) in [
+                ("Yes — put it to the engine", "relay:nibli"),
+                ("Yes — recall it", "relay:recall"),
+                ("Not now", "relay:cancel"),
+            ] {
+                out[3].items.push(Item {
+                    label: label.into(),
+                    kind: ItemKind::Recall,
+                    query: Some(q.into()),
+                    disabled: false,
+                });
+            }
         }
         out
     }
@@ -620,6 +681,23 @@ impl App {
     fn on_reply(&mut self, r: FromWorker) {
         match r {
             FromWorker::Ready => {}
+            FromWorker::Seen {
+                atom,
+                present,
+                fact_count,
+            } => {
+                self.world
+                    .observation(&self.gl, &mut self.scene, &atom, present);
+                let text = format!(
+                    "Eyes: {atom} {} · {fact_count} active observation facts",
+                    if present { "arrived" } else { "left" }
+                );
+                self.log(&text);
+                self.say(&text, Verdict::Eyes, Some("OBSERVED"));
+                if self.desk.ready {
+                    self.desk.record_answer(&text);
+                }
+            }
             FromWorker::Loaded {
                 loaded,
                 standing_fact,
@@ -630,10 +708,22 @@ impl App {
             FromWorker::Answer { id, answer } => {
                 let frames = self.engine.answered(id);
                 let subject = self.pending_subject.remove(&id);
+                if self.typed_queries.remove(&id) {
+                    self.desk.record_answer(&format!(
+                        "{}\n{}\n{}\n{}",
+                        answer.query,
+                        answer.verdict_word(),
+                        answer.english,
+                        answer.proof_text
+                    ));
+                }
                 self.show_answer(answer, frames, subject);
             }
             FromWorker::Error { id, error } => {
                 self.engine.answered(id);
+                if self.typed_queries.remove(&id) {
+                    self.desk.record_answer(&format!("Nibli error: {error}"));
+                }
                 self.pending_subject.remove(&id);
                 self.say(
                     &format!("I couldn't read that as Nibli: {error}"),
@@ -683,10 +773,19 @@ impl App {
         } else {
             None
         };
-        let body = subject
+        let mut body = subject
             .and_then(|i| self.entities.get(i))
             .map(cast::description_text)
             .unwrap_or_default();
+        if let Some(e) = subject.and_then(|i| self.entities.get(i)) {
+            if let Some(record) = self.desk.memory.search(&e.name, 1).first() {
+                body.push_str(&format!(
+                    "\n\nRecord {}\n{}",
+                    record.citation(),
+                    record.text
+                ));
+            }
+        }
         self.answer = Some(AnswerCard {
             verdict,
             label: label.map(String::from),
@@ -724,7 +823,8 @@ impl App {
         };
         self.world.focus_cast(&self.scene, i);
         self.subject = Some(i);
-        self.group = e.name.clone();
+        self.group = "cast".into();
+        self.desk.chip_page = 0;
         self.tab_pos = self.sweep.iter().position(|&k| k == i);
         self.log(&format!("subject ({via}): {} · {}", e.name, e.kind));
         match &e.query {
@@ -806,9 +906,24 @@ impl App {
                     .cloned()
                 {
                     self.log(&format!("control: {}", it.label));
-                    if group == "cast" {
+                    if it.disabled {
+                        return;
+                    }
+                    if group == "cast" && self.subject.is_none() {
                         self.select_cast(i, "control");
                     } else if let Some(q) = it.query {
+                        if let Some(atom) = q.strip_prefix("eye:") {
+                            self.action(Action::Eye(atom.into()));
+                            return;
+                        }
+                        if let Some(mode) = q.strip_prefix("relay:") {
+                            self.action(Action::Relay(mode.into()));
+                            return;
+                        }
+                        if q == "load:words" {
+                            self.action(Action::LoadWords);
+                            return;
+                        }
                         let subject = self.subject.filter(|_| group != "standing");
                         self.ask_text(&q, "control", subject);
                     } else if it.label == "back" {
@@ -818,6 +933,8 @@ impl App {
             }
             Action::Group(g) => {
                 self.group = g;
+                self.desk.chip_page = 0;
+                self.desk.drawer = None;
             }
             Action::ToggleProof => {
                 if let Some(a) = &mut self.answer {
@@ -861,14 +978,114 @@ impl App {
                 self.world.focus_lucy(&self.scene);
                 self.log("find: turned to Lucy");
             }
-            Action::Mind
-            | Action::MindTab(_)
-            | Action::CloseMind
-            | Action::Mode(_)
-            | Action::Xr
-            | Action::Focus => {}
+            Action::Mind => {
+                self.desk.drawer = if self.desk.drawer.is_some() {
+                    None
+                } else {
+                    Some("standing".into())
+                };
+                self.desk.page = 0;
+            }
+            Action::MindTab(tab) => {
+                self.desk.drawer = Some(tab);
+                self.desk.page = 0;
+                self.desk.forget_confirm = false;
+            }
+            Action::CloseMind => self.desk.drawer = None,
+            Action::Mode(mode) => self.desk.mode = mode,
+            Action::Focus => {
+                self.keys.clear();
+                self.desk.focus();
+            }
+            Action::Submit => self.desk.submit(),
+            Action::ClearDraft => {
+                self.desk.draft.clear();
+                self.desk.sync_input();
+            }
+            Action::ChipPage(delta) => {
+                self.desk.chip_page = self.desk.chip_page.saturating_add_signed(delta as isize);
+            }
+            Action::DrawerPage(delta) => {
+                self.desk.page = self.desk.page.saturating_add_signed(delta as isize);
+            }
+            Action::Export(current) => self.desk.export(current),
+            Action::Restore => self.desk.restore(),
+            Action::Forget => self.desk.forget(),
+            Action::Persist => self.desk.persist(),
+            Action::RetryStorage => self.desk.retry(),
+            Action::Seat => self.desk.seat = !self.desk.seat,
+            Action::Relay(mode) => {
+                if let Some(mut s) = self.relay.take() {
+                    if mode != "cancel" {
+                        s.mode = mode;
+                        self.answer_submission(s);
+                    }
+                }
+            }
+            Action::Keyboard => {
+                self.desk.keyboard = !self.desk.keyboard;
+                self.desk.focus();
+            }
+            Action::Key(key) => {
+                self.desk.draft.push_str(&key);
+                self.desk.sync_input();
+            }
+            Action::LoadWords => self.say(
+                "Local Words loading arrives with the next implementation slice.",
+                Verdict::Words,
+                Some("WORDS"),
+            ),
+            Action::Eye(atom) => {
+                if atom == "ble" {
+                    if let Err(e) = crate::eyes::connect(self.eye_lines.clone()) {
+                        self.say(&format!("Eye connection: {e}"), Verdict::Eyes, Some("EYES"));
+                    }
+                } else {
+                    let changes = self.eyes.simulate(&atom, now_ms());
+                    for (a, p) in changes {
+                        self.engine.see(&a, p);
+                    }
+                }
+            }
+            Action::Xr | Action::StopWords => {}
         }
         self.version += 1;
+    }
+    fn answer_submission(&mut self, s: crate::desk::Submission) {
+        match s.mode.as_str() {
+            "nibli" => {
+                let id = self.engine.ask(&s.text);
+                self.typed_queries.insert(id);
+                self.world.lucy.set_thinking(true);
+            }
+            "recall" => {
+                let text = self.desk.recall(&s.text, &s.id);
+                self.say(&text, Verdict::Recall, Some("RECALLED"));
+                self.desk.record_answer(&text);
+                self.answer = Some(AnswerCard {
+                    verdict: Verdict::Recall,
+                    label: Some("RECALLED".into()),
+                    meta: "attributed records · evidence".into(),
+                    title: s.text,
+                    query: String::new(),
+                    body: text.clone(),
+                    why: String::new(),
+                    proof: text.clone(),
+                    proof_open: false,
+                    proof_page: 0,
+                });
+                self.mirrors.set_answer(&text);
+            }
+            _ => {
+                let text = if s.mode == "ask" {
+                    "Natural-language formalization is not available. Choose Nibli for a formal query, or Recall to search my records."
+                } else {
+                    "My local Words model is not loaded. Your complete question is saved privately on this device."
+                };
+                self.say(text, Verdict::Words, Some("NOTE"));
+                self.desk.record_answer(text);
+            }
+        }
     }
     fn toggle_fullscreen(&mut self) {
         let Some(doc) = web_sys::window().and_then(|w| w.document()) else {
@@ -883,6 +1100,12 @@ impl App {
     fn handle(&mut self, ev: InputEvent) {
         let waking = self.phase == Phase::Wake && !self.wake_skipped;
         match ev {
+            InputEvent::Draft(text) => {
+                self.desk.draft = text;
+                self.version += 1;
+            }
+            InputEvent::Submit => self.action(Action::Submit),
+            InputEvent::Typing => self.keys.clear(),
             InputEvent::KeyDown {
                 key,
                 repeat,
@@ -903,7 +1126,11 @@ impl App {
                 }
                 let k = key.to_lowercase();
                 match k.as_str() {
-                    "enter" => self.call("keyboard"),
+                    "enter" => {
+                        self.group = "talk".into();
+                        self.action(Action::Focus);
+                    }
+                    "m" => self.action(Action::Mind),
                     "h" => {
                         self.hud_hidden = !self.hud_hidden;
                         self.version += 1;
@@ -918,7 +1145,13 @@ impl App {
                     }
                     "home" => self.action(Action::Find),
                     "tab" => self.tab(shift),
-                    "escape" => self.clear_subject(),
+                    "escape" => {
+                        if self.desk.drawer.is_some() {
+                            self.action(Action::CloseMind);
+                        } else {
+                            self.clear_subject();
+                        }
+                    }
                     "1" | "2" | "3" | "4" | "5" | "6" => {
                         let i = k.parse::<usize>().unwrap_or(1) - 1;
                         if self.group != "standing" {
@@ -1115,6 +1348,33 @@ impl App {
     }
     // ── the frame ──
     pub fn frame(&mut self, now: f64) {
+        let lines: Vec<_> = self.eye_lines.borrow_mut().drain(..).collect();
+        for line in lines {
+            match line {
+                Ok(s) => {
+                    for (a, p) in self.eyes.ingest(&s, now) {
+                        self.engine.see(&a, p);
+                    }
+                }
+                Err(e) => self.log(&format!("Eyes: {e}")),
+            }
+        }
+        for (a, p) in self.eyes.tick(now) {
+            self.engine.see(&a, p);
+        }
+        let (changed, submit) = self.desk.poll();
+        if changed {
+            self.version += 1;
+        }
+        if let Some(s) = submit {
+            if self.subject.is_some() {
+                self.relay = Some(s);
+                self.group = "talk".into();
+                self.say("I can relay that question about this presence. Put Nibli to the engine, or look for an attributed record?",Verdict::Recall,Some("RELAY"));
+            } else {
+                self.answer_submission(s);
+            }
+        }
         let dt = ((now - self.last_ms) / 1000.0).clamp(0.0, 0.1) as f32;
         self.last_ms = now;
         let t = ((now - self.start_ms) / 1000.0) as f32;
@@ -1193,7 +1453,25 @@ impl App {
         } else {
             1.0
         };
+        if self.mirrored_version != self.version {
+            self.mirrored_version = self.version;
+            self.drawer_body = if self.desk.drawer.is_some() {
+                self.desk.body(&self.log, &self.standing)
+            } else {
+                String::new()
+            };
+            if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+                if let Some(el) = doc.get_element_by_id("journal-status") {
+                    el.set_text_content(Some(&self.desk.status));
+                }
+                if let Some(el) = doc.get_element_by_id("drawer") {
+                    el.set_text_content(Some(&self.drawer_body));
+                }
+            }
+        }
         let App {
+            drawer_body,
+            desk,
             hud,
             speech,
             answer,
@@ -1212,6 +1490,8 @@ impl App {
             ..
         } = self;
         let st = HudState {
+            desk,
+            drawer_body,
             phase: *phase,
             w: *w,
             h: *h,
@@ -1238,6 +1518,8 @@ impl App {
             self.world.head_on_screen(&self.scene, self.w, self.h);
         self.hud.place_bubble(hx, hy, visible, self.w, self.h);
         let st2 = HudState {
+            desk: &self.desk,
+            drawer_body: &self.drawer_body,
             phase: self.phase,
             w: self.w,
             h: self.h,

@@ -18,12 +18,18 @@ pub struct FileText {
 pub enum ToWorker {
     Load { files: Vec<FileText> },
     Ask { id: u64, query: String },
+    See { atom: String, present: bool },
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FromWorker {
     /// The worker's module is up and listening.
     Ready,
+    Seen {
+        atom: String,
+        present: bool,
+        fact_count: usize,
+    },
     Loaded {
         loaded: Vec<Loaded>,
         standing_fact: Option<String>,
@@ -50,6 +56,18 @@ pub enum FromWorker {
 /// One message in, one out: the same steps `app` took on the main thread before this slice.
 pub fn handle<F: Fn() -> f64 + Copy>(mind: &mut Option<Mind>, msg: ToWorker, now: F) -> FromWorker {
     match msg {
+        ToWorker::See { atom, present } => match mind
+            .as_mut()
+            .ok_or("mind not loaded".to_string())
+            .and_then(|m| m.observe(&atom, present))
+        {
+            Ok(fact_count) => FromWorker::Seen {
+                atom,
+                present,
+                fact_count,
+            },
+            Err(error) => FromWorker::Error { id: 0, error },
+        },
         ToWorker::Load { files } => {
             let t0 = now();
             let mut m = Mind::new();
@@ -138,6 +156,47 @@ pub fn worker_main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn observations_retract_only_their_own_fact_ids() {
+        let mut mind = Some(Mind::new());
+        mind.as_mut().unwrap().assert_text("bird(Enma).").unwrap();
+        for present in [true, true, false] {
+            let r = handle(
+                &mut mind,
+                ToWorker::See {
+                    atom: "Bird".into(),
+                    present,
+                },
+                || 0.0,
+            );
+            assert!(matches!(r, FromWorker::Seen { .. }));
+            assert_eq!(
+                mind.as_ref()
+                    .unwrap()
+                    .ask("observe(Nell, Bird).", || 0.0)
+                    .unwrap()
+                    .is_true(),
+                present
+            );
+        }
+        assert!(mind
+            .as_ref()
+            .unwrap()
+            .ask("bird(Enma).", || 0.0)
+            .unwrap()
+            .is_true());
+        assert!(matches!(
+            handle(
+                &mut mind,
+                ToWorker::See {
+                    atom: "Dhilipsiva".into(),
+                    present: true
+                },
+                || 0.0
+            ),
+            FromWorker::Error { .. }
+        ));
+    }
     #[test]
     fn the_codec_round_trips() {
         let m = ToWorker::Ask {

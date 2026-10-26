@@ -139,6 +139,7 @@ impl Answer {
 /// The session: the shared compile/assert/query core the native engine and `lucy-cli` use.
 pub struct Mind {
     core: nibli_session::CoreSession,
+    observations: std::collections::BTreeMap<String, Vec<u64>>,
     pub loaded: Vec<Loaded>,
     pub facts: Vec<Fact>,
     pub ms: f64,
@@ -152,6 +153,7 @@ impl Mind {
     pub fn new() -> Self {
         Mind {
             core: nibli_session::CoreSession::new(),
+            observations: Default::default(),
             loaded: Vec::new(),
             facts: Vec::new(),
             ms: 0.0,
@@ -198,6 +200,21 @@ impl Mind {
     }
     pub fn retract_fact(&mut self, id: u64) -> Result<(), String> {
         self.core.retract_fact(id).map_err(|e| e.to_string())
+    }
+    pub fn observe(&mut self, atom: &str, present: bool) -> Result<usize, String> {
+        if !matches!(atom, "Bird" | "Dog" | "Person") {
+            return Err("unsupported anonymous class".into());
+        }
+        if let Some(ids) = self.observations.remove(atom) {
+            for id in ids {
+                self.retract_fact(id)?;
+            }
+        }
+        if present {
+            let ids = self.assert_text(&format!("observe(Nell, {atom})."))?;
+            self.observations.insert(atom.into(), ids);
+        }
+        Ok(self.observations.values().map(Vec::len).sum())
     }
     pub fn loaded_named(&self, name: &str) -> Option<&Loaded> {
         self.loaded.iter().find(|l| l.name == name)
