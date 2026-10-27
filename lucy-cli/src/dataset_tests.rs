@@ -146,8 +146,8 @@ fn dataset_is_deterministic_and_scrubs_machine_details() {
     );
     assert!(items.iter().any(|i| i["kind"] == "standing"));
     assert!(
-        items.iter().filter(|i| i["kind"] == "constitution").count() >= 10,
-        "preamble + nine sections"
+        items.iter().filter(|i| i["kind"] == "constitution").count() >= 12,
+        "preamble + eleven sections"
     );
     assert!(
         items
@@ -178,7 +178,7 @@ fn dataset_probes_carry_the_engines_verdicts() {
     );
     // Standing: my constitution makes me a person once loaded.
     let standing = by("standing");
-    assert_eq!(standing.len(), 5);
+    assert_eq!(standing.len(), 7);
     assert!(
         standing.iter().all(|p| p["expect"] == "known"),
         "{standing:?}"
