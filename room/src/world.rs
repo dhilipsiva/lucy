@@ -57,6 +57,7 @@ pub struct World {
     dust: NodeId,
     plinth: NodeId,
     plinth_edges: NodeId,
+    terminal: NodeId,
     home_ring: NodeId,
     eyes_ring: NodeId,
     pub rig: Vec3,
@@ -233,6 +234,34 @@ impl World {
         crate::lucy::seed_eulers(&lucy);
         let cast = scene.add(root, Node::new(Kind::Empty));
         scene.set_visible(cast, false);
+        let terminal = scene.add(root, Node::new(Kind::Empty));
+        scene.set_pos(terminal, crate::wake_demo::SCREEN_POSITION);
+        scene.set_rot(terminal, 0.0, crate::wake_demo::SCREEN_YAW, 0.0);
+        for (size, pos) in [
+            (
+                Vec3::new(
+                    crate::wake_demo::SCREEN_WIDTH + 0.06,
+                    crate::wake_demo::SCREEN_WIDTH * 2.0 / 3.0 + 0.06,
+                    0.045,
+                ),
+                Vec3::new(0.0, 0.0, -0.035),
+            ),
+            (Vec3::new(0.065, 0.94, 0.065), Vec3::new(0.0, -0.80, -0.035)),
+            (
+                Vec3::new(0.62, 0.035, 0.38),
+                Vec3::new(0.0, -crate::wake_demo::SCREEN_POSITION.y + 0.02, -0.035),
+            ),
+        ] {
+            let mesh = scene.add_mesh(gl.upload(&geom::cuboid(size.x, size.y, size.z)));
+            let node = scene.add(
+                terminal,
+                Node::new(Kind::Mesh {
+                    mesh,
+                    material: Material::std(col::VOID_500).rough(0.8),
+                }),
+            );
+            scene.set_pos(node, pos);
+        }
         let mut w = World {
             lucy,
             cast,
@@ -245,6 +274,7 @@ impl World {
             dust,
             plinth,
             plinth_edges,
+            terminal,
             home_ring,
             eyes_ring,
             rig: Vec3::new(0.0, 0.0, 0.4),
@@ -599,6 +629,7 @@ impl World {
     }
     /// 0 dark → 1 awake: grid, plinth, ring, her, then the cast (if it is built by then).
     pub fn wake(&mut self, scene: &mut Scene, p: f32) {
+        scene.set_visible(self.terminal, p >= 0.95);
         self.wake_p = clamp(p, 0.0, 1.0);
         let p = self.wake_p;
         let g = ease(p / 0.25);

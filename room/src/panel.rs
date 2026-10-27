@@ -44,6 +44,8 @@ pub enum Action {
     Relay(String),
     LoadWords,
     StopWords,
+    WakeDemo,
+    CloseWakeDemo,
 }
 #[derive(Clone, Debug)]
 pub struct Hit {

@@ -47,10 +47,20 @@ Existing same-origin Nell journals migrate with their original attribution prese
   the frames the room drew meanwhile (eight, in the headless run, for a 263 ms query; none when
   the engine ran on the main thread). Without a worker the engine runs here as before, and the
   log says so.
+- The wake screen (N8g): click the freestanding screen, choose **Wake demo** in Controls,
+  or press **T**. The simulated CLI session advances every half second: instructions, identity,
+  session, an illustrated host permission, peer freshness, recall and a greeting. Just
+  watch; the output scrolls on its own and ends with the public room invitation. A bright
+  **× Close** button and “Press Esc to close” hint stay visible; opening it again starts
+  a new observation. Gamepad and VR rays can open and dismiss the same screen.
+
+The simulation has no playback controls, composer or model connection. It neither runs
+commands nor reads or writes the private conversation. Talk remains its own section.
+The complete simulation is also available in the accessible text mirror.
 
 ## Talk and my private journal
 
-Standing, Cast, Facts and Talk are the four main groups. Talk accepts exact multiline text;
+Standing, Cast, Facts, Talk and Wake demo appear in Controls. Talk accepts exact multiline text;
 Enter sends and Shift+Enter adds a line. Words uses the pinned Lucy Qwen3 0.6B GGUF through
 Candle on the CPU in its own worker. “Load my words” explicitly downloads about 651 MB;
 verified assets are cached on this device. Retrieved public and local records provide context.
@@ -100,9 +110,10 @@ New training, hosted providers and natural-language formalization are outside th
 generates (`pkg/lucy_room.js`) and calls it; a browser cannot start a wasm module with less.
 `worker.js` is two lines more, approved on 2026-10-25: the same loader imported in a Web Worker
 and the worker entry called, so the engine runs off the drawing thread.
-Four hidden text mirrors (`#status`, `#mindline`, `#answer`, `#log`) carry my words, the mind
-line, the board and the log as text, for screen readers and for the headless test; they are
-text, not interface. `test/headless.mjs` is a Node test harness, not part of the room.
+Hidden text mirrors carry my words, the mind line, the board, model/journal status and log
+for screen readers and the headless test. `#wake-terminal` mirrors the complete demonstration
+text, and `#room-link` is the canonical public-room anchor.
+`test/headless.mjs` is a Node test harness, not part of the room.
 
 ## Build, test, serve
 
@@ -116,6 +127,9 @@ cd .. && python3 -m http.server 8000         # from the repository root
 CHROME=google-chrome node room/test/headless.mjs --shot /tmp/room.png --proof-shot /tmp/proof.png
 # The headless check also reads canvas draw calls at wide and narrow widths, checks
 # every page against the complete engine trace, and exits 1 on a failed check.
+node room/test/headless.mjs --wake-demo --shot /tmp/wake-demo.png
+node room/test/headless.mjs --platforms
+node room/test/headless.mjs --controls
 ```
 
 Rust 1.96 or newer with the `wasm32-unknown-unknown` target, and wasm-pack 0.15 (it fetches the

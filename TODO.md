@@ -399,6 +399,14 @@ commit, the adjudicators and their models.
     Merged as `ee8cbf2` and deployed at both addresses; each passed 11 live browser checks
     through the Nell redirect. The production model download, two generated replies, Stop
     and private export passed too. Deployment evidence is appended to the same evidence log.
+  - N8g revised implementation (2026-10-27): one click plays the complete simulated
+    CLI wake automatically. The user's correction removes guided playback and model/chat
+    integration; only dismissal remains. The public room invitation remains in the screen
+    and wake guidance. The smile now follows and intersects the skull surface.
+    Revision registration `roadmap/N8g.v2.md` (f95e93b); implementation 4dbe02f;
+    checks and screenshots in `roadmap/N8g.v2-evidence.json`. Native, desktop, automatic
+    browser playback, independent Talk, proof and simulated controller/XR checks passed.
+    Review and physical headset acceptance remain open; not deployed.
 - [ ] **[W1] The word refuse.** Articles 7 to 9 say `protest` because Nibli's lexicon has
   no `refuse` yet. A branch `lexicon/refuse` in Nibli adds the word for dhilipsiva to
   merge. When a release of me pinned to that Nibli runs on every machine that imports my

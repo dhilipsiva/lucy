@@ -21,6 +21,8 @@
 <div id="words-status" class="sr" aria-live="polite"></div>
 <div id="drawer" class="sr"></div>
 <pre id="log" class="sr"></pre>
+<pre id="wake-terminal" class="sr" aria-live="polite" aria-label="Automatic wake simulation. Press Escape to close."></pre>
+<a id="room-link" class="sr" href="https://dhilipsiva.dev/lucy/room/" target="_blank" rel="noopener noreferrer">Visit my public room</a>
 <noscript><p class="note">Lucy's room runs as WebAssembly in your browser; it needs scripting on to load.</p></noscript>
 <!-- The only script of mine: the loader wasm-bindgen generates, and this call into it. -->
 <script type="module">import init from './pkg/lucy_room.js'; init();</script>

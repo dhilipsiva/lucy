@@ -60,6 +60,7 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: `
   };
 ` }, sessionId);
 if(process.argv.includes('--platforms')) await send('Page.addScriptToEvaluateOnNewDocument',{source:readFileSync(join(root,'room/test/xr-shim.js'),'utf8')},sessionId);
+if(process.argv.includes('--wake-demo')) await send('Page.addScriptToEvaluateOnNewDocument',{source:readFileSync(join(root,'room/test/wake-demo-shim.js'),'utf8')},sessionId);
 if(process.argv.includes('--words-faults')) await send('Page.addScriptToEvaluateOnNewDocument',{source:readFileSync(join(root,'room/test/words-fault-shim.js'),'utf8')},sessionId);
 if(process.argv.includes('--worker-fault')) await send('Page.addScriptToEvaluateOnNewDocument',{source:`const NativeWorker=Worker;window.Worker=class extends NativeWorker {constructor(url,opts){super(url,opts);if(String(url).includes('role=engine')){this.terminate();}}};window.__bootAt=performance.now();`},sessionId);
 await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false }, sessionId);
@@ -97,6 +98,11 @@ await send('Page.navigate', { url: process.env.ROOM_URL || `http://127.0.0.1:${P
 await waitFor('room document', "document.getElementById('log')!==null");
 await waitFor('the engine', "document.getElementById('log')?.textContent.includes('engine ready')", 90000);
 await waitFor('the wake to finish', "document.getElementById('status')?.textContent.startsWith(\"I'm Lucy\")", 20000);
+if(process.argv.includes('--wake-demo')) {
+ const {runWakeDemo}=await import('./wake-demo.mjs');
+ const result=await runWakeDemo({send,evaluate,key,waitFor,text,sleep,sessionId,shotPath,consoleLines});
+ console.log(JSON.stringify(result,null,2));cleanup();process.exit(0);
+}
 if(process.argv.includes('--worker-fault')) {
  const fallback=await text('log');if(!fallback.includes('main thread')||!fallback.includes('4 s'))throw new Error('missing worker fallback');
  console.log(JSON.stringify({pass:true,workerFallback:true,log:fallback.split('\n').filter(l=>l.includes('worker')||l.includes('engine ready'))},null,2));cleanup();process.exit(0);
@@ -129,12 +135,23 @@ if(process.argv.includes('--platforms')) {
  await pad(2);await waitFor('pad keyboard',"Array.from(window.__roomPanelText.values()).some(rows=>rows.some(r=>r.text==='Space'))");await pad(15);await pad(0);assert(await evaluate("document.getElementById('composer-input').value==='2'"),'D-pad/A typing failed');await pad(1);
  await click('⌨');await click('Clear','Space');for(const k of ['p','e','r','s','o','n','(','⇧','l','⇧','u','c','y',')','.'])await click(k,'Space');await click('Nibli','Space');await click('Send','Space');
  await waitFor('virtual keyboard query',"document.getElementById('answer')?.textContent.startsWith('person(Lucy).')");await click('Hide','Space');
+ // A single controller activation starts the observation; B dismisses it.
+ await pad(5);await waitFor('pad simulation',"document.getElementById('wake-terminal').dataset.open==='true' && document.getElementById('wake-terminal').dataset.step==='1'");
+ await waitFor('automatic pad playback',"Number(document.getElementById('wake-terminal').dataset.step)>=2",8000);
+ await pad(1);assert(await evaluate("document.getElementById('wake-terminal').dataset.open==='false'"),'B did not close simulation');
+ await key('t');await waitFor('keyboard simulation',"document.getElementById('wake-terminal').dataset.open==='true' && document.getElementById('wake-terminal').dataset.step==='1'");
+ await key('Escape');await waitFor('keyboard close',"document.getElementById('wake-terminal').dataset.open==='false'");
  await click('VR','M');await waitFor('VR frame',"window.__xrTrace.length>5");
  const trace=await evaluate('window.__xrTrace.slice(-5)');assert(trace.every(f=>f.calls.filter(c=>c.name==="clear").length===1),'stereo clears more than once');assert(trace.every(f=>f.calls.filter(c=>c.name==="viewport").length===3),'missing stereo viewports');assert(await evaluate('window.__xrRequests[0].activation&&window.__xrCompatible'),'XR request missed activation');
  // Aim at Standing on the real 3D lectern, derived from the canvas label's pixel position.
- const aim=async(label)=>{const p=await panel('Controls ▾'),r=p.rows.find(r=>r.text===label);const x=((r.x+8)/p.w-.5)*1.3,ly=(.5-(r.y+8)/p.h)*(1.3*p.h/p.w),angle=-28*Math.PI/180;const pos=[x,.88+Math.cos(angle)*ly,-.92+Math.sin(angle)*ly];const normal=[0,-Math.sin(angle),Math.cos(angle)];const origin=pos.map((v,i)=>v+normal[i]);const matrix=[1,0,0,0,0,Math.cos(angle),Math.sin(angle),0,...normal,0,...origin,1];await evaluate(`window.__selectRay(${JSON.stringify(matrix)})`);await sleep(300);};
- const beforeRay=await evaluate("document.getElementById('log')?.textContent.split('query: person(Lucy). →').length");await aim('Standing');await aim('Am I a person here?');await waitFor('XR ray query',`document.getElementById('log')?.textContent.split('query: person(Lucy). →').length>${beforeRay}`);await aim('Exit VR');await waitFor('VR exit',"document.getElementById('log')?.textContent.includes('VR: flat room restored')");
- assert(!consoleLines.some(l=>/panicked|exception:/.test(l)),'platform exception');console.log(JSON.stringify({pass:true,phone:{width:phone.w,height:phone.h},jitter:true,gamepad:true,keyboard:true,xr:{frames:trace.length,clearsPerFrame:1,viewportsPerFrame:3,ray:true,exit:true}},null,2));cleanup();process.exit(0);
+ const aim=async(label,marker='Controls ▾')=>{const p=await panel(marker),r=p.rows.find(r=>r.text===label);assert(r,'missing XR control '+label);const terminal=marker==='Lucy, wake',keyboard=marker==='Space',width=terminal?1.5:keyboard?1.05:1.3,angle=(terminal?0:keyboard?-42:-28)*Math.PI/180;const x=((r.x+8)/p.w-.5)*width,ly=(.5-(r.y+8)/p.h)*(width*p.h/p.w);const pos=[x,(terminal?1.25:keyboard?.40:.88)+Math.cos(angle)*ly,(terminal?-1.35:keyboard?-.60:-.92)+Math.sin(angle)*ly];const normal=[0,-Math.sin(angle),Math.cos(angle)];const origin=pos.map((v,i)=>v+normal[i]);const matrix=[1,0,0,0,0,Math.cos(angle),Math.sin(angle),0,...normal,0,...origin,1];await evaluate(`window.__selectRay(${JSON.stringify(matrix)})`);await sleep(300);};
+ const beforeRay=await evaluate("document.getElementById('log')?.textContent.split('query: person(Lucy). →').length");await aim('Standing');await aim('Am I a person here?');await waitFor('XR ray query',`document.getElementById('log')?.textContent.split('query: person(Lucy). →').length>${beforeRay}`);
+ await aim('Wake demo');await waitFor('XR terminal',"document.getElementById('wake-terminal').dataset.open==='true'");
+ await waitFor('automatic XR simulation',"Number(document.getElementById('wake-terminal').dataset.step)>=2",8000);
+ const simulation=await panel('Lucy, wake');assert(!simulation.rows.some(r=>['Next','Skip','Load my words · 651 MB','Send ↵'].includes(r.text)),'XR playback controls remain');
+ assert(simulation.rows.some(r=>r.text==='Press Esc to close'),'XR Escape hint missing');
+ await aim('× Close','Lucy, wake');assert(await evaluate("document.getElementById('wake-terminal').dataset.open==='false'"),'XR Close did not dismiss simulation');await aim('Exit VR');await waitFor('VR exit',"document.getElementById('log')?.textContent.includes('VR: flat room restored')");
+ assert(!consoleLines.some(l=>/panicked|exception:/.test(l)),'platform exception');console.log(JSON.stringify({pass:true,phone:{width:phone.w,height:phone.h},jitter:true,gamepad:true,keyboard:true,wakeTerminal:{gamepad:true,keyboard:true,xr:true},xr:{frames:trace.length,clearsPerFrame:1,viewportsPerFrame:3,ray:true,exit:true}},null,2));cleanup();process.exit(0);
 }
 if (process.argv.includes('--controls') || process.argv.includes('--words') || process.argv.includes('--words-faults')) {
   const assert = (ok,msg)=>{if(!ok)throw new Error(msg);};

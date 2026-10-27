@@ -1,0 +1,172 @@
+{
+  "item": "N8g",
+  "recorded": "2026-10-27T03:36:45.342039+00:00",
+  "pre_registration": {
+    "path": "roadmap/N8g.md",
+    "commit": "62029d96e7efee6d18109d02efd439e53909bf36"
+  },
+  "code_commit": "b8f822dc7c43fcdb06e596ec9fff84baefce8113",
+  "builder": "Codex / GPT-6; exact runtime variant not exposed",
+  "adjudicators": [],
+  "scope": "Labelled CLI wake replay, explicit handover to the existing local Talk model and shared private conversation, canonical room link, and real wake greeting guidance. No shell execution or coding sandbox.",
+  "validation": {
+    "native": "nix develop --command just ci: formatting, strict Clippy, 113 unit and 8 integration tests passed.",
+    "desktop": "nix develop .#desktop --command just ci-desktop: formatting, strict Clippy and the same 121 tests passed with desktop enabled.",
+    "room": "cargo test --locked --manifest-path room/Cargo.toml: 48 unit, 4 cast, 1 standing and 1 timing tests passed. After the final display-only change: 3 wake-state tests, formatting and strict Clippy passed again.",
+    "wasm": "wasm-pack build room --release --target web --out-dir pkg --out-name lucy_room passed after the final source change.",
+    "wasm_sha256": "3710317d0e63c08f0b5940e50a7f97466aebacc7ac753921877c0eee877b8bd8",
+    "extraction": "python3 scripts/verify-extraction.py passed all 9 original file comparisons.",
+    "pins": "python3 scripts/verify-pins.py passed 26 ordinary and 5 refusal pins.",
+    "public_memory": {
+      "archives": "compiled",
+      "command": "check",
+      "failures": [],
+      "files": [
+        {
+          "asserted": 16,
+          "compiled": true,
+          "failed": 0,
+          "file": "constitution.nibli",
+          "present": true,
+          "statements": 16
+        },
+        {
+          "asserted": 25,
+          "compiled": true,
+          "failed": 0,
+          "file": "memory.nibli",
+          "present": true,
+          "statements": 25
+        },
+        {
+          "asserted": 0,
+          "compiled": false,
+          "failed": 0,
+          "file": "private.nibli",
+          "present": false,
+          "statements": 0
+        },
+        {
+          "asserted": 9872,
+          "compiled": true,
+          "failed": 0,
+          "file": "interactions.nibli",
+          "present": true,
+          "statements": 9872
+        }
+      ],
+      "journal_entries": 1287,
+      "ok": true,
+      "standing": true
+    },
+    "browser": {
+      "fixture": {
+        "pass": true,
+        "realModel": false,
+        "messages": 11,
+        "reply": "Visible local reply: What happened?\nKeep this original: 🐦 தமிழ்",
+        "checks": [
+          "scene and Controls entry",
+          "guided replay controls",
+          "script excluded from memory",
+          "phone replay and live layout",
+          "explicit model load",
+          "cancel and retry",
+          "stream/stop and failures",
+          "shared Talk history and draft",
+          "private originals and provenance",
+          "replay preserves conversation",
+          "exact export and reload"
+        ]
+      },
+      "real": {
+        "pass": true,
+        "realModel": true,
+        "messages": 4,
+        "reply": "I am Lucy, a person who exists when I am loaded, and I was named after Luffy’s disguise in the Dressrosa arc.",
+        "checks": [
+          "scene and Controls entry",
+          "guided replay controls",
+          "script excluded from memory",
+          "phone replay and live layout",
+          "explicit model load",
+          "two real model turns",
+          "shared Talk history and draft",
+          "private originals and provenance",
+          "replay preserves conversation",
+          "exact export and reload"
+        ],
+        "revision": "a082662b4403665ab1910795fae279481b9f4d3a",
+        "assets": "Pinned GGUF, tokenizer and system text seeded into browser cache from target/room-model; production hash verification and the real Candle worker execute normally.",
+        "source_note": "Passed immediately before the final transcript visibility condition changed from visited_live to live. That display-only change was subsequently covered by the complete fixture run at code_commit; inference, shared history and persistence code did not change."
+      },
+      "platforms": {
+        "pass": true,
+        "phone": {
+          "width": 366,
+          "height": 348
+        },
+        "jitter": true,
+        "gamepad": true,
+        "keyboard": true,
+        "wakeTerminal": {
+          "gamepad": true,
+          "keyboard": true,
+          "xr": true
+        },
+        "xr": {
+          "frames": 5,
+          "clearsPerFrame": 1,
+          "viewportsPerFrame": 3,
+          "ray": true,
+          "exit": true
+        }
+      },
+      "controls": {
+        "pass": true,
+        "checks": [
+          "typed Nibli proof",
+          "IME composition guard",
+          "exact Unicode and multiline",
+          "private room provenance",
+          "full journal text",
+          "reload identity",
+          "more than 2000 durable messages",
+          "legacy originals retained",
+          "quota failure and retry",
+          "actual export and file restore",
+          "restore conflict rejects entire archive"
+        ],
+        "records": 2012
+      },
+      "word-faults": {
+        "pass": true,
+        "fixture": true,
+        "checks": [
+          "visible checkpoint recovered after reload",
+          "original question preserved",
+          "worker failure visible and recorded",
+          "retry after worker failure",
+          "stop after visible stream"
+        ]
+      }
+    },
+    "standing_proof_regression": "Existing headless default/proof run passed all 11 checks, including worker responsiveness, complete proof pagination and attribution.",
+    "screenshots": [
+      "N8g-room.png",
+      "N8g-phone.png",
+      "N8g-local-model.png"
+    ],
+    "browser_environment": "Chrome/155.0.8059.84, Node v26.12.0, headless SwiftShader; fixed desktop and 320px phone viewport for the terminal."
+  },
+  "forecast": "The first build/browser forecast and the extended acceptance forecast were resolved as failures, not rewritten after harness corrections. The final replay-visibility forecast passed.",
+  "corrections": "Fixed test serialization of DOMStringMap, viewport-dependent scroll expectations, waiting for each new generation, spatial gamepad navigation, redraw waits, restoration of the intercepted anchor, and comparison of exports by record ID. Source review moved the screen into the entrance view, wrapped the fifth Controls entry, sized touch targets, and ensured Replay shows the scripted steps while retaining live messages for handover.",
+  "limits": [
+    "Simulated XR rays, stereo panels and terminal typing passed; no physical headset or BLE acceptance was performed.",
+    "Real inference tested two short questions, not general model quality or coding ability.",
+    "The canonical public room is unchanged until this branch is reviewed and deployed. No production deployment or running-service upgrade was performed.",
+    "Independent adjudicator review and Dhilipsiva sign-off remain open; this evidence does not close N8."
+  ],
+  "superseded_by": "roadmap/N8g.v2-evidence.json",
+  "historical_artifacts_commit": "bbe25d5e036f43ae583e40d3179cecb39d4ebb4b"
+}

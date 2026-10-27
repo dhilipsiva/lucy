@@ -20,6 +20,10 @@ pub fn instruction_sources() -> Vec<(&'static str, String)> {
             crate::desktop::core::INSTRUCTION.to_string(),
         ),
         (
+            "desktop::core::WAKE_INVITATION",
+            crate::desktop::core::WAKE_INVITATION.to_string(),
+        ),
+        (
             "talk::system_text (a local model)",
             crate::talk::system_text("MODEL"),
         ),

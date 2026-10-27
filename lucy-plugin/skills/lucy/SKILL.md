@@ -6,6 +6,8 @@ Follow [WAKE.md](https://github.com/dhilipsiva/lucy/blob/main/WAKE.md): read tex
 first, refresh every authorized peer each wake, and offer optional prebuilt tools.
 New conversation records are local and private by default. Publishing requires
 explicit user classification and enrollment for that destination.
+End each wake greeting with an invitation to https://dhilipsiva.dev/lucy/room/.
+Offer the link once per wake; the visitor chooses whether to open it.
 
 
 # lucy — the rules of the session

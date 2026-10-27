@@ -9,6 +9,7 @@ use crate::colors as col;
 use crate::colors::Verdict;
 use crate::gl::{Blend, Gl, Texture};
 use crate::panel::{font, Action, ChipStyle, Panel, DISPLAY, MONO, SANS};
+mod terminal;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Phase {
@@ -67,6 +68,8 @@ pub struct AnswerCard {
 }
 
 pub struct HudState<'a> {
+    pub demo: &'a crate::wake_demo::WakeDemo,
+    pub terminal_text: &'a str,
     pub desk: &'a crate::desk::Desk,
     pub words_status: &'a str,
     pub drawer_body: &'a str,
@@ -103,7 +106,8 @@ const RESTORE: usize = 5;
 const FINDER: usize = 6;
 pub const MIND: usize = 7;
 pub const KEYBOARD: usize = 8;
-const N: usize = 9;
+const TERMINAL: usize = 9;
+const N: usize = 10;
 
 pub enum HitResult {
     Nothing,
@@ -111,6 +115,7 @@ pub enum HitResult {
 }
 
 pub struct Hud {
+    terminal_focused: bool,
     panels: Vec<Panel>,
     textures: Vec<Option<Texture>>,
     drawn_version: u64,
@@ -124,6 +129,7 @@ impl Hud {
     pub fn new(dpr: f64) -> Hud {
         let panels = (0..N).map(|_| Panel::new(10.0, 10.0, dpr)).collect();
         Hud {
+            terminal_focused: false,
             panels,
             textures: (0..N).map(|_| None).collect(),
             drawn_version: u64::MAX,
@@ -167,6 +173,7 @@ impl Hud {
             return;
         }
         self.drawn_version = version;
+        self.terminal_focused = st.demo.open;
         self.drawn_size = (st.w, st.h);
         for p in &mut self.panels {
             p.visible = false;
@@ -188,8 +195,11 @@ impl Hud {
             }
             Phase::Ready => {
                 self.draw_bubble(st);
+                self.draw_terminal(st);
                 if st.hud_hidden {
                     self.draw_restore(st);
+                } else if st.demo.open {
+                    self.panels[BUBBLE].visible = false;
                 } else {
                     self.draw_top(st);
                     if st.w < 600.0 || st.gamepad || st.xr_active {
@@ -611,6 +621,25 @@ impl Hud {
         p.y = py - p.h;
         self.bubble_fits = visible && fits;
     }
+    fn group_rows(p: &Panel, groups: &[Group], width: f64, counts: bool) -> Vec<Vec<usize>> {
+        let mut rows = vec![Vec::new()];
+        let mut used = 0.0;
+        for (i, g) in groups.iter().enumerate() {
+            let count = if counts && !g.items.is_empty() {
+                p.measure(&g.items.len().to_string(), &font(500, 11.0, MONO)) + 6.0
+            } else {
+                0.0
+            };
+            let size = p.measure(&g.label, &font(500, 13.0, MONO)) + count + 24.0;
+            if used + size > width && !rows.last().unwrap().is_empty() {
+                rows.push(Vec::new());
+                used = 0.0;
+            }
+            rows.last_mut().unwrap().push(i);
+            used += size;
+        }
+        rows
+    }
     fn draw_platform_dock(&mut self, st: &HudState) {
         self.proof_page = None;
         let p = &mut self.panels[DOCK];
@@ -641,7 +670,9 @@ impl Hud {
         }
         let page = st.desk.chip_page.min(rows.len().saturating_sub(1));
         let composer = expanded && st.group == "talk";
-        let mut y = 96.0;
+        let tabs = Self::group_rows(p, st.groups, w - 16.0, false);
+        let tabs_extra = (tabs.len() - 1) as f64 * 44.0;
+        let mut y = 96.0 + tabs_extra;
         if expanded {
             y += 52.0;
             if rows.len() > 1 {
@@ -683,16 +714,19 @@ impl Hud {
             p.ghost(w - 98.0, 0.0, "Exit VR", Action::Xr);
             p.ghost(160.0, 0.0, "Turn to Lucy", Action::Find);
         }
-        let mut x = 8.0;
-        for g in st.groups {
-            x += p.tab(
-                x,
-                44.0,
-                &g.label,
-                None,
-                st.group == g.id,
-                Action::Group(g.id.clone()),
-            );
+        for (row, indices) in tabs.iter().enumerate() {
+            let mut x = 8.0;
+            for &i in indices {
+                let g = &st.groups[i];
+                x += p.tab(
+                    x,
+                    44.0 + row as f64 * 44.0,
+                    &g.label,
+                    None,
+                    st.group == g.id,
+                    Action::Group(g.id.clone()),
+                );
+            }
         }
         if expanded {
             let mut x = 14.0;
@@ -711,7 +745,7 @@ impl Hud {
                     }
                     p.chip(
                         x,
-                        96.0,
+                        96.0 + tabs_extra,
                         &short,
                         ChipStyle::plain(),
                         Action::Control(i),
@@ -720,7 +754,7 @@ impl Hud {
                     x += cw + 8.0;
                 }
             }
-            y = 148.0;
+            y = 148.0 + tabs_extra;
             if rows.len() > 1 {
                 p.ghost(14.0, y, "‹ Chips", Action::ChipPage(-1));
                 p.ghost(w - 100.0, y, "Chips ›", Action::ChipPage(1));
@@ -885,6 +919,8 @@ impl Hud {
             vec![KEYBOARD]
         } else if self.panels[MIND].visible {
             vec![MIND]
+        } else if self.terminal_focused {
+            vec![TERMINAL]
         } else {
             vec![DOCK, TOP_R, TOP_L, RESTORE]
         };
@@ -975,10 +1011,12 @@ impl Hud {
         let chip_rows = rows.len().saturating_sub(page * page_rows).min(page_rows);
         let composer_h = if st.group == "talk" { 156.0 } else { 0.0 };
         let paging_h = if pages > 1 { 28.0 } else { 0.0 };
+        let tabs = Self::group_rows(p, st.groups, left_w - 56.0, st.w >= 600.0);
+        let tabs_extra = (tabs.len() - 1) as f64 * 40.0;
         let left_h = if st.dock_min {
             44.0
         } else {
-            10.0 + 36.0 + 8.0 + chip_rows as f64 * 42.0 + 12.0 + paging_h + composer_h
+            10.0 + tabs_extra + 36.0 + 8.0 + chip_rows as f64 * 42.0 + 12.0 + paging_h + composer_h
         };
         let foot_h = if st.dock_min { 0.0 } else { 30.0 };
         // the answer board's height
@@ -1062,33 +1100,36 @@ impl Hud {
                 &col::css(col::FG_MUTED),
             );
         } else {
-            let mut x = 14.0;
-            for g in st.groups {
-                let sel = g.id == st.group;
-                x += p.tab(
-                    x,
-                    10.0,
-                    &g.label,
-                    if st.w < 600.0 {
-                        None
-                    } else {
-                        Some(g.items.len())
-                    },
-                    sel,
-                    Action::Group(g.id.clone()),
-                );
+            for (row, indices) in tabs.iter().enumerate() {
+                let mut x = 14.0;
+                for &i in indices {
+                    let g = &st.groups[i];
+                    let sel = g.id == st.group;
+                    x += p.tab(
+                        x,
+                        10.0 + row as f64 * 40.0,
+                        &g.label,
+                        if st.w < 600.0 || g.items.is_empty() {
+                            None
+                        } else {
+                            Some(g.items.len())
+                        },
+                        sel,
+                        Action::Group(g.id.clone()),
+                    );
+                }
             }
             p.line(
                 14.0,
-                46.0,
+                46.0 + tabs_extra,
                 left_w - 14.0,
-                46.0,
+                46.0 + tabs_extra,
                 &col::css(col::VOID_500),
                 1.0,
             );
             p.ghost(left_w - 42.0, 8.0, "▾", Action::ToggleMin);
             if let Some(g) = group {
-                let mut y = 54.0;
+                let mut y = 54.0 + tabs_extra;
                 for row in rows.iter().skip(page * page_rows).take(chip_rows) {
                     let mut x = 14.0;
                     for (i, _) in row {
@@ -1112,7 +1153,7 @@ impl Hud {
                     y += 42.0;
                 }
             }
-            let y = 54.0 + chip_rows as f64 * 42.0;
+            let y = 54.0 + tabs_extra + chip_rows as f64 * 42.0;
             if pages > 1 {
                 if page > 0 {
                     p.ghost(14.0, y, "‹", Action::ChipPage(-1));
@@ -1357,6 +1398,10 @@ impl Hud {
     }
     /// The finder pill when she is off-screen: at the edge she is behind, pointing the way.
     pub fn draw_finder(&mut self, st: &HudState, v: Vec3, on_screen: bool) {
+        if st.demo.open {
+            self.panels[FINDER].visible = false;
+            return;
+        }
         let dock_top = if self.panels[DOCK].visible {
             self.panels[DOCK].y - 36.0
         } else {
@@ -1441,6 +1486,22 @@ impl Hud {
     pub fn xr_poses(&self, rig: Mat4, head: Vec3) -> Vec<crate::xr::PanelPose> {
         use glam::Quat;
         let mut poses = vec![];
+        if self.panels[TERMINAL].visible {
+            let p = &self.panels[TERMINAL];
+            if self.terminal_focused {
+                let mut pose = crate::xr::panel(
+                    TERMINAL,
+                    (p.w, p.h),
+                    1.5,
+                    Vec3::new(0.0, 1.25, -1.35),
+                    Quat::IDENTITY,
+                );
+                pose.model = rig * pose.model;
+                poses.push(pose);
+            } else {
+                poses.push(self.terminal_pose());
+            }
+        }
         for (i, width, position, rotation) in [
             (
                 DOCK,
@@ -1492,8 +1553,16 @@ impl Hud {
         poses
             .iter()
             .filter_map(|p| {
-                p.hit(origin, direction)
-                    .map(|(t, x, y)| (t, self.panels[p.index].hit(x, y)))
+                p.hit(origin, direction).map(|(t, x, y)| {
+                    (
+                        t,
+                        if p.index == TERMINAL && !self.terminal_focused {
+                            Some(Action::WakeDemo)
+                        } else {
+                            self.panels[p.index].hit(x, y)
+                        },
+                    )
+                })
             })
             .min_by(|a, b| a.0.total_cmp(&b.0))
     }
@@ -1521,9 +1590,12 @@ impl Hud {
     pub fn render(&mut self, gl: &Gl, quad: &crate::gl::GpuMesh, w: f64, h: f64) {
         let ortho = Mat4::orthographic_rh_gl(0.0, w as f32, h as f32, 0.0, -1.0, 1.0);
         let order = [
-            WAKE, DOCK, TOP_L, TOP_R, RESTORE, FINDER, BUBBLE, MIND, KEYBOARD,
+            WAKE, DOCK, TOP_L, TOP_R, RESTORE, FINDER, BUBBLE, MIND, TERMINAL, KEYBOARD,
         ];
         for &i in &order {
+            if i == TERMINAL && !self.terminal_focused {
+                continue;
+            }
             let p = &mut self.panels[i];
             if !p.visible {
                 continue;
@@ -1561,7 +1633,12 @@ impl Hud {
     }
     /// What is under a screen point: nothing, or a panel (with its action, if any).
     pub fn hit(&self, sx: f64, sy: f64) -> HitResult {
-        for &i in &[KEYBOARD, MIND, RESTORE, FINDER, DOCK, TOP_R, TOP_L] {
+        for &i in &[
+            KEYBOARD, TERMINAL, MIND, RESTORE, FINDER, DOCK, TOP_R, TOP_L,
+        ] {
+            if i == TERMINAL && !self.terminal_focused {
+                continue;
+            }
             let p = &self.panels[i];
             if p.contains(sx, sy) {
                 return HitResult::Panel(p.hit(sx - p.x, sy - p.y));

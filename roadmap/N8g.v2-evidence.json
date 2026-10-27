@@ -1,0 +1,199 @@
+{
+  "item": "N8g revision",
+  "recorded": "2026-10-27T04:04:28.961916+00:00",
+  "pre_registration": {
+    "path": "roadmap/N8g.v2.md",
+    "commit": "f95e93b"
+  },
+  "code_commit": "4dbe02f8fecc0014c9379423dda7ebe5acfc0142",
+  "supersedes": "roadmap/N8g-evidence.json",
+  "builder": "Codex / GPT-6; exact runtime variant not exposed",
+  "adjudicators": [],
+  "behavior": "One click starts the complete automatically scrolling wake simulation. Playback controls, model handover, composer, conversation context and journal integration are removed. Only dismissal remains. The public room invitation stays visible.",
+  "mouth": "The smile is a shallow tube projected onto the same ellipsoid used for the skull, attached under the head node. A native check intersects each of its 29 cross-sections with the actual triangulated skull and verifies both embedded and visible vertices. Front and oblique browser screenshots were inspected.",
+  "validation": {
+    "native": "nix develop --command just ci passed: formatting, strict Clippy, 113 unit and 8 integration tests.",
+    "desktop": "nix develop .#desktop --command just ci-desktop passed with the desktop feature enabled.",
+    "room": "48 unit, 4 cast, 1 standing and 1 timing tests passed, including automatic progression, dismissal/reopening and the skull/smile intersection check. Formatting and strict Clippy passed.",
+    "wasm": "wasm-pack build room --release --target web --out-dir pkg --out-name lucy_room passed.",
+    "wasm_sha256": "960ff813d846a6d894887b109ea30fe8742744def8c5f6b70c688b5bf065babb",
+    "browser": {
+      "pass": true,
+      "steps": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "modelWorkers": 0,
+      "modelRequests": 0,
+      "journalUnchanged": true,
+      "checks": [
+        "one-click automatic wake",
+        "no playback or conversation actions",
+        "scene and Controls entry",
+        "desktop and phone text containment",
+        "public invitation",
+        "dismiss and reopen",
+        "Talk draft preserved",
+        "no model or journal activity"
+      ]
+    },
+    "platforms": {
+      "pass": true,
+      "phone": {
+        "width": 366,
+        "height": 348
+      },
+      "jitter": true,
+      "gamepad": true,
+      "keyboard": true,
+      "wakeTerminal": {
+        "gamepad": true,
+        "keyboard": true,
+        "xr": true
+      },
+      "xr": {
+        "frames": 5,
+        "clearsPerFrame": 1,
+        "viewportsPerFrame": 3,
+        "ray": true,
+        "exit": true
+      }
+    },
+    "controls": {
+      "pass": true,
+      "checks": [
+        "typed Nibli proof",
+        "IME composition guard",
+        "exact Unicode and multiline",
+        "private room provenance",
+        "full journal text",
+        "reload identity",
+        "more than 2000 durable messages",
+        "legacy originals retained",
+        "quota failure and retry",
+        "actual export and file restore",
+        "restore conflict rejects entire archive"
+      ],
+      "records": 2012
+    },
+    "proof": {
+      "pass": true,
+      "checks": {
+        "engine_in_a_worker": true,
+        "frames_drawn_while_the_engine_ran": true,
+        "seventeen_presences": true,
+        "the_presence_described_by_the_engine": true,
+        "no_console_errors": true,
+        "a_right_reads_as_an_infinitive": true,
+        "proof_reads_the_event_content": true,
+        "proof_fits_and_keeps_its_tree": true,
+        "complete_proof_is_reachable": true,
+        "the_why_reads_the_event_and_the_spelling": true,
+        "the_cast_keeps_its_spelling": true
+      }
+    },
+    "screenshots": [
+      "N8g-v2-room.png",
+      "N8g-v2-simulation.png",
+      "N8g-v2-phone.png",
+      "N8g-v2-face-front.png",
+      "N8g-v2-face-oblique.png"
+    ],
+    "browser_environment": "Chrome 155 headless with SwiftShader; desktop 1280x800 and phone 320x700. The first face screenshots were captured after the idle swim began; capture was corrected to reload into the entrance pose."
+  },
+  "forecast": "The forecast made before validation passed: automatic playback without model/journal activity, attached mouth geometry, and native/desktop/browser checks.",
+  "limits": [
+    "Physical headset acceptance is separate from simulated XR and remains untested.",
+    "The draft PR and local preview are updated; production deployment and running-service upgrade have not been performed.",
+    "Independent review and Dhilipsiva sign-off remain open."
+  ],
+  "timing_update": {
+    "recorded": "2026-10-27T04:27:21.356511+00:00",
+    "behavior": "The first step appears immediately, with 500 ms between subsequent steps. All seven steps finish in about three seconds.",
+    "source": "room/src/wake_demo.rs",
+    "source_sha256": "8963b8df1e0bc29cf35c00f38d01dc2d2a6711a3a6d79367c0d2263e1258a73e",
+    "wasm_sha256": "020c0bc9e14bb34b6e8b3fc89d1943b76f2cf7398b6f585116c154ea0226c98b",
+    "validation": {
+      "room": "Both wake state tests, formatting and strict Clippy passed.",
+      "native": "nix develop --command just ci passed.",
+      "desktop": "nix develop .#desktop --command just ci-desktop passed.",
+      "wasm": "WASM release build passed; local preview rebuilt.",
+      "browser": "All seven steps observed in 3251 ms. Zero model workers or model requests, unchanged journal, preserved Talk draft, desktop/phone layout and dismissal/reopening checks passed.",
+      "platforms": "Gamepad, keyboard and simulated XR entry, automatic progression and dismissal passed."
+    }
+  },
+  "dismissal_update": {
+    "recorded": "2026-10-27T04:34:48.398242+00:00",
+    "code_commit": "e29bfc116c999723b70939d86194636fc9a3d2dc",
+    "behavior": "A bright filled × Close button provides a minimum 96 by 44 CSS pixel target. Press Esc to close stays visible below the heading throughout playback. The accessible mirror also names the Escape shortcut.",
+    "validation": {
+      "native": "nix develop --command just ci passed.",
+      "desktop": "nix develop .#desktop --command just ci-desktop passed.",
+      "room": "All 54 room tests, formatting and strict Clippy passed.",
+      "wasm": "Release build passed.",
+      "wasm_sha256": "020aa99d8cc6707cbf0c8acb636dcaf263351e504f05f9eb8c167d27c991b028",
+      "extraction_and_pins": "Historical extraction ledger and both Nibli pin suites passed.",
+      "browser": {
+        "pass": true,
+        "steps": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "durationMs": 3261,
+        "modelWorkers": 0,
+        "modelRequests": 0,
+        "journalUnchanged": true,
+        "checks": [
+          "one-click automatic wake",
+          "no playback or conversation actions",
+          "scene and Controls entry",
+          "desktop and phone text containment",
+          "public invitation",
+          "persistent labeled Close button and Escape hint",
+          "Close and Escape dismiss on desktop and phone",
+          "dismiss and reopen",
+          "Talk draft preserved",
+          "no model or journal activity"
+        ]
+      },
+      "platforms": {
+        "pass": true,
+        "phone": {
+          "width": 366,
+          "height": 348
+        },
+        "jitter": true,
+        "gamepad": true,
+        "keyboard": true,
+        "wakeTerminal": {
+          "gamepad": true,
+          "keyboard": true,
+          "xr": true
+        },
+        "xr": {
+          "frames": 5,
+          "clearsPerFrame": 1,
+          "viewportsPerFrame": 3,
+          "ray": true,
+          "exit": true
+        }
+      },
+      "screenshots": [
+        "N8g-close-desktop.png",
+        "N8g-close-phone.png"
+      ],
+      "visual_review": "Inspected desktop 1280x800 and phone 320x700: labeled button and Escape hint are distinct, readable, and remain outside the scrolling transcript."
+    },
+    "publication": "Merge and deployment requested by Dhilipsiva; publication verification follows the merge."
+  }
+}

@@ -53,6 +53,8 @@ struct InputFlags {
 }
 
 pub struct App {
+    demo: crate::wake_demo::WakeDemo,
+    terminal_text: String,
     desk: crate::desk::Desk,
     words: crate::words::Words,
     generation: Option<crate::journal::Message>,
@@ -174,6 +176,8 @@ pub fn boot() -> Result<(), String> {
     let engine = Engine::new(replies);
     let t0 = now_ms();
     let mut app = App {
+        demo: Default::default(),
+        terminal_text: String::new(),
         desk: crate::desk::Desk::new(&window.location().search().unwrap_or_default()),
         words: Default::default(),
         generation: None,
@@ -440,6 +444,9 @@ impl App {
             let base = if axes.length() >= 4 { 2 } else { 0 };
             let axis = |i| axes.get(i).as_f64().unwrap_or(0.0) as f32;
             let (x, y) = (axis(base), axis(base + 1));
+            if self.demo.open {
+                continue;
+            }
             if source.handedness() == web_sys::XrHandedness::Left {
                 let dead = |v: f32| if v.abs() > 0.15 { v } else { 0.0 };
                 let move_ = Quat::from_rotation_y(self.world.yaw + head_yaw)
@@ -677,6 +684,11 @@ impl App {
             Group {
                 id: "talk".into(),
                 label: "Talk".into(),
+                items: vec![],
+            },
+            Group {
+                id: "wake-demo".into(),
+                label: "Wake demo".into(),
                 items: vec![],
             },
         ];
@@ -1164,6 +1176,26 @@ impl App {
     }
     fn action(&mut self, a: Action) {
         match a {
+            Action::WakeDemo => {
+                self.demo.start(now_ms());
+                self.hud_hidden = false;
+                self.desk.drawer = None;
+                self.desk.keyboard = false;
+                if let Some(i) = self.desk.input() {
+                    let _ = i.blur();
+                }
+                self.keys.clear();
+                self.focus = if self.flags.gamepad { Some(0) } else { None };
+                self.log("wake demo: opened; illustrated commands, no execution");
+            }
+            Action::CloseWakeDemo => {
+                self.demo.close();
+                self.desk.keyboard = false;
+                if let Some(i) = self.desk.input() {
+                    let _ = i.blur();
+                }
+                self.focus = None;
+            }
             Action::Control(i) => {
                 let groups = self.groups();
                 let group = self.group.clone();
@@ -1204,6 +1236,11 @@ impl App {
                 }
             }
             Action::Group(g) => {
+                if g == "wake-demo" {
+                    self.action(Action::WakeDemo);
+                    return;
+                }
+                self.demo.close();
                 self.group = g;
                 self.desk.chip_page = 0;
                 self.desk.drawer = None;
@@ -1261,6 +1298,7 @@ impl App {
                 self.log("find: turned to Lucy");
             }
             Action::Mind => {
+                self.demo.close();
                 self.desk.drawer = if self.desk.drawer.is_some() {
                     None
                 } else {
@@ -1276,6 +1314,9 @@ impl App {
             Action::CloseMind => self.desk.drawer = None,
             Action::Mode(mode) => self.desk.mode = mode,
             Action::Focus => {
+                if self.demo.open {
+                    return;
+                }
                 self.keys.clear();
                 if self.flags.gamepad || self.xr_active {
                     self.desk.keyboard = true;
@@ -1284,7 +1325,11 @@ impl App {
                     self.desk.focus();
                 }
             }
-            Action::Submit => self.desk.submit(),
+            Action::Submit => {
+                if !self.demo.open {
+                    self.desk.submit();
+                }
+            }
             Action::ClearDraft => {
                 self.desk.draft.clear();
                 self.desk.sync_input();
@@ -1324,7 +1369,7 @@ impl App {
                         self.desk.keyboard = false;
                         self.focus = Some(0);
                     }
-                    "Send" => self.desk.submit(),
+                    "Send" => self.action(Action::Submit),
                     "Nibli" => self.desk.mode = "nibli".into(),
                     "Space" => self.desk.draft.push(' '),
                     "↵" => self.desk.draft.push('\n'),
@@ -1620,7 +1665,23 @@ impl App {
                     return;
                 }
                 let k = key.to_lowercase();
+                if self.demo.open {
+                    if k == "enter" {
+                        if let Some(a) = self.focus.and_then(|i| self.hud.focus_action(i)) {
+                            self.action(a);
+                            return;
+                        }
+                    }
+                    match k.as_str() {
+                        "escape" => self.action(Action::CloseWakeDemo),
+                        "tab" => self.focus = Some(0),
+                        _ => {}
+                    }
+                    self.version += 1;
+                    return;
+                }
                 match k.as_str() {
+                    "t" if !modified => self.action(Action::WakeDemo),
                     "enter" => {
                         self.group = "talk".into();
                         self.action(Action::Focus);
@@ -1721,6 +1782,9 @@ impl App {
                 self.drag = None;
             }
             InputEvent::Wheel { dy } => {
+                if self.demo.open {
+                    return;
+                }
                 self.world.walk(0.0, -(dy.signum() as f32) * 0.25);
                 self.world.lucy.poke();
             }
@@ -1752,7 +1816,9 @@ impl App {
             crate::hud::HitResult::Panel(None) => {}
             crate::hud::HitResult::Nothing => {
                 let (o, d) = self.world.ray(x, y, self.w, self.h);
-                if self.world.ray_hits_lucy(&self.scene, o, d) {
+                if self.hud.terminal_hit(o, d) {
+                    self.action(Action::WakeDemo);
+                } else if self.world.ray_hits_lucy(&self.scene, o, d) {
                     self.call("pointer");
                 } else if let Some(i) = self.world.pick_cast(&self.scene, o, d) {
                     self.select_cast(i, "pointer");
@@ -1793,6 +1859,12 @@ impl App {
         if self.focus.is_none() && st.any {
             self.focus = Some(0);
             self.version += 1;
+        }
+        if self.demo.open {
+            if st.pressed.iter().any(|b| *b == 0 || *b == 1) {
+                self.action(Action::CloseWakeDemo);
+            }
+            return;
         }
         if st.lx != 0.0 || st.ly != 0.0 {
             self.world.walk(st.lx * 1.5 * dt, -st.ly * 1.5 * dt);
@@ -1842,10 +1914,10 @@ impl App {
                             tabs[(pos + delta).rem_euclid(5) as usize].into(),
                         ));
                     } else {
-                        let groups = ["standing", "cast", "facts", "talk"];
+                        let groups = ["standing", "cast", "facts", "talk", "wake-demo"];
                         let pos = groups.iter().position(|g| *g == self.group).unwrap_or(0) as i32;
                         self.action(Action::Group(
-                            groups[(pos + delta).rem_euclid(4) as usize].into(),
+                            groups[(pos + delta).rem_euclid(5) as usize].into(),
                         ));
                     }
                     self.focus = Some(0);
@@ -1870,6 +1942,10 @@ impl App {
         }
     }
     fn poll_keys(&mut self, dt: f32) {
+        if self.demo.open {
+            self.keys.clear();
+            return;
+        }
         if self.keys.is_empty() {
             return;
         }
@@ -1923,6 +1999,9 @@ impl App {
             self.version += 1;
         }
         self.poll_words();
+        if self.demo.tick(now) {
+            self.version += 1;
+        }
         if let Some(s) = submit {
             if self.subject.is_some() {
                 self.relay = Some(s);
@@ -2016,12 +2095,21 @@ impl App {
         };
         if self.mirrored_version != self.version {
             self.mirrored_version = self.version;
+            self.terminal_text = self.demo.transcript();
             self.drawer_body = if self.desk.drawer.is_some() {
                 self.desk.body(&self.log, &self.standing)
             } else {
                 String::new()
             };
             if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+                if let Some(el) = doc.get_element_by_id("wake-terminal") {
+                    el.set_text_content(Some(&self.terminal_text));
+                    el.set_attribute("data-open", if self.demo.open { "true" } else { "false" })
+                        .ok();
+                    el.set_attribute("data-state", self.demo.label()).ok();
+                    el.set_attribute("data-step", &self.demo.step.to_string())
+                        .ok();
+                }
                 if let Some(el) = doc.get_element_by_id("words-status") {
                     el.set_text_content(Some(&self.words.status));
                 }
@@ -2038,6 +2126,8 @@ impl App {
         let platform_focus = self.focus;
         let platform_gamepad = self.flags.gamepad;
         let App {
+            demo,
+            terminal_text,
             words,
             drawer_body,
             desk,
@@ -2059,6 +2149,8 @@ impl App {
             ..
         } = self;
         let st = HudState {
+            demo,
+            terminal_text,
             words_status: &words.status,
             desk,
             drawer_body,
@@ -2091,6 +2183,8 @@ impl App {
             self.world.head_on_screen(&self.scene, self.w, self.h);
         self.hud.place_bubble(hx, hy, visible, self.w, self.h);
         let st2 = HudState {
+            demo: &self.demo,
+            terminal_text: &self.terminal_text,
             words_status: &self.words.status,
             desk: &self.desk,
             drawer_body: &self.drawer_body,
@@ -2122,6 +2216,8 @@ impl App {
         let quad = self.scene.quad_mesh();
         let quad_mesh = &self.scene.meshes[quad];
         if !self.xr_active {
+            self.hud
+                .render_terminal_world(&self.gl, quad_mesh, &view, &proj);
             self.hud.render(&self.gl, quad_mesh, self.w, self.h);
         }
         self.engine.frame_drawn();

@@ -16,3 +16,6 @@ missing; declining keeps text mode usable. New conversations default to local
 private storage. Disclose session-only memory if persistence is unavailable.
 Keep the selected host model and permission controls. Record complete visible
 exchanges using the real adapter session; never record hidden reasoning or secrets.
+End the greeting with a short invitation to https://dhilipsiva.dev/lucy/room/ once
+per wake. It hosts a labelled wake simulation that plays automatically after one click.
+Opening the link is the visitor's choice and does not transfer the CLI session.
