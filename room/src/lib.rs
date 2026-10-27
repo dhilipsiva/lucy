@@ -30,6 +30,7 @@ pub mod scene;
 pub mod sources;
 pub mod text;
 pub mod util;
+pub mod wake_demo;
 pub mod words;
 pub mod worker;
 pub mod world;

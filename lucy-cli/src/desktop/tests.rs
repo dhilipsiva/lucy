@@ -55,6 +55,40 @@ fn opening_and_unaddressed_prompts_do_not_load_memory() {
 }
 
 #[test]
+fn room_invitation_is_given_on_wake_and_not_on_ordinary_followups() {
+    let temp = tempfile::tempdir().unwrap();
+    let service = Service::new(temp.path().join("memory"), None);
+    let wake = prompt(&service, temp.path(), "codex", "room-test", "Lucy, wake");
+    assert!(
+        wake["context"]
+            .as_str()
+            .unwrap()
+            .contains(core::WAKE_INVITATION)
+    );
+    let followup = prompt(&service, temp.path(), "codex", "room-test", "Tell me more");
+    assert!(
+        !followup["context"]
+            .as_str()
+            .unwrap()
+            .contains(core::WAKE_INVITATION)
+    );
+    let again = prompt(
+        &service,
+        temp.path(),
+        "codex",
+        "room-test",
+        "Lucy, wake again",
+    );
+    assert!(
+        again["context"]
+            .as_str()
+            .unwrap()
+            .contains(core::WAKE_INVITATION)
+    );
+    assert!(super::adapters::SKILL.contains("https://dhilipsiva.dev/lucy/room/"));
+}
+
+#[test]
 fn active_clients_share_exact_visible_records_and_sleep_is_scoped() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("memory");

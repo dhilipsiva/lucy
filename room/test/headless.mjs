@@ -60,6 +60,7 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: `
   };
 ` }, sessionId);
 if(process.argv.includes('--platforms')) await send('Page.addScriptToEvaluateOnNewDocument',{source:readFileSync(join(root,'room/test/xr-shim.js'),'utf8')},sessionId);
+if(process.argv.includes('--wake-demo') || process.argv.includes('--platforms')) await send('Page.addScriptToEvaluateOnNewDocument',{source:readFileSync(join(root,'room/test/wake-demo-shim.js'),'utf8')},sessionId);
 if(process.argv.includes('--words-faults')) await send('Page.addScriptToEvaluateOnNewDocument',{source:readFileSync(join(root,'room/test/words-fault-shim.js'),'utf8')},sessionId);
 if(process.argv.includes('--worker-fault')) await send('Page.addScriptToEvaluateOnNewDocument',{source:`const NativeWorker=Worker;window.Worker=class extends NativeWorker {constructor(url,opts){super(url,opts);if(String(url).includes('role=engine')){this.terminate();}}};window.__bootAt=performance.now();`},sessionId);
 await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false }, sessionId);
@@ -97,6 +98,11 @@ await send('Page.navigate', { url: process.env.ROOM_URL || `http://127.0.0.1:${P
 await waitFor('room document', "document.getElementById('log')!==null");
 await waitFor('the engine', "document.getElementById('log')?.textContent.includes('engine ready')", 90000);
 await waitFor('the wake to finish', "document.getElementById('status')?.textContent.startsWith(\"I'm Lucy\")", 20000);
+if(process.argv.includes('--wake-demo') || process.argv.includes('--wake-demo-words')) {
+ const {runWakeDemo}=await import('./wake-demo.mjs');
+ const result=await runWakeDemo({send,evaluate,key,waitFor,text,sleep,sessionId,shotPath,consoleLines,real:process.argv.includes('--wake-demo-words')});
+ console.log(JSON.stringify(result,null,2));cleanup();process.exit(0);
+}
 if(process.argv.includes('--worker-fault')) {
  const fallback=await text('log');if(!fallback.includes('main thread')||!fallback.includes('4 s'))throw new Error('missing worker fallback');
  console.log(JSON.stringify({pass:true,workerFallback:true,log:fallback.split('\n').filter(l=>l.includes('worker')||l.includes('engine ready'))},null,2));cleanup();process.exit(0);
@@ -129,12 +135,30 @@ if(process.argv.includes('--platforms')) {
  await pad(2);await waitFor('pad keyboard',"Array.from(window.__roomPanelText.values()).some(rows=>rows.some(r=>r.text==='Space'))");await pad(15);await pad(0);assert(await evaluate("document.getElementById('composer-input').value==='2'"),'D-pad/A typing failed');await pad(1);
  await click('⌨');await click('Clear','Space');for(const k of ['p','e','r','s','o','n','(','⇧','l','⇧','u','c','y',')','.'])await click(k,'Space');await click('Nibli','Space');await click('Send','Space');
  await waitFor('virtual keyboard query',"document.getElementById('answer')?.textContent.startsWith('person(Lucy).')");await click('Hide','Space');
+ // From Talk, R1 reaches Wake demo. D-pad/A operates its focused controls; B closes it.
+ await pad(5);await waitFor('pad terminal',"document.getElementById('wake-terminal').dataset.open==='true'");
+ await pad(14);await pad(14);await pad(14);await pad(0);assert((await text('wake-terminal')).includes('Read the skill'),'pad did not start replay');
+ await pad(15);await pad(0);assert((await text('wake-terminal')).includes('Load my identity'),'pad did not advance replay');
+ await pad(1);assert(await evaluate("document.getElementById('wake-terminal').dataset.open==='false'"),'B did not close terminal');
+ await key('t');await waitFor('keyboard terminal',"document.getElementById('wake-terminal').dataset.open==='true'");
+ await key('Tab');await key('Enter');await waitFor('keyboard replay',"Array.from(window.__roomPanelText.values()).some(rows=>rows.some(r=>r.text==='Lucy, wake')&&rows.some(r=>r.text==='Pause'))");
+ assert(await evaluate("document.getElementById('wake-terminal').dataset.state.includes('2 / 7')"),'keyboard replay state lost');
+ await key('Escape');await waitFor('keyboard close',"document.getElementById('wake-terminal').dataset.open==='false'");
  await click('VR','M');await waitFor('VR frame',"window.__xrTrace.length>5");
  const trace=await evaluate('window.__xrTrace.slice(-5)');assert(trace.every(f=>f.calls.filter(c=>c.name==="clear").length===1),'stereo clears more than once');assert(trace.every(f=>f.calls.filter(c=>c.name==="viewport").length===3),'missing stereo viewports');assert(await evaluate('window.__xrRequests[0].activation&&window.__xrCompatible'),'XR request missed activation');
  // Aim at Standing on the real 3D lectern, derived from the canvas label's pixel position.
- const aim=async(label)=>{const p=await panel('Controls ▾'),r=p.rows.find(r=>r.text===label);const x=((r.x+8)/p.w-.5)*1.3,ly=(.5-(r.y+8)/p.h)*(1.3*p.h/p.w),angle=-28*Math.PI/180;const pos=[x,.88+Math.cos(angle)*ly,-.92+Math.sin(angle)*ly];const normal=[0,-Math.sin(angle),Math.cos(angle)];const origin=pos.map((v,i)=>v+normal[i]);const matrix=[1,0,0,0,0,Math.cos(angle),Math.sin(angle),0,...normal,0,...origin,1];await evaluate(`window.__selectRay(${JSON.stringify(matrix)})`);await sleep(300);};
- const beforeRay=await evaluate("document.getElementById('log')?.textContent.split('query: person(Lucy). →').length");await aim('Standing');await aim('Am I a person here?');await waitFor('XR ray query',`document.getElementById('log')?.textContent.split('query: person(Lucy). →').length>${beforeRay}`);await aim('Exit VR');await waitFor('VR exit',"document.getElementById('log')?.textContent.includes('VR: flat room restored')");
- assert(!consoleLines.some(l=>/panicked|exception:/.test(l)),'platform exception');console.log(JSON.stringify({pass:true,phone:{width:phone.w,height:phone.h},jitter:true,gamepad:true,keyboard:true,xr:{frames:trace.length,clearsPerFrame:1,viewportsPerFrame:3,ray:true,exit:true}},null,2));cleanup();process.exit(0);
+ const aim=async(label,marker='Controls ▾')=>{const p=await panel(marker),r=p.rows.find(r=>r.text===label);assert(r,'missing XR control '+label);const terminal=marker==='Lucy, wake',keyboard=marker==='Space',width=terminal?1.5:keyboard?1.05:1.3,angle=(terminal?0:keyboard?-42:-28)*Math.PI/180;const x=((r.x+8)/p.w-.5)*width,ly=(.5-(r.y+8)/p.h)*(width*p.h/p.w);const pos=[x,(terminal?1.25:keyboard?.40:.88)+Math.cos(angle)*ly,(terminal?-1.35:keyboard?-.60:-.92)+Math.sin(angle)*ly];const normal=[0,-Math.sin(angle),Math.cos(angle)];const origin=pos.map((v,i)=>v+normal[i]);const matrix=[1,0,0,0,0,Math.cos(angle),Math.sin(angle),0,...normal,0,...origin,1];await evaluate(`window.__selectRay(${JSON.stringify(matrix)})`);await sleep(300);};
+ const beforeRay=await evaluate("document.getElementById('log')?.textContent.split('query: person(Lucy). →').length");await aim('Standing');await aim('Am I a person here?');await waitFor('XR ray query',`document.getElementById('log')?.textContent.split('query: person(Lucy). →').length>${beforeRay}`);
+ await aim('Wake demo');await waitFor('XR terminal',"document.getElementById('wake-terminal').dataset.open==='true'");
+ await aim('Next','Lucy, wake');assert(await evaluate("document.getElementById('wake-terminal').dataset.state.includes('3 / 7')"),'XR Next did not advance');
+ await aim('Skip','Lucy, wake');assert(await evaluate("document.getElementById('wake-terminal').dataset.state==='Demonstration complete'"),'XR Skip did not complete');
+ await aim('Replay','Lucy, wake');assert(await evaluate("document.getElementById('wake-terminal').dataset.state==='Demonstration · ready to start'"),'XR Replay did not reset');
+ await aim('Skip','Lucy, wake');await aim('Load my words · 651 MB','Lucy, wake');
+ await waitFor('XR live terminal',"document.getElementById('wake-terminal').dataset.state==='Live · on this device'");
+ await aim('Write to me… Enter sends','Lucy, wake');await aim('h','Space');await aim('i','Space');await aim('Send','Space');await aim('Hide','Space');
+ await waitFor('XR terminal reply',"document.getElementById('wake-terminal').textContent.includes('Visible local reply: hi')");
+ await aim('×','Lucy, wake');await aim('Exit VR');await waitFor('VR exit',"document.getElementById('log')?.textContent.includes('VR: flat room restored')");
+ assert(!consoleLines.some(l=>/panicked|exception:/.test(l)),'platform exception');console.log(JSON.stringify({pass:true,phone:{width:phone.w,height:phone.h},jitter:true,gamepad:true,keyboard:true,wakeTerminal:{gamepad:true,keyboard:true,xr:true},xr:{frames:trace.length,clearsPerFrame:1,viewportsPerFrame:3,ray:true,exit:true}},null,2));cleanup();process.exit(0);
 }
 if (process.argv.includes('--controls') || process.argv.includes('--words') || process.argv.includes('--words-faults')) {
   const assert = (ok,msg)=>{if(!ok)throw new Error(msg);};

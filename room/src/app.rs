@@ -53,6 +53,9 @@ struct InputFlags {
 }
 
 pub struct App {
+    demo: crate::wake_demo::WakeDemo,
+    terminal_text: String,
+    terminal_stream: Option<crate::journal::Message>,
     desk: crate::desk::Desk,
     words: crate::words::Words,
     generation: Option<crate::journal::Message>,
@@ -174,6 +177,9 @@ pub fn boot() -> Result<(), String> {
     let engine = Engine::new(replies);
     let t0 = now_ms();
     let mut app = App {
+        demo: Default::default(),
+        terminal_text: String::new(),
+        terminal_stream: None,
         desk: crate::desk::Desk::new(&window.location().search().unwrap_or_default()),
         words: Default::default(),
         generation: None,
@@ -440,6 +446,9 @@ impl App {
             let base = if axes.length() >= 4 { 2 } else { 0 };
             let axis = |i| axes.get(i).as_f64().unwrap_or(0.0) as f32;
             let (x, y) = (axis(base), axis(base + 1));
+            if self.demo.open {
+                continue;
+            }
             if source.handedness() == web_sys::XrHandedness::Left {
                 let dead = |v: f32| if v.abs() > 0.15 { v } else { 0.0 };
                 let move_ = Quat::from_rotation_y(self.world.yaw + head_yaw)
@@ -677,6 +686,11 @@ impl App {
             Group {
                 id: "talk".into(),
                 label: "Talk".into(),
+                items: vec![],
+            },
+            Group {
+                id: "wake-demo".into(),
+                label: "Wake demo".into(),
                 items: vec![],
             },
         ];
@@ -1164,6 +1178,64 @@ impl App {
     }
     fn action(&mut self, a: Action) {
         match a {
+            Action::WakeDemo => {
+                self.demo.open = true;
+                self.hud_hidden = false;
+                self.desk.drawer = None;
+                self.desk.keyboard = false;
+                self.subject = None;
+                self.keys.clear();
+                self.focus = if self.flags.gamepad { Some(0) } else { None };
+                self.log("wake demo: opened; illustrated commands, no execution");
+            }
+            Action::CloseWakeDemo => {
+                self.demo.close();
+                self.desk.keyboard = false;
+                if let Some(i) = self.desk.input() {
+                    let _ = i.blur();
+                }
+                self.focus = None;
+            }
+            Action::DemoPlay => self.demo.play_pause(now_ms()),
+            Action::DemoNext => self.demo.next(),
+            Action::DemoSkip => self.demo.skip(),
+            Action::DemoRestart => {
+                if !self.words.busy {
+                    self.demo.restart();
+                    self.desk.keyboard = false;
+                }
+            }
+            Action::DemoContinue => {
+                if self.demo.complete() {
+                    self.demo.handover_requested = true;
+                    self.desk.mode = "words".into();
+                    if !self.words.ready {
+                        self.action(Action::LoadWords);
+                    }
+                    self.demo.tick(now_ms(), self.words.ready);
+                }
+            }
+            Action::DemoScroll(delta) => {
+                self.demo.scroll = self
+                    .demo
+                    .scroll
+                    .saturating_add_signed(delta as isize)
+                    .min(self.hud.terminal_max_scroll);
+            }
+            Action::DemoTalk => {
+                self.action(Action::CloseWakeDemo);
+                self.group = "talk".into();
+                self.dock_min = false;
+            }
+            Action::OpenRoom => {
+                if let Some(a) = web_sys::window()
+                    .and_then(|w| w.document())
+                    .and_then(|d| d.get_element_by_id("room-link"))
+                    .and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok())
+                {
+                    a.click();
+                }
+            }
             Action::Control(i) => {
                 let groups = self.groups();
                 let group = self.group.clone();
@@ -1204,6 +1276,11 @@ impl App {
                 }
             }
             Action::Group(g) => {
+                if g == "wake-demo" {
+                    self.action(Action::WakeDemo);
+                    return;
+                }
+                self.demo.close();
                 self.group = g;
                 self.desk.chip_page = 0;
                 self.desk.drawer = None;
@@ -1261,6 +1338,7 @@ impl App {
                 self.log("find: turned to Lucy");
             }
             Action::Mind => {
+                self.demo.close();
                 self.desk.drawer = if self.desk.drawer.is_some() {
                     None
                 } else {
@@ -1276,6 +1354,9 @@ impl App {
             Action::CloseMind => self.desk.drawer = None,
             Action::Mode(mode) => self.desk.mode = mode,
             Action::Focus => {
+                if self.demo.open && !self.demo.live {
+                    return;
+                }
                 self.keys.clear();
                 if self.flags.gamepad || self.xr_active {
                     self.desk.keyboard = true;
@@ -1284,7 +1365,16 @@ impl App {
                     self.desk.focus();
                 }
             }
-            Action::Submit => self.desk.submit(),
+            Action::Submit => {
+                if self.demo.open {
+                    if !self.demo.live || !self.words.ready || self.words.busy {
+                        return;
+                    }
+                    self.desk.mode = "words".into();
+                    self.demo.scroll = 0;
+                }
+                self.desk.submit();
+            }
             Action::ClearDraft => {
                 self.desk.draft.clear();
                 self.desk.sync_input();
@@ -1324,8 +1414,9 @@ impl App {
                         self.desk.keyboard = false;
                         self.focus = Some(0);
                     }
-                    "Send" => self.desk.submit(),
-                    "Nibli" => self.desk.mode = "nibli".into(),
+                    "Send" => self.action(Action::Submit),
+                    "Nibli" if !self.demo.open => self.desk.mode = "nibli".into(),
+                    "Nibli" => {}
                     "Space" => self.desk.draft.push(' '),
                     "↵" => self.desk.draft.push('\n'),
                     _ => self.desk.draft.push_str(&if self.keyboard_shift {
@@ -1430,7 +1521,12 @@ impl App {
                         )
                     })
                     .unwrap_or_default();
-                let context = format!("{direct}\n{verdict}\n{recalled}");
+                let demo_context = if self.demo.visited_live {
+                    crate::wake_demo::CONTEXT
+                } else {
+                    ""
+                };
+                let context = format!("{demo_context}\n{direct}\n{verdict}\n{recalled}");
                 self.generation_context = context.clone();
                 let history = self
                     .desk
@@ -1482,6 +1578,7 @@ impl App {
         }
     }
     fn finish_words(&mut self, text: &str, status: &str) {
+        self.terminal_stream = None;
         self.desk.generating = false;
         if let Some(mut message) = self.generation.take() {
             message.text = text.into();
@@ -1570,6 +1667,7 @@ impl App {
         }
         while let Some(m) = self.desk.visible.pop_front() {
             if self.generation.as_ref().is_some_and(|g| g.id == m.id) {
+                self.terminal_stream = Some(m.clone());
                 self.say(&m.text, Verdict::Words, Some("WORDS · LOCAL MODEL"));
                 if let Some(s) = &mut self.speech {
                     s.streaming = true;
@@ -1620,7 +1718,39 @@ impl App {
                     return;
                 }
                 let k = key.to_lowercase();
+                if self.demo.open {
+                    if k == "enter" {
+                        if let Some(a) = self.focus.and_then(|i| self.hud.focus_action(i)) {
+                            self.action(a);
+                            return;
+                        }
+                    }
+                    match k.as_str() {
+                        "escape" => {
+                            if self.desk.keyboard {
+                                self.desk.keyboard = false;
+                            } else {
+                                self.action(Action::CloseWakeDemo);
+                            }
+                        }
+                        "enter" if self.demo.live => self.action(Action::Focus),
+                        "enter" if self.demo.complete() => self.action(Action::DemoContinue),
+                        "enter" | " " => self.action(Action::DemoPlay),
+                        "pageup" => self.action(Action::DemoScroll(12)),
+                        "pagedown" => self.action(Action::DemoScroll(-12)),
+                        "end" => self.action(Action::DemoScroll(-i32::MAX)),
+                        "tab" => {
+                            let n = self.hud.focus_targets().len().max(1);
+                            self.focus =
+                                Some((self.focus.unwrap_or(0) + if shift { n - 1 } else { 1 }) % n);
+                        }
+                        _ => {}
+                    }
+                    self.version += 1;
+                    return;
+                }
                 match k.as_str() {
+                    "t" if !modified => self.action(Action::WakeDemo),
                     "enter" => {
                         self.group = "talk".into();
                         self.action(Action::Focus);
@@ -1721,6 +1851,10 @@ impl App {
                 self.drag = None;
             }
             InputEvent::Wheel { dy } => {
+                if self.demo.open {
+                    self.action(Action::DemoScroll(if dy < 0.0 { 3 } else { -3 }));
+                    return;
+                }
                 self.world.walk(0.0, -(dy.signum() as f32) * 0.25);
                 self.world.lucy.poke();
             }
@@ -1752,7 +1886,9 @@ impl App {
             crate::hud::HitResult::Panel(None) => {}
             crate::hud::HitResult::Nothing => {
                 let (o, d) = self.world.ray(x, y, self.w, self.h);
-                if self.world.ray_hits_lucy(&self.scene, o, d) {
+                if self.hud.terminal_hit(o, d) {
+                    self.action(Action::WakeDemo);
+                } else if self.world.ray_hits_lucy(&self.scene, o, d) {
                     self.call("pointer");
                 } else if let Some(i) = self.world.pick_cast(&self.scene, o, d) {
                     self.select_cast(i, "pointer");
@@ -1794,11 +1930,11 @@ impl App {
             self.focus = Some(0);
             self.version += 1;
         }
-        if st.lx != 0.0 || st.ly != 0.0 {
+        if !self.demo.open && (st.lx != 0.0 || st.ly != 0.0) {
             self.world.walk(st.lx * 1.5 * dt, -st.ly * 1.5 * dt);
             self.world.lucy.poke();
         }
-        if st.rx != 0.0 || st.ry != 0.0 {
+        if !self.demo.open && (st.rx != 0.0 || st.ry != 0.0) {
             self.world.look(-st.rx * 2.0 * dt, -st.ry * 1.5 * dt);
         }
         for b in st.pressed {
@@ -1811,6 +1947,8 @@ impl App {
                 1 => {
                     if self.desk.keyboard {
                         self.desk.keyboard = false;
+                    } else if self.demo.open {
+                        self.action(Action::CloseWakeDemo);
                     } else if self.desk.drawer.is_some() {
                         self.desk.drawer = None;
                     } else {
@@ -1842,10 +1980,10 @@ impl App {
                             tabs[(pos + delta).rem_euclid(5) as usize].into(),
                         ));
                     } else {
-                        let groups = ["standing", "cast", "facts", "talk"];
+                        let groups = ["standing", "cast", "facts", "talk", "wake-demo"];
                         let pos = groups.iter().position(|g| *g == self.group).unwrap_or(0) as i32;
                         self.action(Action::Group(
-                            groups[(pos + delta).rem_euclid(4) as usize].into(),
+                            groups[(pos + delta).rem_euclid(5) as usize].into(),
                         ));
                     }
                     self.focus = Some(0);
@@ -1870,6 +2008,10 @@ impl App {
         }
     }
     fn poll_keys(&mut self, dt: f32) {
+        if self.demo.open {
+            self.keys.clear();
+            return;
+        }
         if self.keys.is_empty() {
             return;
         }
@@ -1923,6 +2065,9 @@ impl App {
             self.version += 1;
         }
         self.poll_words();
+        if self.demo.tick(now, self.words.ready) {
+            self.version += 1;
+        }
         if let Some(s) = submit {
             if self.subject.is_some() {
                 self.relay = Some(s);
@@ -2016,12 +2161,23 @@ impl App {
         };
         if self.mirrored_version != self.version {
             self.mirrored_version = self.version;
+            self.terminal_text = self.demo.transcript(
+                &self.desk.archive,
+                &self.desk.session,
+                self.terminal_stream.as_ref(),
+            );
             self.drawer_body = if self.desk.drawer.is_some() {
                 self.desk.body(&self.log, &self.standing)
             } else {
                 String::new()
             };
             if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+                if let Some(el) = doc.get_element_by_id("wake-terminal") {
+                    el.set_text_content(Some(&self.terminal_text));
+                    el.set_attribute("data-open", if self.demo.open { "true" } else { "false" })
+                        .ok();
+                    el.set_attribute("data-state", &self.demo.label()).ok();
+                }
                 if let Some(el) = doc.get_element_by_id("words-status") {
                     el.set_text_content(Some(&self.words.status));
                 }
@@ -2038,6 +2194,8 @@ impl App {
         let platform_focus = self.focus;
         let platform_gamepad = self.flags.gamepad;
         let App {
+            demo,
+            terminal_text,
             words,
             drawer_body,
             desk,
@@ -2059,6 +2217,10 @@ impl App {
             ..
         } = self;
         let st = HudState {
+            demo,
+            terminal_text,
+            words_ready: words.ready,
+            words_busy: words.busy,
             words_status: &words.status,
             desk,
             drawer_body,
@@ -2091,6 +2253,10 @@ impl App {
             self.world.head_on_screen(&self.scene, self.w, self.h);
         self.hud.place_bubble(hx, hy, visible, self.w, self.h);
         let st2 = HudState {
+            demo: &self.demo,
+            terminal_text: &self.terminal_text,
+            words_ready: self.words.ready,
+            words_busy: self.words.busy,
             words_status: &self.words.status,
             desk: &self.desk,
             drawer_body: &self.drawer_body,
@@ -2122,6 +2288,8 @@ impl App {
         let quad = self.scene.quad_mesh();
         let quad_mesh = &self.scene.meshes[quad];
         if !self.xr_active {
+            self.hud
+                .render_terminal_world(&self.gl, quad_mesh, &view, &proj);
             self.hud.render(&self.gl, quad_mesh, self.w, self.h);
         }
         self.engine.frame_drawn();

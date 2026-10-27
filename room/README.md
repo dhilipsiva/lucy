@@ -47,10 +47,27 @@ Existing same-origin Nell journals migrate with their original attribution prese
   the frames the room drew meanwhile (eight, in the headless run, for a 263 ms query; none when
   the engine ran on the main thread). Without a worker the engine runs here as before, and the
   log says so.
+- The wake screen (N8g): click the freestanding screen, choose **Wake demo** in Controls,
+  or press **T**. Start, Pause, Next and Skip replay a CLI-agent wake: instructions,
+  identity, session, an illustrated host permission, peer freshness, recall and a greeting.
+  Every command and result is labelled as a demonstration. Close and reopen to resume;
+  Replay starts the illustration again. The public room link stays available throughout.
+
+After the replay, **Load my words · 651 MB** explicitly starts the same local model used
+by Talk; an already loaded model offers **Continue · local model**. The terminal and Talk
+share the draft, live conversation, streaming/Stop controls and private journal. Switching
+views or replaying the example preserves that conversation. The scripted transcript is
+never saved as a conversation or passed as model history; a short labelled explanation of
+the demonstration supplies context for live questions. This is terminal chat inside the
+room; the illustration does not run a shell or connect to a CLI session.
+
+In the terminal, Tab/Shift+Tab and Enter select controls, Escape closes, and Page Up,
+Page Down, End or the wheel scroll the transcript. The drawn keyboard, gamepad focus and
+VR rays operate the same controls. Native text entry keeps Talk's multiline and IME support.
 
 ## Talk and my private journal
 
-Standing, Cast, Facts and Talk are the four main groups. Talk accepts exact multiline text;
+Standing, Cast, Facts, Talk and Wake demo appear in Controls. Talk accepts exact multiline text;
 Enter sends and Shift+Enter adds a line. Words uses the pinned Lucy Qwen3 0.6B GGUF through
 Candle on the CPU in its own worker. “Load my words” explicitly downloads about 651 MB;
 verified assets are cached on this device. Retrieved public and local records provide context.
@@ -100,9 +117,10 @@ New training, hosted providers and natural-language formalization are outside th
 generates (`pkg/lucy_room.js`) and calls it; a browser cannot start a wasm module with less.
 `worker.js` is two lines more, approved on 2026-10-25: the same loader imported in a Web Worker
 and the worker entry called, so the engine runs off the drawing thread.
-Four hidden text mirrors (`#status`, `#mindline`, `#answer`, `#log`) carry my words, the mind
-line, the board and the log as text, for screen readers and for the headless test; they are
-text, not interface. `test/headless.mjs` is a Node test harness, not part of the room.
+Hidden text mirrors carry my words, the mind line, the board, model/journal status and log
+for screen readers and the headless test. `#wake-terminal` mirrors the complete demonstration
+and current live conversation, and `#room-link` is the canonical public-room anchor.
+`test/headless.mjs` is a Node test harness, not part of the room.
 
 ## Build, test, serve
 
@@ -116,6 +134,12 @@ cd .. && python3 -m http.server 8000         # from the repository root
 CHROME=google-chrome node room/test/headless.mjs --shot /tmp/room.png --proof-shot /tmp/proof.png
 # The headless check also reads canvas draw calls at wide and narrow widths, checks
 # every page against the complete engine trace, and exits 1 on a failed check.
+node room/test/headless.mjs --wake-demo --shot /tmp/wake-demo.png
+node room/test/headless.mjs --platforms
+node room/test/headless.mjs --controls
+# Real inference, separately from the explicit test worker above. Place the pinned
+# GGUF, tokenizer.json and system.txt in target/room-model/ to seed its browser cache.
+node room/test/headless.mjs --wake-demo-words --shot /tmp/wake-real.png
 ```
 
 Rust 1.96 or newer with the `wasm32-unknown-unknown` target, and wasm-pack 0.15 (it fetches the
