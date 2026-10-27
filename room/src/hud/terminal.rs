@@ -113,18 +113,44 @@ impl Hud {
         }
         p.text(
             14.0,
-            14.0,
+            24.0,
             "Lucy, wake",
-            &font(600, 20.0, DISPLAY),
+            &font(600, if w < 280.0 { 18.0 } else { 20.0 }, DISPLAY),
             &col::css(col::PAPER_100),
         );
-        p.ghost(w - 48.0, 4.0, "×", Action::CloseWakeDemo);
+        let close_font = font(600, 15.0, SANS);
+        let close_label = "× Close";
+        let close_w = (p.measure(close_label, &close_font) + 28.0).max(96.0);
+        let close_x = w - 14.0 - close_w;
+        p.fill_rounded(
+            close_x,
+            12.0,
+            close_w,
+            44.0,
+            8.0,
+            &col::css(col::PHOSPHOR_500),
+        );
+        p.text(
+            close_x + (close_w - p.measure(close_label, &close_font)) / 2.0,
+            25.0,
+            close_label,
+            &close_font,
+            &col::css(col::VOID_900),
+        );
+        p.hit_add(close_x, 12.0, close_w, 44.0, Action::CloseWakeDemo);
+        p.text(
+            14.0,
+            66.0,
+            "Press Esc to close",
+            &font(400, 13.0, SANS),
+            &col::css(col::PAPER_100),
+        );
         let f = font(400, 11.0, MONO);
         let label = crate::text::wrap_measured(st.demo.label(), w - 28.0, |s| p.measure(s, &f));
         for (i, line) in label.iter().enumerate() {
             p.text(
                 14.0,
-                44.0 + i as f64 * 15.0,
+                90.0 + i as f64 * 15.0,
                 line,
                 &f,
                 &col::css(col::PHOSPHOR_500),
@@ -144,7 +170,7 @@ impl Hud {
                 &col::css(col::SKY_500),
             );
         }
-        let start = 64.0 + label.len() as f64 * 15.0;
+        let start = 110.0 + label.len() as f64 * 15.0;
         let tf = font(400, 12.0, MONO);
         let lines =
             crate::text::wrap_preformatted(st.terminal_text, w - 28.0, |s| p.measure(s, &tf));

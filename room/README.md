@@ -50,9 +50,9 @@ Existing same-origin Nell journals migrate with their original attribution prese
 - The wake screen (N8g): click the freestanding screen, choose **Wake demo** in Controls,
   or press **T**. The simulated CLI session advances every half second: instructions, identity,
   session, an illustrated host permission, peer freshness, recall and a greeting. Just
-  watch; the output scrolls on its own and ends with the public room invitation. Close
-  or Escape dismisses it; opening it again starts a new observation. Gamepad and VR rays
-  can open and dismiss the same screen.
+  watch; the output scrolls on its own and ends with the public room invitation. A bright
+  **× Close** button and “Press Esc to close” hint stay visible; opening it again starts
+  a new observation. Gamepad and VR rays can open and dismiss the same screen.
 
 The simulation has no playback controls, composer or model connection. It neither runs
 commands nor reads or writes the private conversation. Talk remains its own section.

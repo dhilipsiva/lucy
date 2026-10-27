@@ -149,7 +149,8 @@ if(process.argv.includes('--platforms')) {
  await aim('Wake demo');await waitFor('XR terminal',"document.getElementById('wake-terminal').dataset.open==='true'");
  await waitFor('automatic XR simulation',"Number(document.getElementById('wake-terminal').dataset.step)>=2",8000);
  const simulation=await panel('Lucy, wake');assert(!simulation.rows.some(r=>['Next','Skip','Load my words · 651 MB','Send ↵'].includes(r.text)),'XR playback controls remain');
- await aim('×','Lucy, wake');await aim('Exit VR');await waitFor('VR exit',"document.getElementById('log')?.textContent.includes('VR: flat room restored')");
+ assert(simulation.rows.some(r=>r.text==='Press Esc to close'),'XR Escape hint missing');
+ await aim('× Close','Lucy, wake');assert(await evaluate("document.getElementById('wake-terminal').dataset.open==='false'"),'XR Close did not dismiss simulation');await aim('Exit VR');await waitFor('VR exit',"document.getElementById('log')?.textContent.includes('VR: flat room restored')");
  assert(!consoleLines.some(l=>/panicked|exception:/.test(l)),'platform exception');console.log(JSON.stringify({pass:true,phone:{width:phone.w,height:phone.h},jitter:true,gamepad:true,keyboard:true,wakeTerminal:{gamepad:true,keyboard:true,xr:true},xr:{frames:trace.length,clearsPerFrame:1,viewportsPerFrame:3,ray:true,exit:true}},null,2));cleanup();process.exit(0);
 }
 if (process.argv.includes('--controls') || process.argv.includes('--words') || process.argv.includes('--words-faults')) {

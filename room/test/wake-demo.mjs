@@ -17,6 +17,8 @@ export async function runWakeDemo({send, evaluate, key, waitFor, text, sleep, se
   const passive = p => {
     const forbidden=['Start','Play','Pause','Next','Skip','Replay','Open Talk','Load my words · 651 MB','Continue · local model','Send ↵','Stop','Retry save','↑ Older','↓ Newer','End','⌨'];
     assert(!p.rows.some(r=>forbidden.includes(r.text)),'playback or conversation action present');
+    assert(p.rows.some(r=>r.text==='× Close'),'labeled close button missing');
+    assert(p.rows.some(r=>r.text==='Press Esc to close'),'Escape hint missing');
     assert(p.rows.every(r=>r.x>=0&&r.y>=0&&r.x+r.width<=p.w+1&&r.y+12<=p.h+1),'simulation text clipped');
   };
   await waitFor('private journal',"document.getElementById('journal-status').textContent.includes('private')");
@@ -45,11 +47,16 @@ export async function runWakeDemo({send, evaluate, key, waitFor, text, sleep, se
   let p=await panel();passive(p);assert(p.w<=320&&p.h<=700,'simulation exceeds phone');
   assert(p.rows.some(r=>r.text==='https://dhilipsiva.dev/lucy/room/'),'room invitation not drawn');
   if(shotPath)await screenshot(shotPath.replace('.png','-phone.png'));
+  await click('× Close');await waitFor('phone close button dismisses',"document.getElementById('wake-terminal').dataset.open==='false'");
+  await key('t');await waitFor('phone reopens',"document.getElementById('wake-terminal').dataset.open==='true'");
+  passive(await panel());
+  await key('Escape');await waitFor('phone Escape dismisses',"document.getElementById('wake-terminal').dataset.open==='false'");
   await send('Emulation.setDeviceMetricsOverride',{width:1280,height:800,deviceScaleFactor:1,mobile:false},sessionId);await sleep(250);
+  await key('t');await waitFor('desktop completes again',"document.getElementById('wake-terminal').dataset.state==='Simulation complete'");
   if(shotPath)await screenshot(shotPath);
   await key('Escape');await waitFor('dismissed',"document.getElementById('wake-terminal').dataset.open==='false'");
   await click('Wake demo','Standing');await waitFor('Controls starts a new observation',"document.getElementById('wake-terminal').dataset.open==='true' && document.getElementById('wake-terminal').dataset.step==='1'");
-  await click('×');
+  await click('× Close');await waitFor('desktop close button dismisses',"document.getElementById('wake-terminal').dataset.open==='false'");
   assert(JSON.stringify(await records())===JSON.stringify(saved),'watching changed the journal');
   assert(await evaluate('window.__wakeWordsWorkers===0 && window.__wakeModelRequests.length===0'),'simulation used a model');
   assert(await evaluate("document.getElementById('composer-input').value==='My existing Talk draft'"),'simulation changed the Talk draft');
@@ -67,5 +74,5 @@ export async function runWakeDemo({send, evaluate, key, waitFor, text, sleep, se
     await screenshot(shotPath.replace('.png','-face-oblique.png'));
   }
   assert(!consoleLines.some(l=>/panicked|exception:/.test(l)),'browser exception');
-  return {pass:true,steps:[...seen],durationMs,modelWorkers:0,modelRequests:0,journalUnchanged:true,checks:['one-click automatic wake','no playback or conversation actions','scene and Controls entry','desktop and phone text containment','public invitation','dismiss and reopen','Talk draft preserved','no model or journal activity']};
+  return {pass:true,steps:[...seen],durationMs,modelWorkers:0,modelRequests:0,journalUnchanged:true,checks:['one-click automatic wake','no playback or conversation actions','scene and Controls entry','desktop and phone text containment','public invitation','persistent labeled Close button and Escape hint','Close and Escape dismiss on desktop and phone','dismiss and reopen','Talk draft preserved','no model or journal activity']};
 }
