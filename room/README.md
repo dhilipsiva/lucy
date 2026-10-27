@@ -48,7 +48,7 @@ Existing same-origin Nell journals migrate with their original attribution prese
   the engine ran on the main thread). Without a worker the engine runs here as before, and the
   log says so.
 - The wake screen (N8g): click the freestanding screen, choose **Wake demo** in Controls,
-  or press **T**. The simulated CLI session plays automatically: instructions, identity,
+  or press **T**. The simulated CLI session advances every half second: instructions, identity,
   session, an illustrated host permission, peer freshness, recall and a greeting. Just
   watch; the output scrolls on its own and ends with the public room invitation. Close
   or Escape dismisses it; opening it again starts a new observation. Gamepad and VR rays

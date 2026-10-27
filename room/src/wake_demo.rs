@@ -4,7 +4,7 @@ pub const ROOM_URL: &str = "https://dhilipsiva.dev/lucy/room/";
 pub const SCREEN_POSITION: glam::Vec3 = glam::Vec3::new(-1.05, 1.30, -2.80);
 pub const SCREEN_YAW: f32 = 0.25;
 pub const SCREEN_WIDTH: f32 = 1.0;
-const INTERVAL_MS: f64 = 5000.0;
+const INTERVAL_MS: f64 = 500.0;
 
 pub const STEPS: &[(&str, &str)] = &[
     ("Read the skill", "visitor > Lucy, wake\nLucy > I'll read my wake instructions and restore our context.\nread > Lucy SKILL.md and WAKE.md\nresult > The host keeps its selected model and permissions."),
@@ -38,7 +38,7 @@ impl WakeDemo {
         if !self.open || self.complete() || now - self.last_ms < INTERVAL_MS {
             return false;
         }
-        // A resumed/backgrounded tab still gives each part time to be read.
+        // A resumed/backgrounded tab still advances one part at a time.
         self.step += 1;
         self.last_ms = now;
         true
@@ -68,9 +68,9 @@ mod tests {
         assert!(!d.tick(10000.0));
         d.start(100.0);
         assert_eq!(d.step, 1);
-        assert!(!d.tick(5099.0));
+        assert!(!d.tick(599.0));
         for step in 2..=STEPS.len() {
-            assert!(d.tick(100.0 + (step - 1) as f64 * INTERVAL_MS));
+            assert!(d.tick(100.0 + (step - 1) as f64 * 500.0));
             assert_eq!(d.step, step);
         }
         assert!(d.complete());

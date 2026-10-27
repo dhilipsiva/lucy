@@ -24,18 +24,20 @@ export async function runWakeDemo({send, evaluate, key, waitFor, text, sleep, se
   // An existing Talk draft must remain untouched by watching the simulation.
   await evaluate(`(()=>{const i=document.getElementById('composer-input');i.focus();i.value='My existing Talk draft';i.dispatchEvent(new Event('input',{bubbles:true}));})()`);await key('Escape');
   if(shotPath) await screenshot(shotPath.replace('.png','-room.png'));
+  const start=Date.now();
   for(const type of ['mousePressed','mouseReleased']) await send('Input.dispatchMouseEvent',{type,x:380,y:190,button:'left',clickCount:1},sessionId);
   await waitFor('scene screen starts',"document.getElementById('wake-terminal').dataset.open==='true' && document.getElementById('wake-terminal').dataset.step==='1'");
-  const seen=new Set();const start=Date.now();let phone=false;
+  const seen=new Set();let phone=false;
   // Observe every automatic step without sending another input to the room.
-  while(Date.now()-start<45000) {
+  while(Date.now()-start<10000) {
     const s=await state();seen.add(Number(s.step));passive(await panel());
     if(!phone && Number(s.step)>=4) {
-      await send('Emulation.setDeviceMetricsOverride',{width:320,height:700,deviceScaleFactor:2,mobile:true},sessionId);await sleep(250);phone=true;
+      await send('Emulation.setDeviceMetricsOverride',{width:320,height:700,deviceScaleFactor:2,mobile:true},sessionId);await sleep(100);phone=true;
     }
     if(s.state==='Simulation complete')break;
-    await sleep(250);
+    await sleep(100);
   }
+  const durationMs=Date.now()-start;
   assert((await state()).state==='Simulation complete','single-click simulation did not finish');
   assert(seen.size===7,'an automatic step was skipped');
   assert((await text('wake-terminal')).includes('Lucy: cached'),'freshness example missing');
@@ -65,5 +67,5 @@ export async function runWakeDemo({send, evaluate, key, waitFor, text, sleep, se
     await screenshot(shotPath.replace('.png','-face-oblique.png'));
   }
   assert(!consoleLines.some(l=>/panicked|exception:/.test(l)),'browser exception');
-  return {pass:true,steps:[...seen],modelWorkers:0,modelRequests:0,journalUnchanged:true,checks:['one-click automatic wake','no playback or conversation actions','scene and Controls entry','desktop and phone text containment','public invitation','dismiss and reopen','Talk draft preserved','no model or journal activity']};
+  return {pass:true,steps:[...seen],durationMs,modelWorkers:0,modelRequests:0,journalUnchanged:true,checks:['one-click automatic wake','no playback or conversation actions','scene and Controls entry','desktop and phone text containment','public invitation','dismiss and reopen','Talk draft preserved','no model or journal activity']};
 }

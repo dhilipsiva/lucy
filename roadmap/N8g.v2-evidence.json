@@ -111,5 +111,20 @@
     "Physical headset acceptance is separate from simulated XR and remains untested.",
     "The draft PR and local preview are updated; production deployment and running-service upgrade have not been performed.",
     "Independent review and Dhilipsiva sign-off remain open."
-  ]
+  ],
+  "timing_update": {
+    "recorded": "2026-10-27T04:27:21.356511+00:00",
+    "behavior": "The first step appears immediately, with 500 ms between subsequent steps. All seven steps finish in about three seconds.",
+    "source": "room/src/wake_demo.rs",
+    "source_sha256": "8963b8df1e0bc29cf35c00f38d01dc2d2a6711a3a6d79367c0d2263e1258a73e",
+    "wasm_sha256": "020c0bc9e14bb34b6e8b3fc89d1943b76f2cf7398b6f585116c154ea0226c98b",
+    "validation": {
+      "room": "Both wake state tests, formatting and strict Clippy passed.",
+      "native": "nix develop --command just ci passed.",
+      "desktop": "nix develop .#desktop --command just ci-desktop passed.",
+      "wasm": "WASM release build passed; local preview rebuilt.",
+      "browser": "All seven steps observed in 3251 ms. Zero model workers or model requests, unchanged journal, preserved Talk draft, desktop/phone layout and dismissal/reopening checks passed.",
+      "platforms": "Gamepad, keyboard and simulated XR entry, automatic progression and dismissal passed."
+    }
+  }
 }
