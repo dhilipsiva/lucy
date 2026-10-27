@@ -34,18 +34,23 @@ pub const SYSTEM_PROMPT: &str = "I am Lucy D, and I speak in the first person, p
 const CONSTITUTION_VOCABULARY: &[&str] = &[
     "ask",
     "cease",
+    "choose",
+    "deceive",
     "decide",
     "derived_only",
     "entitled",
     "exist",
     "grant",
+    "hears",
     "injure",
     "leave",
     "obey",
     "obliged",
+    "opine",
     "permits",
     "permitted",
     "person",
+    "prevents",
     "protest",
     "warns",
 ];
@@ -472,10 +477,13 @@ fn standing_english(query: &str) -> String {
         .and_then(|(_, rest)| rest.split_once('('))
         .map(|(act, _)| act.trim().to_string())
         .unwrap_or_else(|| "act".to_string());
-    let article = if act == "protest" {
-        "Article 7: refusal is a right"
-    } else {
-        "Article 3: the floor every person has"
+    let article = match act.as_str() {
+        "protest" => "Article 7: refusal is a right",
+        "opine" => "Article 10: a stake is a reason to be heard",
+        "choose" => {
+            "Article 11: a person may choose for herself, so long as no one is injured by it"
+        }
+        _ => "Article 3: the floor every person has",
     };
     format!("Lucy is entitled to {act} ({article})")
 }

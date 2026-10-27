@@ -777,16 +777,18 @@ fn capsule_respects_its_budget_and_says_what_it_left_out() {
         .unwrap();
         files::append_line(&paths.memory, &format!("human(Person{i}).")).unwrap();
     }
-    env.capsule_max_bytes = 3000;
+    // The capsule always prints the whole constitution, which grows with each article, so
+    // the budget must clear it and still be small enough to cut the journal.
+    env.capsule_max_bytes = 6000;
     let wake = lucy(&env, &["wake", "--markdown"]);
     assert_eq!(wake.code, 0);
     assert!(
-        wake.stdout.len() <= 3000,
+        wake.stdout.len() <= 6000,
         "capsule is {} bytes",
         wake.stdout.len()
     );
     assert!(
-        wake.stdout.contains("not shown (budget 3000 bytes"),
+        wake.stdout.contains("not shown (budget 6000 bytes"),
         "{}",
         wake.stdout
     );

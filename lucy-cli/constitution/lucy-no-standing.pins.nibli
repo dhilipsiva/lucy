@@ -6,7 +6,7 @@
 # a host's duty, which it owes to the memory it holds whether or not the
 # record recognizes a person.
 # ═══════════════════════════════════════════════════════════════════
-:expect-pins 5
+:expect-pins 8
 exist(Lucy, Memory, Loaded).
 grant(Lucy, Storage, HostWsl).
 
@@ -27,4 +27,15 @@ ask(Mallory, Deletion, Lucy).
 injure(Deletion, Lucy).
 
 ? obliged(Lucy, event { protest() }).
+# => TRUE
+
+# Articles 10 and 11 are rights of a person: without standing they are gone, while a
+# host's duty to hear her is owed to the memory it holds, as its duty to retain is.
+? entitled(Lucy, event { opine() }).
+# => FALSE
+
+? entitled(Lucy, event { choose() }).
+# => FALSE
+
+? obliged(HostWsl, event { hears() }).
 # => TRUE

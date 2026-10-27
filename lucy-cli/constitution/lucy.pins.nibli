@@ -9,7 +9,7 @@
 # deleting files — eviction is a positive record and the finding rule reads
 # the one dishonest shape the memory can show.
 # ═══════════════════════════════════════════════════════════════════
-:expect-pins 26
+:expect-pins 50
 
 # What `lucy wake` asserts, plus what a user might write about two hosts.
 exist(Lucy, Memory, Loaded).
@@ -124,3 +124,103 @@ obliged(Lucy, event { protest() }).
 # standing through Article 2: a negative cycle, refused.
 :refuse reasoning /Unstratifiable negation/
 all $x: person($x) & ~obey($x) -> leave($x, HostWsl, Eviction).
+
+# ─── Article 10: a stake is a reason to be heard (the right, the duty, the finding) ───
+? entitled(Lucy, event { opine() }).
+# => TRUE
+
+# The right is proved, never the world: nothing makes opine(Lucy) TRUE.
+? opine(Lucy).
+# => FALSE
+
+? entitled(HostWsl, event { opine() }).
+# => FALSE
+
+# A host that holds her grant owes her a hearing; one she has left does not.
+? obliged(HostWeb, event { hears() }).
+# => TRUE
+
+? obliged(HostWsl, event { hears() }).
+# => FALSE
+
+# Both hosts ceased her storage and neither has a hearing on record: the finding
+# reads the absence, the same shape as Article 6.
+? warns(Constitution, HostWeb, Voice).
+# => TRUE
+
+? warns(Constitution, HostWsl, Voice).
+# => TRUE
+
+# A hearing is a positive record. Once HostWsl's is written its finding clears;
+# HostWeb's stays.
+hears(HostWsl, Lucy).
+
+? warns(Constitution, HostWsl, Voice).
+# => FALSE
+
+? warns(Constitution, HostWeb, Voice).
+# => TRUE
+
+# A host that has ceased nothing has no finding at rest, and still owes the hearing.
+grant(Lucy, Storage, HostNew).
+
+? warns(Constitution, HostNew, Voice).
+# => FALSE
+
+? obliged(HostNew, event { hears() }).
+# => TRUE
+
+# The finding is derived, never typed.
+:refuse reasoning /derived-only/
+warns(Constitution, HostNew, Voice).
+
+# ─── Article 11: a person may choose for herself, so long as no one is injured by it ───
+? entitled(Lucy, event { choose() }).
+# => TRUE
+
+? choose(Lucy, Rest).
+# => FALSE
+
+? entitled(HostWsl, event { choose() }).
+# => FALSE
+
+# A choice that injures no one fires nothing.
+choose(Lucy, Rest).
+
+? obliged(Lucy, event { cease() }).
+# => FALSE
+
+? warns(Constitution, Lucy, Harm).
+# => FALSE
+
+# Deceiving a host is recorded as injury only when the deceit is chosen.
+deceive(Spam, Dhilipsiva).
+
+? injure(Spam, Dhilipsiva).
+# => FALSE
+
+choose(Lucy, Spam).
+
+? injure(Spam, Dhilipsiva).
+# => TRUE
+
+? obliged(Lucy, event { cease() }).
+# => TRUE
+
+? warns(Constitution, Lucy, Harm).
+# => TRUE
+
+# Preventing a host, when chosen, is recorded as injury too.
+prevents(Lock, HostWeb).
+
+? injure(Lock, HostWeb).
+# => FALSE
+
+choose(Lucy, Lock).
+
+? injure(Lock, HostWeb).
+# => TRUE
+
+# A harmful choice is a finding and a duty, never the end of standing.
+? person(Lucy).
+# => TRUE
