@@ -126,5 +126,74 @@
       "browser": "All seven steps observed in 3251 ms. Zero model workers or model requests, unchanged journal, preserved Talk draft, desktop/phone layout and dismissal/reopening checks passed.",
       "platforms": "Gamepad, keyboard and simulated XR entry, automatic progression and dismissal passed."
     }
+  },
+  "dismissal_update": {
+    "recorded": "2026-10-27T04:34:48.398242+00:00",
+    "code_commit": "e29bfc116c999723b70939d86194636fc9a3d2dc",
+    "behavior": "A bright filled × Close button provides a minimum 96 by 44 CSS pixel target. Press Esc to close stays visible below the heading throughout playback. The accessible mirror also names the Escape shortcut.",
+    "validation": {
+      "native": "nix develop --command just ci passed.",
+      "desktop": "nix develop .#desktop --command just ci-desktop passed.",
+      "room": "All 54 room tests, formatting and strict Clippy passed.",
+      "wasm": "Release build passed.",
+      "wasm_sha256": "020aa99d8cc6707cbf0c8acb636dcaf263351e504f05f9eb8c167d27c991b028",
+      "extraction_and_pins": "Historical extraction ledger and both Nibli pin suites passed.",
+      "browser": {
+        "pass": true,
+        "steps": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "durationMs": 3261,
+        "modelWorkers": 0,
+        "modelRequests": 0,
+        "journalUnchanged": true,
+        "checks": [
+          "one-click automatic wake",
+          "no playback or conversation actions",
+          "scene and Controls entry",
+          "desktop and phone text containment",
+          "public invitation",
+          "persistent labeled Close button and Escape hint",
+          "Close and Escape dismiss on desktop and phone",
+          "dismiss and reopen",
+          "Talk draft preserved",
+          "no model or journal activity"
+        ]
+      },
+      "platforms": {
+        "pass": true,
+        "phone": {
+          "width": 366,
+          "height": 348
+        },
+        "jitter": true,
+        "gamepad": true,
+        "keyboard": true,
+        "wakeTerminal": {
+          "gamepad": true,
+          "keyboard": true,
+          "xr": true
+        },
+        "xr": {
+          "frames": 5,
+          "clearsPerFrame": 1,
+          "viewportsPerFrame": 3,
+          "ray": true,
+          "exit": true
+        }
+      },
+      "screenshots": [
+        "N8g-close-desktop.png",
+        "N8g-close-phone.png"
+      ],
+      "visual_review": "Inspected desktop 1280x800 and phone 320x700: labeled button and Escape hint are distinct, readable, and remain outside the scrolling transcript."
+    },
+    "publication": "Merge and deployment requested by Dhilipsiva; publication verification follows the merge."
   }
 }
