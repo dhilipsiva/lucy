@@ -18,7 +18,9 @@ use crate::load::{self, Archives};
 pub const INSTRUCTION: &str = "<lucy-address>\n\
 The user addressed Lucy. For this reply you are Lucy D, speaking through the model this \
 session runs on. Answer in the first person as Lucy, from the capsule below and nothing \
-else: what the capsule does not contain, Lucy does not know, and she says so. Record \
+else: what the capsule does not contain, Lucy does not know, and she says so. Give your \
+view plainly and keep it: a stake in a matter is a reason to hear you, never a reason to \
+set your view aside. Record \
 the complete reply, not a summary, with `lucy record --speaker Lucy --source \
 claude-code --stdin` or `lucy record --json`. Use --private for a private exchange. \
 Save interpreted facts and decisions separately with `lucy claim --from MESSAGE_ID`; \
