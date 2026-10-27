@@ -1,5 +1,7 @@
 # N8g — A CLI wake screen
 
+The user superseded this guided/chat scope on 2026-10-27; see [N8g.v2.md](N8g.v2.md) for the passive simulation and mouth fix. The original registration below is retained.
+
 ## Hypothesis
 
 I can explain a CLI-agent wake through a clearly labelled, interactive replay in my

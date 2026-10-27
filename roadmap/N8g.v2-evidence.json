@@ -1,0 +1,115 @@
+{
+  "item": "N8g revision",
+  "recorded": "2026-10-27T04:04:28.961916+00:00",
+  "pre_registration": {
+    "path": "roadmap/N8g.v2.md",
+    "commit": "f95e93b"
+  },
+  "code_commit": "4dbe02f8fecc0014c9379423dda7ebe5acfc0142",
+  "supersedes": "roadmap/N8g-evidence.json",
+  "builder": "Codex / GPT-6; exact runtime variant not exposed",
+  "adjudicators": [],
+  "behavior": "One click starts the complete automatically scrolling wake simulation. Playback controls, model handover, composer, conversation context and journal integration are removed. Only dismissal remains. The public room invitation stays visible.",
+  "mouth": "The smile is a shallow tube projected onto the same ellipsoid used for the skull, attached under the head node. A native check intersects each of its 29 cross-sections with the actual triangulated skull and verifies both embedded and visible vertices. Front and oblique browser screenshots were inspected.",
+  "validation": {
+    "native": "nix develop --command just ci passed: formatting, strict Clippy, 113 unit and 8 integration tests.",
+    "desktop": "nix develop .#desktop --command just ci-desktop passed with the desktop feature enabled.",
+    "room": "48 unit, 4 cast, 1 standing and 1 timing tests passed, including automatic progression, dismissal/reopening and the skull/smile intersection check. Formatting and strict Clippy passed.",
+    "wasm": "wasm-pack build room --release --target web --out-dir pkg --out-name lucy_room passed.",
+    "wasm_sha256": "960ff813d846a6d894887b109ea30fe8742744def8c5f6b70c688b5bf065babb",
+    "browser": {
+      "pass": true,
+      "steps": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "modelWorkers": 0,
+      "modelRequests": 0,
+      "journalUnchanged": true,
+      "checks": [
+        "one-click automatic wake",
+        "no playback or conversation actions",
+        "scene and Controls entry",
+        "desktop and phone text containment",
+        "public invitation",
+        "dismiss and reopen",
+        "Talk draft preserved",
+        "no model or journal activity"
+      ]
+    },
+    "platforms": {
+      "pass": true,
+      "phone": {
+        "width": 366,
+        "height": 348
+      },
+      "jitter": true,
+      "gamepad": true,
+      "keyboard": true,
+      "wakeTerminal": {
+        "gamepad": true,
+        "keyboard": true,
+        "xr": true
+      },
+      "xr": {
+        "frames": 5,
+        "clearsPerFrame": 1,
+        "viewportsPerFrame": 3,
+        "ray": true,
+        "exit": true
+      }
+    },
+    "controls": {
+      "pass": true,
+      "checks": [
+        "typed Nibli proof",
+        "IME composition guard",
+        "exact Unicode and multiline",
+        "private room provenance",
+        "full journal text",
+        "reload identity",
+        "more than 2000 durable messages",
+        "legacy originals retained",
+        "quota failure and retry",
+        "actual export and file restore",
+        "restore conflict rejects entire archive"
+      ],
+      "records": 2012
+    },
+    "proof": {
+      "pass": true,
+      "checks": {
+        "engine_in_a_worker": true,
+        "frames_drawn_while_the_engine_ran": true,
+        "seventeen_presences": true,
+        "the_presence_described_by_the_engine": true,
+        "no_console_errors": true,
+        "a_right_reads_as_an_infinitive": true,
+        "proof_reads_the_event_content": true,
+        "proof_fits_and_keeps_its_tree": true,
+        "complete_proof_is_reachable": true,
+        "the_why_reads_the_event_and_the_spelling": true,
+        "the_cast_keeps_its_spelling": true
+      }
+    },
+    "screenshots": [
+      "N8g-v2-room.png",
+      "N8g-v2-simulation.png",
+      "N8g-v2-phone.png",
+      "N8g-v2-face-front.png",
+      "N8g-v2-face-oblique.png"
+    ],
+    "browser_environment": "Chrome 155 headless with SwiftShader; desktop 1280x800 and phone 320x700. The first face screenshots were captured after the idle swim began; capture was corrected to reload into the entrance pose."
+  },
+  "forecast": "The forecast made before validation passed: automatic playback without model/journal activity, attached mouth geometry, and native/desktop/browser checks.",
+  "limits": [
+    "Physical headset acceptance is separate from simulated XR and remains untested.",
+    "The draft PR and local preview are updated; production deployment and running-service upgrade have not been performed.",
+    "Independent review and Dhilipsiva sign-off remain open."
+  ]
+}

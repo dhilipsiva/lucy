@@ -166,5 +166,7 @@
     "Real inference tested two short questions, not general model quality or coding ability.",
     "The canonical public room is unchanged until this branch is reviewed and deployed. No production deployment or running-service upgrade was performed.",
     "Independent adjudicator review and Dhilipsiva sign-off remain open; this evidence does not close N8."
-  ]
+  ],
+  "superseded_by": "roadmap/N8g.v2-evidence.json",
+  "historical_artifacts_commit": "bbe25d5e036f43ae583e40d3179cecb39d4ebb4b"
 }
