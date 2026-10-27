@@ -70,8 +70,6 @@ pub struct AnswerCard {
 pub struct HudState<'a> {
     pub demo: &'a crate::wake_demo::WakeDemo,
     pub terminal_text: &'a str,
-    pub words_ready: bool,
-    pub words_busy: bool,
     pub desk: &'a crate::desk::Desk,
     pub words_status: &'a str,
     pub drawer_body: &'a str,
@@ -118,7 +116,6 @@ pub enum HitResult {
 
 pub struct Hud {
     terminal_focused: bool,
-    pub terminal_max_scroll: usize,
     panels: Vec<Panel>,
     textures: Vec<Option<Texture>>,
     drawn_version: u64,
@@ -133,7 +130,6 @@ impl Hud {
         let panels = (0..N).map(|_| Panel::new(10.0, 10.0, dpr)).collect();
         Hud {
             terminal_focused: false,
-            terminal_max_scroll: 0,
             panels,
             textures: (0..N).map(|_| None).collect(),
             drawn_version: u64::MAX,
@@ -204,7 +200,6 @@ impl Hud {
                     self.draw_restore(st);
                 } else if st.demo.open {
                     self.panels[BUBBLE].visible = false;
-                    self.draw_keyboard(st);
                 } else {
                     self.draw_top(st);
                     if st.w < 600.0 || st.gamepad || st.xr_active {
@@ -879,11 +874,7 @@ impl Hud {
         if !st.desk.keyboard {
             return;
         }
-        let dock_top = if st.demo.open {
-            st.h
-        } else {
-            self.panels[DOCK].y
-        };
+        let dock_top = self.panels[DOCK].y;
         let p = &mut self.panels[KEYBOARD];
         let w = (st.w - 24.0).min(760.0);
         let kw = (w - 20.0) / 12.0;
@@ -907,9 +898,6 @@ impl Hud {
         let cols = if mobile { 6 } else { 12 };
         let kw = if mobile { (w - 20.0) / 6.0 } else { kw };
         for (i, key) in keys.iter().enumerate() {
-            if st.demo.open && *key == "Nibli" {
-                continue;
-            }
             let (x, y) = (
                 10.0 + (i % cols) as f64 * kw,
                 6.0 + (i / cols) as f64 * 48.0,

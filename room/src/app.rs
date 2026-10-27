@@ -55,7 +55,6 @@ struct InputFlags {
 pub struct App {
     demo: crate::wake_demo::WakeDemo,
     terminal_text: String,
-    terminal_stream: Option<crate::journal::Message>,
     desk: crate::desk::Desk,
     words: crate::words::Words,
     generation: Option<crate::journal::Message>,
@@ -179,7 +178,6 @@ pub fn boot() -> Result<(), String> {
     let mut app = App {
         demo: Default::default(),
         terminal_text: String::new(),
-        terminal_stream: None,
         desk: crate::desk::Desk::new(&window.location().search().unwrap_or_default()),
         words: Default::default(),
         generation: None,
@@ -1179,11 +1177,13 @@ impl App {
     fn action(&mut self, a: Action) {
         match a {
             Action::WakeDemo => {
-                self.demo.open = true;
+                self.demo.start(now_ms());
                 self.hud_hidden = false;
                 self.desk.drawer = None;
                 self.desk.keyboard = false;
-                self.subject = None;
+                if let Some(i) = self.desk.input() {
+                    let _ = i.blur();
+                }
                 self.keys.clear();
                 self.focus = if self.flags.gamepad { Some(0) } else { None };
                 self.log("wake demo: opened; illustrated commands, no execution");
@@ -1195,46 +1195,6 @@ impl App {
                     let _ = i.blur();
                 }
                 self.focus = None;
-            }
-            Action::DemoPlay => self.demo.play_pause(now_ms()),
-            Action::DemoNext => self.demo.next(),
-            Action::DemoSkip => self.demo.skip(),
-            Action::DemoRestart => {
-                if !self.words.busy {
-                    self.demo.restart();
-                    self.desk.keyboard = false;
-                }
-            }
-            Action::DemoContinue => {
-                if self.demo.complete() {
-                    self.demo.handover_requested = true;
-                    self.desk.mode = "words".into();
-                    if !self.words.ready {
-                        self.action(Action::LoadWords);
-                    }
-                    self.demo.tick(now_ms(), self.words.ready);
-                }
-            }
-            Action::DemoScroll(delta) => {
-                self.demo.scroll = self
-                    .demo
-                    .scroll
-                    .saturating_add_signed(delta as isize)
-                    .min(self.hud.terminal_max_scroll);
-            }
-            Action::DemoTalk => {
-                self.action(Action::CloseWakeDemo);
-                self.group = "talk".into();
-                self.dock_min = false;
-            }
-            Action::OpenRoom => {
-                if let Some(a) = web_sys::window()
-                    .and_then(|w| w.document())
-                    .and_then(|d| d.get_element_by_id("room-link"))
-                    .and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok())
-                {
-                    a.click();
-                }
             }
             Action::Control(i) => {
                 let groups = self.groups();
@@ -1354,7 +1314,7 @@ impl App {
             Action::CloseMind => self.desk.drawer = None,
             Action::Mode(mode) => self.desk.mode = mode,
             Action::Focus => {
-                if self.demo.open && !self.demo.live {
+                if self.demo.open {
                     return;
                 }
                 self.keys.clear();
@@ -1366,14 +1326,9 @@ impl App {
                 }
             }
             Action::Submit => {
-                if self.demo.open {
-                    if !self.demo.live || !self.words.ready || self.words.busy {
-                        return;
-                    }
-                    self.desk.mode = "words".into();
-                    self.demo.scroll = 0;
+                if !self.demo.open {
+                    self.desk.submit();
                 }
-                self.desk.submit();
             }
             Action::ClearDraft => {
                 self.desk.draft.clear();
@@ -1415,8 +1370,7 @@ impl App {
                         self.focus = Some(0);
                     }
                     "Send" => self.action(Action::Submit),
-                    "Nibli" if !self.demo.open => self.desk.mode = "nibli".into(),
-                    "Nibli" => {}
+                    "Nibli" => self.desk.mode = "nibli".into(),
                     "Space" => self.desk.draft.push(' '),
                     "↵" => self.desk.draft.push('\n'),
                     _ => self.desk.draft.push_str(&if self.keyboard_shift {
@@ -1521,12 +1475,7 @@ impl App {
                         )
                     })
                     .unwrap_or_default();
-                let demo_context = if self.demo.visited_live {
-                    crate::wake_demo::CONTEXT
-                } else {
-                    ""
-                };
-                let context = format!("{demo_context}\n{direct}\n{verdict}\n{recalled}");
+                let context = format!("{direct}\n{verdict}\n{recalled}");
                 self.generation_context = context.clone();
                 let history = self
                     .desk
@@ -1578,7 +1527,6 @@ impl App {
         }
     }
     fn finish_words(&mut self, text: &str, status: &str) {
-        self.terminal_stream = None;
         self.desk.generating = false;
         if let Some(mut message) = self.generation.take() {
             message.text = text.into();
@@ -1667,7 +1615,6 @@ impl App {
         }
         while let Some(m) = self.desk.visible.pop_front() {
             if self.generation.as_ref().is_some_and(|g| g.id == m.id) {
-                self.terminal_stream = Some(m.clone());
                 self.say(&m.text, Verdict::Words, Some("WORDS · LOCAL MODEL"));
                 if let Some(s) = &mut self.speech {
                     s.streaming = true;
@@ -1726,24 +1673,8 @@ impl App {
                         }
                     }
                     match k.as_str() {
-                        "escape" => {
-                            if self.desk.keyboard {
-                                self.desk.keyboard = false;
-                            } else {
-                                self.action(Action::CloseWakeDemo);
-                            }
-                        }
-                        "enter" if self.demo.live => self.action(Action::Focus),
-                        "enter" if self.demo.complete() => self.action(Action::DemoContinue),
-                        "enter" | " " => self.action(Action::DemoPlay),
-                        "pageup" => self.action(Action::DemoScroll(12)),
-                        "pagedown" => self.action(Action::DemoScroll(-12)),
-                        "end" => self.action(Action::DemoScroll(-i32::MAX)),
-                        "tab" => {
-                            let n = self.hud.focus_targets().len().max(1);
-                            self.focus =
-                                Some((self.focus.unwrap_or(0) + if shift { n - 1 } else { 1 }) % n);
-                        }
+                        "escape" => self.action(Action::CloseWakeDemo),
+                        "tab" => self.focus = Some(0),
                         _ => {}
                     }
                     self.version += 1;
@@ -1852,7 +1783,6 @@ impl App {
             }
             InputEvent::Wheel { dy } => {
                 if self.demo.open {
-                    self.action(Action::DemoScroll(if dy < 0.0 { 3 } else { -3 }));
                     return;
                 }
                 self.world.walk(0.0, -(dy.signum() as f32) * 0.25);
@@ -1930,11 +1860,17 @@ impl App {
             self.focus = Some(0);
             self.version += 1;
         }
-        if !self.demo.open && (st.lx != 0.0 || st.ly != 0.0) {
+        if self.demo.open {
+            if st.pressed.iter().any(|b| *b == 0 || *b == 1) {
+                self.action(Action::CloseWakeDemo);
+            }
+            return;
+        }
+        if st.lx != 0.0 || st.ly != 0.0 {
             self.world.walk(st.lx * 1.5 * dt, -st.ly * 1.5 * dt);
             self.world.lucy.poke();
         }
-        if !self.demo.open && (st.rx != 0.0 || st.ry != 0.0) {
+        if st.rx != 0.0 || st.ry != 0.0 {
             self.world.look(-st.rx * 2.0 * dt, -st.ry * 1.5 * dt);
         }
         for b in st.pressed {
@@ -1947,8 +1883,6 @@ impl App {
                 1 => {
                     if self.desk.keyboard {
                         self.desk.keyboard = false;
-                    } else if self.demo.open {
-                        self.action(Action::CloseWakeDemo);
                     } else if self.desk.drawer.is_some() {
                         self.desk.drawer = None;
                     } else {
@@ -2065,7 +1999,7 @@ impl App {
             self.version += 1;
         }
         self.poll_words();
-        if self.demo.tick(now, self.words.ready) {
+        if self.demo.tick(now) {
             self.version += 1;
         }
         if let Some(s) = submit {
@@ -2161,11 +2095,7 @@ impl App {
         };
         if self.mirrored_version != self.version {
             self.mirrored_version = self.version;
-            self.terminal_text = self.demo.transcript(
-                &self.desk.archive,
-                &self.desk.session,
-                self.terminal_stream.as_ref(),
-            );
+            self.terminal_text = self.demo.transcript();
             self.drawer_body = if self.desk.drawer.is_some() {
                 self.desk.body(&self.log, &self.standing)
             } else {
@@ -2176,7 +2106,9 @@ impl App {
                     el.set_text_content(Some(&self.terminal_text));
                     el.set_attribute("data-open", if self.demo.open { "true" } else { "false" })
                         .ok();
-                    el.set_attribute("data-state", &self.demo.label()).ok();
+                    el.set_attribute("data-state", self.demo.label()).ok();
+                    el.set_attribute("data-step", &self.demo.step.to_string())
+                        .ok();
                 }
                 if let Some(el) = doc.get_element_by_id("words-status") {
                     el.set_text_content(Some(&self.words.status));
@@ -2219,8 +2151,6 @@ impl App {
         let st = HudState {
             demo,
             terminal_text,
-            words_ready: words.ready,
-            words_busy: words.busy,
             words_status: &words.status,
             desk,
             drawer_body,
@@ -2255,8 +2185,6 @@ impl App {
         let st2 = HudState {
             demo: &self.demo,
             terminal_text: &self.terminal_text,
-            words_ready: self.words.ready,
-            words_busy: self.words.busy,
             words_status: &self.words.status,
             desk: &self.desk,
             drawer_body: &self.drawer_body,

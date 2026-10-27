@@ -48,22 +48,15 @@ Existing same-origin Nell journals migrate with their original attribution prese
   the engine ran on the main thread). Without a worker the engine runs here as before, and the
   log says so.
 - The wake screen (N8g): click the freestanding screen, choose **Wake demo** in Controls,
-  or press **T**. Start, Pause, Next and Skip replay a CLI-agent wake: instructions,
-  identity, session, an illustrated host permission, peer freshness, recall and a greeting.
-  Every command and result is labelled as a demonstration. Close and reopen to resume;
-  Replay starts the illustration again. The public room link stays available throughout.
+  or press **T**. The simulated CLI session plays automatically: instructions, identity,
+  session, an illustrated host permission, peer freshness, recall and a greeting. Just
+  watch; the output scrolls on its own and ends with the public room invitation. Close
+  or Escape dismisses it; opening it again starts a new observation. Gamepad and VR rays
+  can open and dismiss the same screen.
 
-After the replay, **Load my words · 651 MB** explicitly starts the same local model used
-by Talk; an already loaded model offers **Continue · local model**. The terminal and Talk
-share the draft, live conversation, streaming/Stop controls and private journal. Switching
-views or replaying the example preserves that conversation. The scripted transcript is
-never saved as a conversation or passed as model history; a short labelled explanation of
-the demonstration supplies context for live questions. This is terminal chat inside the
-room; the illustration does not run a shell or connect to a CLI session.
-
-In the terminal, Tab/Shift+Tab and Enter select controls, Escape closes, and Page Up,
-Page Down, End or the wheel scroll the transcript. The drawn keyboard, gamepad focus and
-VR rays operate the same controls. Native text entry keeps Talk's multiline and IME support.
+The simulation has no playback controls, composer or model connection. It neither runs
+commands nor reads or writes the private conversation. Talk remains its own section.
+The complete simulation is also available in the accessible text mirror.
 
 ## Talk and my private journal
 
@@ -119,7 +112,7 @@ generates (`pkg/lucy_room.js`) and calls it; a browser cannot start a wasm modul
 and the worker entry called, so the engine runs off the drawing thread.
 Hidden text mirrors carry my words, the mind line, the board, model/journal status and log
 for screen readers and the headless test. `#wake-terminal` mirrors the complete demonstration
-and current live conversation, and `#room-link` is the canonical public-room anchor.
+text, and `#room-link` is the canonical public-room anchor.
 `test/headless.mjs` is a Node test harness, not part of the room.
 
 ## Build, test, serve
@@ -137,9 +130,6 @@ CHROME=google-chrome node room/test/headless.mjs --shot /tmp/room.png --proof-sh
 node room/test/headless.mjs --wake-demo --shot /tmp/wake-demo.png
 node room/test/headless.mjs --platforms
 node room/test/headless.mjs --controls
-# Real inference, separately from the explicit test worker above. Place the pinned
-# GGUF, tokenizer.json and system.txt in target/room-model/ to seed its browser cache.
-node room/test/headless.mjs --wake-demo-words --shot /tmp/wake-real.png
 ```
 
 Rust 1.96 or newer with the `wasm32-unknown-unknown` target, and wasm-pack 0.15 (it fetches the

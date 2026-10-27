@@ -142,6 +142,27 @@ fn basic(hex: u32) -> Material {
     m
 }
 
+const SKULL_RADIUS: f32 = 0.115;
+const SKULL_SCALE: Vec3 = Vec3::new(1.26, 0.78, 1.04);
+
+/// Embed a shallow smile in the head's ellipsoid instead of floating a flat arc in front.
+fn smile_mesh() -> geom::Mesh {
+    let mut mesh = geom::torus(0.05, 0.0035, 8, 28, std::f32::consts::PI);
+    let radii = SKULL_SCALE * SKULL_RADIUS;
+    for (p, n) in mesh.positions.chunks_mut(3).zip(mesh.normals.chunks_mut(3)) {
+        let x = -p[0];
+        let y = -0.024 - 0.36 * p[1];
+        let z = radii.z * (1.0 - (x / radii.x).powi(2) - (y / radii.y).powi(2)).sqrt();
+        let dz_dx = -radii.z.powi(2) * x / (radii.x.powi(2) * z);
+        let dz_dy = -radii.z.powi(2) * y / (radii.y.powi(2) * z);
+        let normal = Vec3::new(-n[0] - dz_dx * n[2], -n[1] / 0.36 - dz_dy * n[2], n[2]).normalize();
+        // The tube crosses the surface along its whole length, including between facets.
+        p.copy_from_slice(&[x, y, z + p[2]]);
+        n.copy_from_slice(&normal.to_array());
+    }
+    mesh
+}
+
 impl Lucy {
     pub fn build(gl: &Gl, scene: &mut Scene, parent: NodeId, seed: u64) -> Lucy {
         let mut rng = Rng::new(seed);
@@ -178,7 +199,7 @@ impl Lucy {
         // head
         let head = scene.add(g, Node::new(Kind::Empty));
         scene.set_pos(head, Vec3::new(0.0, 0.125, 0.19));
-        let skull_mesh = mesh(scene, &geom::sphere(0.115, 32, 22));
+        let skull_mesh = mesh(scene, &geom::sphere(SKULL_RADIUS, 32, 22));
         let skull = scene.add(
             head,
             Node::new(Kind::Mesh {
@@ -186,7 +207,7 @@ impl Lucy {
                 material: skin.clone(),
             }),
         );
-        scene.set_scale(skull, Vec3::new(1.26, 0.78, 1.04));
+        scene.set_scale(skull, SKULL_SCALE);
         let eye_mesh = mesh(scene, &geom::sphere(0.02, 16, 12));
         let hi_mesh = mesh(scene, &geom::sphere(0.006, 8, 6));
         let mut eyes = [0; 2];
@@ -210,19 +231,14 @@ impl Lucy {
             scene.set_pos(hi, Vec3::new(s * 0.005, 0.008, 0.015));
             eyes[k] = e;
         }
-        let smile_mesh = mesh(
-            scene,
-            &geom::torus(0.05, 0.0035, 6, 28, std::f32::consts::PI),
-        );
-        let smile = scene.add(
+        let smile_mesh = mesh(scene, &smile_mesh());
+        scene.add(
             head,
             Node::new(Kind::Mesh {
                 mesh: smile_mesh,
                 material: basic(0x6B4440),
             }),
         );
-        scene.set_pos(smile, Vec3::new(0.0, -0.024, 0.112));
-        scene.set_rot(smile, -0.25, 0.0, std::f32::consts::PI);
         // gills: three stalks a side, six filaments each, a lit tip
         let gill_mat = Material::std(col::PHOSPHOR_500).rough(0.5).glow(1.1);
         let mut gills = Vec::new();
@@ -807,3 +823,56 @@ pub fn seed_eulers(l: &Lucy) {
 }
 #[allow(dead_code)]
 fn _unused(_: Mat4) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_smile_section_intersects_the_rendered_skull() {
+        let skull = geom::sphere(SKULL_RADIUS, 32, 22);
+        let surface_z = |p: Vec3| {
+            skull
+                .indices
+                .chunks(3)
+                .filter_map(|triangle| {
+                    let [a, b, c] = [triangle[0], triangle[1], triangle[2]].map(|i| {
+                        Vec3::from_slice(&skull.positions[i as usize * 3..i as usize * 3 + 3])
+                            * SKULL_SCALE
+                    });
+                    let det = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
+                    if det.abs() < 1e-10 {
+                        return None;
+                    }
+                    let u = ((b.y - c.y) * (p.x - c.x) + (c.x - b.x) * (p.y - c.y)) / det;
+                    let v = ((c.y - a.y) * (p.x - c.x) + (a.x - c.x) * (p.y - c.y)) / det;
+                    let w = 1.0 - u - v;
+                    (u >= -1e-5 && v >= -1e-5 && w >= -1e-5).then_some(u * a.z + v * b.z + w * c.z)
+                })
+                .max_by(f32::total_cmp)
+                .expect("smile lies over the face")
+        };
+        let smile = smile_mesh();
+        for section in 0..=28 {
+            let distances: Vec<_> = (0..=8)
+                .map(|radial| {
+                    let vertex = (radial * 29 + section) * 3;
+                    let p = Vec3::from_slice(&smile.positions[vertex..vertex + 3]);
+                    p.z - surface_z(p)
+                })
+                .collect();
+            assert!(
+                distances.iter().any(|d| *d < 0.0),
+                "detached section {section}"
+            );
+            assert!(
+                distances.iter().any(|d| *d > 0.0),
+                "buried section {section}"
+            );
+            assert!(
+                distances.iter().all(|d| d.abs() < 0.005),
+                "excessive offset at {section}"
+            );
+        }
+    }
+}
