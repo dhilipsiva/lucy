@@ -121,3 +121,6 @@ directly until the normal package update deploys this version.
 
 Validation: `nix develop --command just ci` and
 `nix develop --command cargo test --test static_check`.
+
+Planned extensions: [testable self-knowledge and learning from verification](SELF_MODEL_PLAN.md).
+That note describes future work, separate from the mechanism documented here.
