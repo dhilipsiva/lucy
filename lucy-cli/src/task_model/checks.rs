@@ -596,16 +596,27 @@ pub fn inspect_inputs(
     task: &Task,
     kind: LessonKind,
 ) -> Result<Value> {
+    inspect_inputs_scoped(store, workspace, task, kind, None)
+}
+
+pub(crate) fn inspect_inputs_scoped(
+    store: &Store,
+    workspace: &Path,
+    task: &Task,
+    kind: LessonKind,
+    allowed: Option<&std::collections::BTreeSet<String>>,
+) -> Result<Value> {
     same_workspace(task, workspace)?;
     let mut rows = Vec::new();
     for criterion in &task.definition.criteria {
         match &criterion.check {
             Check::Record { origin, record, .. } if kind == LessonKind::RetrieveSources => {
-                let found = store
-                    .all()?
-                    .into_iter()
-                    .find(|r| r.origin == *origin && r.payload["id"] == *record);
-                rows.push(json!({"criterion":criterion.id,"record":record,"found":found.is_some(),
+                let found = store.all()?.into_iter().find(|r| {
+                    r.origin == *origin
+                        && r.payload["id"] == *record
+                        && allowed.is_none_or(|keys| keys.contains(&r.key()))
+                });
+                rows.push(json!({"criterion":criterion.id,"origin":origin,"record":record,"found":found.is_some(),
                     "excerpt":found.map(|r|r.payload["text"].as_str().unwrap_or("").chars().take(2000).collect::<String>())}));
             }
             Check::FileExists { path: name }

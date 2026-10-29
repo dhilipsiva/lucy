@@ -34,7 +34,7 @@ pub fn command(args: &[String], stdin: &str) -> Result<Value> {
     if op == "study-info" {
         #[cfg(unix)]
         return Ok(
-            json!({"schema":1,"protocol":crate::store::digest(PROTOCOL.as_bytes()),"implementation":study::implementation()?,
+            json!({"schema":2,"protocol":crate::store::digest(PROTOCOL.as_bytes()),"implementation":study::implementation()?,
             "model":crate::desktop::providers::identity()?,"policy":POLICY,"checker":crate::store::digest(SPEC.as_bytes()),"real_data":crate::store::default_root()?}),
         );
         #[cfg(not(unix))]

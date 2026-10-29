@@ -33,6 +33,73 @@ fn outcome(entry: &Entry) -> Verdict {
 }
 
 #[test]
+fn study_preflight_cannot_retrieve_an_unassigned_calibration_source() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::open(&temp.path().join("memory")).unwrap();
+    let old = Record {
+        origin: "fixture:calibration".into(),
+        payload: json!({"id":"old","text":"calibration canary","private":true}),
+    };
+    store.record(&old).unwrap();
+    let task = begin(
+        &store,
+        temp.path(),
+        definition(Check::Record {
+            origin: old.origin.clone(),
+            record: "old".into(),
+            sha256: hash(&old),
+        }),
+        Observer::Native,
+    )
+    .unwrap();
+    let empty = std::collections::BTreeSet::new();
+    let hidden = inspect_inputs_scoped(
+        &store,
+        temp.path(),
+        &task,
+        LessonKind::RetrieveSources,
+        Some(&empty),
+    )
+    .unwrap();
+    assert_eq!(hidden["observations"][0]["found"], false);
+    assert!(!hidden.to_string().contains("calibration canary"));
+    let allowed = std::collections::BTreeSet::from([old.key()]);
+    let visible = inspect_inputs_scoped(
+        &store,
+        temp.path(),
+        &task,
+        LessonKind::RetrieveSources,
+        Some(&allowed),
+    )
+    .unwrap();
+    assert_eq!(visible["observations"][0]["excerpt"], "calibration canary");
+}
+
+#[test]
+fn study_write_approval_is_bounded_and_independent_of_correctness() {
+    let request: study::TrialRequest = serde_json::from_value(json!({
+        "case":"synthetic","disguise":"a","arm":"full","prompt":"fixture",
+        "definition":definition(file()),"oracle":[],"inputs_digest":digest(b"fixture"),
+        "output_writes":[{"path":"output.txt","max_bytes":5}],
+        "approvals":[{"tool":"command","arguments":{"argv":["true"]}}]
+    }))
+    .unwrap();
+    for text in ["right", "wrong"] {
+        assert!(
+            request.allows(&json!({"tool":"write","arguments":{"path":"output.txt","text":text}}))
+        );
+    }
+    assert!(
+        !request.allows(&json!({"tool":"write","arguments":{"path":"other.txt","text":"right"}}))
+    );
+    assert!(
+        !request.allows(&json!({"tool":"write","arguments":{"path":"output.txt","text":"longer"}}))
+    );
+    assert!(!request.allows(&json!({"tool":"command","arguments":{"argv":["false"]}})));
+    assert!(request.allows(&json!({"tool":"command","arguments":{"argv":["true"]}})));
+}
+
+#[test]
 fn execution_success_does_not_establish_task_completion_and_receipts_survive_reopen() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("memory");
@@ -381,7 +448,7 @@ fn untrusted_reports_and_paths_cannot_self_certify() {
 
 fn synthetic_study() -> study::Study {
     let mut study = study::Study {
-        schema: 1,
+        schema: 2,
         protocol: digest(PROTOCOL.as_bytes()),
         implementation: digest(b"fixture-binary"),
         model: "fixture@pinned".into(),

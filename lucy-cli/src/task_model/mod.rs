@@ -4,15 +4,17 @@ mod checks;
 mod command;
 mod journal;
 pub mod study;
+mod study_artifacts;
 mod types;
 
+pub(crate) use checks::inspect_inputs_scoped;
 pub use checks::{check, inspect_inputs};
 pub use command::command;
 pub use journal::{History, begin, complete_action, finish, overhead, reserve_action, revise};
 pub use types::*;
 
 pub const SPEC: &str = include_str!("../../constitution/task_model.nibli");
-pub const PROTOCOL: &str = include_str!("../../../roadmap/S6a.md");
+pub const PROTOCOL: &str = include_str!("../../../roadmap/S6a.v2.md");
 pub const ORIGIN: &str = "lucy:task-model:v1";
 pub const POLICY: &str = "bounded-task-lessons-v1";
 pub const FORECASTER: &str = "task-window32-beta1-v1";

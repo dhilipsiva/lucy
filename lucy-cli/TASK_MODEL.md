@@ -6,7 +6,8 @@ on its own. This adds to [the execution self-model](SELF_MODEL.md), without
 changing its record format or removing the Nibli/Lean verification pilot.
 
 Implementation: `src/task_model/`, `src/desktop/tasks.rs` and
-`constitution/task_model.nibli`. Research protocol: [S6a](../roadmap/S6a.md).
+`constitution/task_model.nibli`. Research protocols: original [S6a](../roadmap/S6a.md)
+and additive [S6a v2](../roadmap/S6a.v2.md).
 Mechanism tests are not evidence of improved performance or consciousness.
 
 ## Native assistant
@@ -159,7 +160,7 @@ independent evaluator then prepares a private bundle. Do not open held-out
 material in the building agent's hooked conversation. The bundle contains:
 
 ```text
-schema: 1
+schema: 2
 evaluator, evaluator_model: accountable evaluator identities
 implementation, protocol: digests from study-info
 calibration: 10 cases in each of verification and retrieval
@@ -173,8 +174,8 @@ Each case:
   oracle: independent Criterion array
   files: optional map of ordinary relative paths to UTF-8 content
   records: optional private fixture:... Record array
-  approvals: optional exact {tool, arguments} requests already authorized
-             by the study operator; other proposals are denied
+  output_writes: declared {path, max_bytes} writes approved regardless of correctness
+  approvals: optional exact {tool:"command", arguments} preapprovals
 ```
 
 The evaluator is responsible for meaningful criteria, sealed case selection and
@@ -185,7 +186,8 @@ as measured benefit. A requested model name without an observed revision stays
 
 ```sh
 python3 scripts/self-model-study.py --bundle /private/path/sealed-bundle.json \
-  --directory /private/path/new-study --seconds 3600
+  --directory /private/path/new-study --seconds 3600 \
+  --prior-active-ms PREPARATION_TIME --reserve-seconds 300
 ```
 
 The runner refuses repository-backed, existing or real memory directories and
@@ -199,14 +201,49 @@ explicit study path, never ordinary wake or exported training data.
 
 There are 320 held-out trials: two scopes × twenty cases × two disguises × four
 arms. Results are clustered by case for the paired bootstrap (10,000 resamples,
-seed 6). The scorer reopens both calibration and held-out originals and their
-oracle journals. All planned trials, a completion gain of at least 0.10, a paired
+seed 6). The scorer reopens both calibration and held-out originals, their oracle
+journals and archived output bytes. All planned trials, a completion gain of at least 0.10, a paired
 95% lower endpoint above zero, and no false verified/budget violations are
 required. Reports include completion, inconclusives, Brier scores and costs.
 
 The active-hour ceiling includes preparation, model work and adjudication. A
-timeout kills the trial process group; partial originals remain private. A
-short post-timeout diagnostic pass can emit an explicitly incomplete report,
-which cannot activate anything. Reports never enable a policy automatically.
-S6a remains open until independent adjudication and the separate model-change
-requirement are met.
+timeout stops descendants; partial originals remain private. The final five
+minutes are reserved for scoring and review. Missing trials, missing traces,
+changed protocol bytes or a budget overrun cannot qualify. Reports never enable
+a policy automatically.
+
+Study recall filters current-case factual records before ranking, excludes all
+journals and prior conversations, and emits only origin/id/excerpt. Learned
+source preflights obey the same allowlist. Legacy execution-model adaptation and
+live host tools are suppressed for every study arm. Sealed semantic acceptance
+criteria remain in the journal; the model sees structural contracts and subsequent
+check results, without expected values or hashes. The independent oracle checks
+the produced answer and, for retrieval, its `/source` attribution.
+
+Before each reset, the runner archives exact workspace inputs/outputs, factual
+records, visible inference messages, receipts and the native and oracle journals.
+`scripts/s6a_evidence.py` separately reopens those bytes, binds prompts/permissions
+to the sealed bundle, checks actual model context and recomputes statistical
+summaries. No hidden reasoning enters the archive. Its CLI prints aggregates.
+
+For the registered two-model experiment, build and commit the implementation,
+then use the coordinator with a new private path outside Git, the Nix store,
+ordinary Lucy memory and credential/configuration directories:
+
+```sh
+python3 scripts/s6a-coordinator.py --binary target/release/lucy \
+  --directory /private/path/new-cross-model-study
+```
+
+It charges setup and shared preparation, downloads the approved secondary model
+if needed, checks a disposable unhooked evaluator marker, seals independently
+selected cases, and invokes the two models with process-local settings. A fresh
+configured evaluator reviews preserved evidence. Evaluator stdout is filtered to
+visible messages and actual adapter identity; hidden reasoning and tool internals
+are not logged. Cases and originals stay private, with readback hashes. The
+[evaluator contract](../scripts/S6A_EVALUATOR.md) documents the exact interface.
+
+The combined report requires completion and Brier gates for both families on
+both models, a valid independent review, and explicit Dhilip adjudication. Human
+waiting is separate; the automated report always leaves `s6a_complete:false`.
+An incomplete/negative result is preserved without replacement or automatic retry.

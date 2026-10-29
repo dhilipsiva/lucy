@@ -69,6 +69,8 @@ pub struct Service {
     // Set while an approved `gui` action runs: no proposal can be made or approved meanwhile.
     gui: Arc<AtomicBool>,
     pub(super) study_adaptation: Option<bool>,
+    pub(super) study_records: Mutex<std::collections::BTreeSet<String>>,
+    study_trace: Mutex<Vec<Value>>,
     #[cfg(test)]
     replies: Mutex<Option<std::collections::VecDeque<Value>>>,
 }
@@ -116,6 +118,8 @@ impl Service {
             embedding: Arc::new(AtomicBool::new(false)),
             gui: Arc::new(AtomicBool::new(false)),
             study_adaptation: None,
+            study_records: Mutex::new(std::collections::BTreeSet::new()),
+            study_trace: Mutex::new(Vec::new()),
             #[cfg(test)]
             replies: Mutex::new(None),
         }
@@ -129,15 +133,23 @@ impl Service {
         self.replies.lock().unwrap().is_some()
     }
     fn infer(&self, messages: &[Value], cancel: &AtomicBool) -> Result<Value> {
+        self.study_trace_event("request", json!(messages))?;
         #[cfg(test)]
         if let Some(replies) = self.replies.lock().map_err(err)?.as_mut() {
             return replies
                 .pop_front()
                 .ok_or("test response script exhausted".into());
         }
+        let mut schemas = actions::schemas();
+        if self.study_adaptation.is_some() {
+            schemas
+                .as_array_mut()
+                .unwrap()
+                .retain(|s| super::tasks::study_tool(s["function"]["name"].as_str().unwrap_or("")));
+        }
         match providers::selected()? {
-            Some(provider) => providers::chat(&provider, messages, actions::schemas(), cancel),
-            None => local_chat(messages, cancel),
+            Some(provider) => providers::chat(&provider, messages, schemas, cancel),
+            None => local_chat(messages, schemas, cancel),
         }
     }
     pub(super) fn memory(&self) -> Result<Store> {
@@ -213,6 +225,37 @@ impl Service {
         });
     }
     fn recall(&self, query: &str, exclude: &str) -> Result<Vec<Value>> {
+        if self.study_adaptation.is_some() {
+            // Filter before ranking; journals and old conversations must not
+            // reintroduce withheld lessons, roadmap text, or oracle answers.
+            let allowed = self.study_records.lock().map_err(err)?;
+            let words: std::collections::BTreeSet<_> = query
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|s| !s.is_empty())
+                .map(str::to_lowercase)
+                .collect();
+            let mut matches = Vec::new();
+            for record in self.memory()?.all()? {
+                if !record.origin.starts_with("fixture:")
+                    || record.payload["private"] != true
+                    || record.payload["id"] == exclude
+                    || !allowed.contains(&record.key())
+                {
+                    continue;
+                }
+                let text = record.payload["text"].as_str().unwrap_or("");
+                let hits = text
+                    .split(|c: char| !c.is_alphanumeric())
+                    .filter(|s| words.contains(&s.to_lowercase()))
+                    .count();
+                if hits > 0 {
+                    matches.push((hits, record.key(), json!({"origin":record.origin,
+                        "id":record.payload["id"],"excerpt":text.chars().take(1600).collect::<String>()})));
+                }
+            }
+            matches.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+            return Ok(matches.into_iter().take(6).map(|(_, _, v)| v).collect());
+        }
         drop(self.memory()?);
         let result = crate::store::command(
             &[
@@ -229,6 +272,17 @@ impl Service {
             eprintln!("Lucy recall: {warning}");
         }
         Ok(result["results"].as_array().cloned().unwrap_or_default())
+    }
+    fn study_trace_event(&self, kind: &str, value: Value) -> Result<()> {
+        if self.study_adaptation.is_some() {
+            let mut trace = self.study_trace.lock().map_err(err)?;
+            trace.push(json!({"kind":kind,"value":value}));
+            crate::store::save(
+                &self.root.join("visible-trace.json"),
+                &serde_json::to_vec(&*trace).map_err(err)?,
+            )?;
+        }
+        Ok(())
     }
     fn transcript(&self, source: &str, session: &str) -> Result<Vec<Value>> {
         let store = self.memory()?;
@@ -332,6 +386,9 @@ impl Service {
         }
         if matches!(op, "prompt" | "chat") {
             let text = string(&req, "text")?;
+            if op == "chat" && self.study_adaptation.is_some() && text.len() > 18_000 {
+                return Err("study prompt and contract exceed native input window".into());
+            }
             let event = string(&req, "event")?;
             if event.is_empty() || text.is_empty() {
                 return Err("prompt text and event ID are required".into());
@@ -398,7 +455,11 @@ impl Service {
                 super::tasks::INSTRUCTION,
                 identity.chars().take(16000).collect::<String>(),
                 json!(memories),
-                self_model::context(&self.memory()?)?
+                if self.study_adaptation.is_some() {
+                    String::new()
+                } else {
+                    self_model::context(&self.memory()?)?
+                }
             );
             let context = format!("{context}\nPeer freshness (data): {}", json!(refresh));
             let context = if waking {
@@ -638,6 +699,11 @@ impl Service {
         Ok(session)
     }
     fn propose(&self, session: &Arc<Mutex<Session>>, name: &str, args: Value) -> Result<Value> {
+        if self.study_adaptation.is_some() && !super::tasks::study_tool(name) {
+            return Err(
+                "study tools are limited to the synthetic workspace and task evidence".into(),
+            );
+        }
         let (workspace, cancel) = {
             let s = session.lock().map_err(err)?;
             (s.workspace.clone(), s.cancel.clone())
@@ -734,7 +800,10 @@ impl Service {
         )?;
         // This bounded adaptation only adds an existing read-only inspection.
         // It cannot grant permissions, modify an approval or suppress the read.
-        let inspection = if name == "read" && prediction.policy == Policy::InspectFirst {
+        let inspection = if self.study_adaptation.is_none()
+            && name == "read"
+            && prediction.policy == Policy::InspectFirst
+        {
             let parent = std::path::Path::new(args["path"].as_str().unwrap_or("."))
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())
@@ -758,6 +827,13 @@ impl Service {
             .and_then(|store| self_model::observe(&store, &prediction.id, kind, &evidence));
         let mut reflection = json!({"prediction":prediction.id,"probability_ppm":prediction.probability_ppm,
             "policy":prediction.policy,"basis_count":prediction.basis.len(),"outcome":kind});
+        if self.study_adaptation.is_some() {
+            // Retain execution receipts privately, but the S6a task intervention
+            // is the only learned policy delivered to the study planner.
+            for key in ["policy", "probability_ppm", "basis_count"] {
+                reflection.as_object_mut().unwrap().remove(key);
+            }
+        }
         if let Some(value) = inspection {
             reflection["inspection"] = value;
         }
@@ -850,6 +926,7 @@ impl Service {
                 if !calls.is_empty() {
                     visible["tool_calls"] = json!(calls);
                 }
+                self.study_trace_event("reply", visible.clone())?;
                 {
                     let mut s = session.lock().map_err(err)?;
                     if cancel.load(Ordering::SeqCst) {
@@ -994,7 +1071,7 @@ pub fn verify_model() -> Result<()> {
     }
     Ok(())
 }
-fn local_chat(messages: &[Value], cancel: &AtomicBool) -> Result<Value> {
+fn local_chat(messages: &[Value], schemas: Value, cancel: &AtomicBool) -> Result<Value> {
     verify_model()?;
     let text_bytes: usize = messages
         .iter()
@@ -1008,7 +1085,7 @@ fn local_chat(messages: &[Value], cancel: &AtomicBool) -> Result<Value> {
     if text_bytes > 48_000 {
         return Err("local context budget reached".into());
     }
-    let body = json!({"model":model(),"messages":messages,"tools":actions::schemas(),"stream":false,
+    let body = json!({"model":model(),"messages":messages,"tools":schemas,"stream":false,
         "think":false,"keep_alive":0,"options":{"num_ctx":std::env::var("LUCY_CHAT_CONTEXT").ok().and_then(|s|s.parse::<u32>().ok()).unwrap_or(16384),"num_predict":2048}});
     let result = net::request(
         "POST",
