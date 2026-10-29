@@ -319,9 +319,17 @@
             "command": "nix develop .#desktop --command just ci-desktop",
             "result": "passed",
             "rust_tests": 155
+          },
+          {
+            "command": "nix develop --command cargo build --release --locked",
+            "result": "passed"
           }
         ],
-        "original_attempt": "No empirical trial was retried or rescored with the repaired source. Original records and qualification remain unchanged."
+        "original_attempt": "No empirical trial was retried or rescored with the repaired source. Original records and qualification remain unchanged.",
+        "release_binary_sha256": "95433f4c3767b60ee60b483685a4e88776725040f13382041ae448a55611ee88",
+        "release_build_source_commit": "ce947419a53105f8600ff71d7959b5013319bf84",
+        "frozen_executable_preservation": "Exact study executable copied to a private local archive and read back before rebuilding; original digest retained.",
+        "release_identity_readback": "Repaired executable hash and protocol match study-info; ordinary selected model is unchanged. No inference or empirical rescoring was performed."
       },
       "limitations": [
         "The full registered 320-trial population was not completed on either model.",
