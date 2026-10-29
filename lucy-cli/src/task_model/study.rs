@@ -385,7 +385,37 @@ impl TrialRequest {
 }
 
 pub fn trial(root: &Path, workspace: &Path, input: &str) -> Result<Value> {
+    #[cfg(unix)]
+    {
+        trial_with(root, workspace, input, |_| {})
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (root, workspace, input);
+        Err("native study trials require Unix".into())
+    }
+}
+
+#[cfg(unix)]
+pub(crate) fn trial_with(
+    root: &Path,
+    workspace: &Path,
+    input: &str,
+    configure: impl FnOnce(&crate::desktop::Service),
+) -> Result<Value> {
     isolated(root, workspace)?;
+    profile::capture(root, "profile.json", || {
+        trial_inner(root, workspace, input, configure)
+    })
+}
+
+#[cfg(unix)]
+fn trial_inner(
+    root: &Path,
+    workspace: &Path,
+    input: &str,
+    configure: impl FnOnce(&crate::desktop::Service),
+) -> Result<Value> {
     let request: TrialRequest = serde_json::from_str(input).map_err(|e| e.to_string())?;
     if !ARMS.contains(&request.arm.as_str()) && request.arm != "calibration" {
         return Err("unknown study arm".into());
@@ -424,7 +454,8 @@ pub fn trial(root: &Path, workspace: &Path, input: &str) -> Result<Value> {
                 "full" | "memory_removed" | "roadmap_removed"
             ),
         )?;
-        let (task, response) = service.study_chat(workspace, &request)?;
+        configure(&service);
+        let (task, response) = service.study_chat_since(workspace, &request, started)?;
         let native_active_ms = started.elapsed().as_millis() as u64;
         let store = Store::open(root)?;
         let history = History::read(&store)?;
@@ -514,6 +545,13 @@ pub fn trial(root: &Path, workspace: &Path, input: &str) -> Result<Value> {
 }
 
 pub fn score_command(root: &Path, input: &str) -> Result<Value> {
+    // Validate the private destination before even an error-profile can write.
+    drop(Store::open(root)?);
+    profile::capture(root, "score-profile.json", || score_inner(root, input))
+}
+
+fn score_inner(root: &Path, input: &str) -> Result<Value> {
+    let _span = profile::span("native_scoring");
     let started = std::time::Instant::now();
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -671,7 +709,11 @@ pub fn score_command(root: &Path, input: &str) -> Result<Value> {
         "channel":"task_study","text":"Reviewed aggregate task study; held-out originals remain isolated.","report":report}),
     };
     store.record(&record)?;
-    if !store.all()?.iter().any(|r| r == &record) {
+    if store
+        .get(&record.origin, record.payload["id"].as_str().unwrap())?
+        .as_ref()
+        != Some(&record)
+    {
         return Err("study report readback failed".into());
     }
     Ok(report)
@@ -717,6 +759,8 @@ pub fn enabled(store: &Store, scope: &Scope) -> Result<bool> {
                     && s.payload["id"] == hash(&s.payload["report"])
                     && s.payload["report"]["protocol"] == digest(PROTOCOL.as_bytes())
                     && s.payload["report"]["implementation"] == implementation
+                    && s.payload["report"]["live"] == true
+                    && s.payload["report"]["complete"] == true
                     && s.payload["report"]["scopes"]
                         .as_array()
                         .is_some_and(|rows| {
@@ -753,6 +797,8 @@ pub fn policy_command(store: &Store, input: &str) -> Result<Value> {
             || report.payload["id"] != hash(&report.payload["report"])
             || report.payload["report"]["protocol"] != digest(PROTOCOL.as_bytes())
             || report.payload["report"]["implementation"] != implementation()?
+            || report.payload["report"]["live"] != true
+            || report.payload["report"]["complete"] != true
             || !report.payload["report"]["scopes"]
                 .as_array()
                 .is_some_and(|a| {

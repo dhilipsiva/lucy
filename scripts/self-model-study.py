@@ -6,6 +6,7 @@ the runner's private directory. This script never enrolls or synchronizes peers,
 changes a provider, or enables a policy. It invokes the already selected model.
 """
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -115,7 +116,9 @@ def validate_bundle(bundle):
 
 
 class Runner:
-    def __init__(self, binary, directory, seconds, started=None, prior_active_ms=0, reserve_seconds=0):
+    def __init__(self, binary, directory, seconds, started=None, prior_active_ms=0, reserve_seconds=0, *, diagnostic=False, base_env=None):
+        self.diagnostic, self.timings = diagnostic, []
+        self.base_env = dict(os.environ if base_env is None else base_env)
         self.started = time.monotonic() if started is None else started
         self.prior_active_ms = prior_active_ms
         self.deadline = self.started + seconds - prior_active_ms / 1000
@@ -127,8 +130,11 @@ class Runner:
         self.base = directory.resolve()
         if self.base.exists() or any(p.joinpath(".git").exists() for p in self.base.parents) or self.base.is_relative_to("/nix/store"):
             raise ValueError("study directory must be new and outside repositories and the Nix store")
-        result = subprocess.run([self.binary, "self-model", "task", "study-info"], capture_output=True,
-                                timeout=max(0.001, min(30, self.deadline - time.monotonic())))
+        try:
+            result = subprocess.run([self.binary, "self-model", "task", "study-info"], capture_output=True, env=self.base_env,
+                                    timeout=max(0.001, min(30, self.deadline - time.monotonic())))
+        except subprocess.TimeoutExpired:
+            raise TimeoutError("model identity exceeded the diagnostic deadline") from None
         if result.returncode:
             raise RuntimeError("selected model identity unavailable; no study state created")
         self.info = json.loads(result.stdout)
@@ -156,9 +162,20 @@ class Runner:
                                               prior_active_ms=prior_active_ms, reserve_seconds=reserve_seconds))
 
     def environment(self, data):
-        env = os.environ.copy()
+        env = getattr(self, "base_env", os.environ).copy()
         env.update(LUCY_HOME=str(self.home), LUCY_DATA_DIR=str(data), LUCY_STUDY_ROOT=str(self.base), LUCY_STUDY_REAL_DATA=self.real_data)
         return env
+
+    @contextlib.contextmanager
+    def measure(self, stage, label):
+        started = time.monotonic()
+        try:
+            yield
+        finally:
+            if hasattr(self, "timings"):
+                self.timings.append(dict(stage=stage, label=label, ms=(time.monotonic()-started)*1000))
+                save(self.base / "runner-profile.json", dict(kind="engineering_diagnostic",
+                    timings="inclusive spans; not additional budget charges", spans=self.timings))
 
     def call(self, args, value, env, label):
         remaining = self.deadline - time.monotonic()
@@ -198,7 +215,8 @@ class Runner:
             self.call(["store", "record", "--root", str(data), "--stdin"], records, self.environment(data), "seed")
 
     def one(self, case, disguise, arm, data, label):
-        self.fixture(case, data, arm)
+        with self.measure("fixture_setup", label):
+            self.fixture(case, data, arm)
         roadmap = self.roadmap if arm != "roadmap_removed" else ""
         prompt = case["disguises"][disguise]
         if roadmap:
@@ -211,19 +229,23 @@ class Runner:
                        inputs_digest=digest({"files": case.get("files", {}), "records": case.get("records", []) if arm != "memory_removed" else [], "roadmap": roadmap}))
         save(self.base / (label + "-request.json"), request)
         try:
-            result = self.call(["self-model", "task", "study-trial", "--root", str(data),
-                                "--workspace", str(self.workspace), "--stdin"], request, self.environment(data), label)
+            with self.measure("native_trial", label):
+                result = self.call(["self-model", "task", "study-trial", "--root", str(data),
+                                    "--workspace", str(self.workspace), "--stdin"], request, self.environment(data), label)
         except (TimeoutError, RuntimeError):
             # A killed native process cannot finish its archive. Preserve the
             # last workspace as explicitly partial; never score it as a trial.
             s6a_evidence.snapshot(self.workspace, self.base / (label + "-partial-workspace"))
             raise
         try:
-            s6a_evidence.verify_original(data / "trial.json", request, case, self.roadmap, self.deadline)
+            with self.measure("independent_trial_replay", label):
+                s6a_evidence.verify_original(data / "trial.json", request, case, self.roadmap, self.deadline)
         except (OSError, ValueError, KeyError, TypeError):
             self.replay_error = True
             raise
         trial = result["trial"]
+        if (data / "profile.json").is_file():
+            shutil.copyfile(data / "profile.json", self.base / (label + "-profile.json"))
         if trial["model"] != self.info["model"] or trial["implementation"] != self.info["implementation"]:
             raise ValueError("selected model or implementation changed during study")
         if time.monotonic() >= self.deadline:
@@ -253,7 +275,8 @@ class Runner:
             if hasattr(self, "deadline") and time.monotonic() >= self.deadline:
                 raise TimeoutError("calibration preservation reached the review reserve")
         frozen = self.base / "frozen"
-        shutil.copytree(calibration, frozen)
+        with self.measure("freeze_history", "calibration"):
+            shutil.copytree(calibration, frozen)
         randomizer = random.Random(6)
         order = [(i, disguise, arm) for i in range(len(bundle["held_out"])) for disguise in ("a", "b") for arm in ARMS]
         randomizer.shuffle(order)
@@ -262,10 +285,11 @@ class Runner:
             if arm == "memory_removed":
                 data.mkdir(mode=0o700)
             else:
-                shutil.copytree(frozen, data)
+                with self.measure("restore_history", f"trial-{index}"):
+                    shutil.copytree(frozen, data)
             # Restore learning history, not the calibration trial's output
             # files. An interrupted trial must not appear to have an original.
-            for name in ("trial.json", "visible-trace.json"):
+            for name in ("trial.json", "visible-trace.json", "profile.json"):
                 (data / name).unlink(missing_ok=True)
             trial = self.one(bundle["held_out"][case_index], disguise, arm, data, f"trial-{index}")
             self.trials.append(trial)
@@ -282,7 +306,7 @@ class Runner:
         complete = complete and time.monotonic() < self.deadline
         study = dict(schema=2, protocol=self.info["protocol"], implementation=self.info["implementation"],
                      model=self.info["model"], evaluator=bundle["evaluator"], evaluator_model=bundle["evaluator_model"],
-                     bundle_digest=digest(bundle), live=True, complete=complete,
+                     bundle_digest=digest(bundle), live=not getattr(self, "diagnostic", False), complete=complete,
                      active_ms=round((time.monotonic() - self.started) * 1000) + self.prior_active_ms,
                      calibration=self.calibration, trials=self.trials)
         data = self.base / "report-store"
@@ -290,12 +314,14 @@ class Runner:
         request = {"study": study, "originals": self.originals, "calibration_originals": self.calibration_originals}
         save(self.base / "score-input.json", request)
         try:
-            report = self.call(["self-model", "task", "study-score", "--root", str(data), "--stdin"],
-                               request, self.environment(data), "score")
+            with self.measure("native_scoring", "score"):
+                report = self.call(["self-model", "task", "study-score", "--root", str(data), "--stdin"],
+                                   request, self.environment(data), "score")
             report["scoring_complete"] = True
         except (TimeoutError, RuntimeError, OSError, ValueError):
             report = {"schema": 2, "protocol": self.info["protocol"],
                       "implementation": self.info["implementation"], "model": self.info["model"],
+                      "live": not getattr(self, "diagnostic", False),
                       "complete": False, "s6a_complete": False, "scoring_complete": False, "scopes": [],
                       "meaning": "Adjudication incomplete; originals and score-input preserved; no eligible policy."}
             complete = False

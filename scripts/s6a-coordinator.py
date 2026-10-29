@@ -317,6 +317,24 @@ def validate_review(review):
         raise ValueError("invalid or contradictory independent review")
 
 
+def technical_qualification(reports, states, review, active_ms):
+    """Shared final gate, also exercised with explicitly synthetic evidence."""
+    validate_review(review)
+    return (len(reports) == 2 and len(states) == 2
+        and all(report["complete"] and report.get("live") is True and len(report["scopes"]) == 2
+                and all(scope["eligible"] and scope["forecast_qualifies"] for scope in report["scopes"])
+                for report in reports)
+        and all(state.get("replay", {}).get("complete_originals", False)
+                and state.get("score_replay", {}).get("technical_qualification", False) for state in states)
+        and review["accept_evidence"] and review["technical_qualification"] and not review["disagreements"]
+        and len(active_ms) == 2 and all(value <= LIMIT for value in active_ms))
+
+
+def qualification_status(qualified):
+    return dict(technical_qualification=qualified, s6a_complete=False,
+                status="awaiting human adjudication" if qualified else "incomplete or did not qualify")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
@@ -409,14 +427,8 @@ def main():
         for name, report in zip(MODELS, reports):
             if report.get("model") != freeze["models"][name] or any(report.get(k) != freeze[k] for k in ("protocol", "implementation")):
                 raise ValueError("scored model differs from frozen model")
-        qualified = all(report["complete"] and len(report["scopes"]) == 2 and all(
-            scope["eligible"] and scope["forecast_qualifies"] for scope in report["scopes"]) for report in reports)
-        qualified &= all(states[name]["replay"].get("complete_originals", False)
-                         and states[name].get("score_replay", {}).get("technical_qualification", False) for name in MODELS)
-        qualified &= review["review"]["accept_evidence"] and review["review"]["technical_qualification"] and not review["review"]["disagreements"]
-        qualified &= all(clock.active[name] <= LIMIT for name in MODELS)
-        outcome.update(technical_qualification=qualified,
-                       status="awaiting human adjudication" if qualified else "incomplete or did not qualify")
+        qualified = technical_qualification(reports, [states[name] for name in MODELS], review["review"], list(clock.active.values()))
+        outcome.update(qualification_status(qualified))
     except (OSError, RuntimeError, ValueError, TimeoutError, KeyError, TypeError) as error:
         # Keep detailed errors private. No automatic retries or replacement cases.
         save(base / "private-error.json", dict(type=type(error).__name__, detail=str(error)))

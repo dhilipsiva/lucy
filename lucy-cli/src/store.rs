@@ -419,8 +419,10 @@ impl Store {
     }
 
     pub fn all(&self) -> Result<Vec<Record>> {
+        let _span = crate::task_model::profile::span("store_read");
         let tx = self.db.begin_read().map_err(err)?;
-        tx.open_table(RECORDS)
+        let records: Vec<Record> = tx
+            .open_table(RECORDS)
             .map_err(err)?
             .iter()
             .map_err(err)?
@@ -428,7 +430,9 @@ impl Store {
                 let (_, value) = row.map_err(err)?;
                 serde_json::from_str(value.value()).map_err(err)
             })
-            .collect()
+            .collect::<Result<_>>()?;
+        crate::task_model::profile::count("store_records_read", records.len() as u64);
+        Ok(records)
     }
 
     pub fn get(&self, origin: &str, id: &str) -> Result<Option<Record>> {

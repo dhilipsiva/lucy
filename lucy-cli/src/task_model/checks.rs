@@ -506,9 +506,25 @@ fn inspect(store: &Store, inspector: &mut Inspector<'_>, check: &Check) -> Resul
 }
 
 pub fn check(store: &Store, workspace: &Path, task: &str, criterion: &str) -> Result<Entry> {
+    check_with_clock(store, workspace, task, criterion, None)
+}
+
+pub(crate) fn check_with_clock(
+    store: &Store,
+    workspace: &Path,
+    task: &str,
+    criterion: &str,
+    clock: Option<&super::runtime::ActiveClock>,
+) -> Result<Entry> {
+    let _span = super::profile::span("task_check");
     let started = Instant::now();
     let mut history = History::read(store)?;
-    let remaining = history.available(task)?;
+    let remaining = history
+        .available(task)?
+        .min(clock.map_or(u64::MAX, |c| c.remaining_ms()));
+    if remaining == 0 {
+        return Err("task active-time budget exhausted".into());
+    }
     let definition = history.task(task)?;
     same_workspace(definition, workspace)?;
     let criterion = definition
@@ -518,7 +534,7 @@ pub fn check(store: &Store, workspace: &Path, task: &str, criterion: &str) -> Re
         .find(|c| c.id == criterion)
         .ok_or("unknown task criterion")?;
     let mut inspector = Inspector::new(workspace, remaining);
-    let verdict = match inspect(store, &mut inspector, &criterion.check) {
+    let mut verdict = match inspect(store, &mut inspector, &criterion.check) {
         Ok(verdict) => verdict,
         Err(reason) => {
             inspector.evidence.reason = reason;
@@ -526,6 +542,10 @@ pub fn check(store: &Store, workspace: &Path, task: &str, criterion: &str) -> Re
             Verdict::Inconclusive
         }
     };
+    if clock.is_some_and(|c| c.remaining_ms() == 0) {
+        verdict = Verdict::Inconclusive;
+        inspector.evidence.reason = "active_budget_exhausted".into();
+    }
     let criterion = criterion.id.clone();
     super::journal::append(
         store,

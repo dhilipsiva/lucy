@@ -17,9 +17,46 @@ spec.loader.exec_module(study)
 coord_spec = importlib.util.spec_from_file_location("s6a_coordinator", Path(__file__).with_name("s6a-coordinator.py"))
 coordinator = importlib.util.module_from_spec(coord_spec)
 coord_spec.loader.exec_module(coordinator)
+readiness_spec = importlib.util.spec_from_file_location("s6a_readiness", Path(__file__).with_name("s6a-readiness.py"))
+readiness = importlib.util.module_from_spec(readiness_spec)
+readiness_spec.loader.exec_module(readiness)
 
 
 class RunnerTests(unittest.TestCase):
+    def test_readiness_fixtures_are_complete_and_synthetic(self):
+        bundle = readiness.fixtures.bundle(dict(protocol="fixture", implementation="fixture"))
+        study.validate_bundle(bundle)
+        self.assertEqual(len(bundle["calibration"]), 20)
+        self.assertEqual(len(bundle["held_out"]), 40)
+        for case in bundle["held_out"]:
+            self.assertTrue(case["id"].startswith("synthetic-"))
+            self.assertEqual(case["definition"]["budget"], dict(steps=12, active_ms=120000))
+
+    def test_diagnostic_reports_cannot_pass_final_coordinator_gate(self):
+        scope = dict(eligible=True, forecast_qualifies=True)
+        report = dict(complete=True, live=False, scopes=[scope, scope])
+        state = dict(replay=dict(complete_originals=True), score_replay=dict(technical_qualification=True))
+        review = dict(accept_evidence=True, technical_qualification=True, disagreements=[], limitations=[], s6a_complete=False)
+        self.assertFalse(coordinator.technical_qualification([report, report], [state, state], review, [1, 1]))
+        live = dict(report, live=True)
+        self.assertTrue(coordinator.technical_qualification([live, live], [state, state], review, [1, 1]))
+        self.assertFalse(coordinator.qualification_status(True)["s6a_complete"])
+
+    def test_runner_diagnostics_force_nonlive_score_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runner = object.__new__(study.Runner)
+            runner.base, runner.started = Path(directory), time.monotonic()
+            runner.final_deadline, runner.prior_active_ms = time.monotonic()+30, 0
+            runner.info = dict(protocol="fixture", implementation="fixture", model="scripted")
+            runner.calibration, runner.trials, runner.originals, runner.calibration_originals = {}, [], [], []
+            runner.replay_error, runner.diagnostic = False, True
+            runner.environment = lambda _: {}
+            def call(args, value, env, label):
+                self.assertFalse(value["study"]["live"])
+                return dict(complete=True, live=False, scopes=[])
+            runner.call = call
+            runner.report(dict(evaluator="fixture", evaluator_model="scripted"), True, "diagnostic")
+
     def test_real_memory_exclusion_happens_before_creating_trial_state(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)

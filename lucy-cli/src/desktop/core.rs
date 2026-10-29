@@ -31,6 +31,7 @@ pub struct Session {
     pub announce_task: bool,
     pub task_continue: Option<String>,
     pub inferences: u8,
+    pub(crate) task_clock: Option<task_model::runtime::ActiveClock>,
 }
 type Sessions = BTreeMap<(String, String), Arc<Mutex<Session>>>;
 struct Running(Arc<Mutex<Session>>);
@@ -49,6 +50,9 @@ impl Running {
             return Err("a request is already running in this conversation".into());
         }
         state.busy = true;
+        if let Some(clock) = &mut state.task_clock {
+            clock.resume();
+        }
         Ok(Self(session.clone()))
     }
 }
@@ -56,6 +60,9 @@ impl Drop for Running {
     fn drop(&mut self) {
         if let Ok(mut state) = self.0.lock() {
             state.busy = false;
+            if let Some(clock) = &mut state.task_clock {
+                clock.pause();
+            }
         }
     }
 }
@@ -125,7 +132,7 @@ impl Service {
         }
     }
     #[cfg(test)]
-    pub(super) fn scripted(&self, replies: Vec<Value>) {
+    pub(crate) fn scripted(&self, replies: Vec<Value>) {
         *self.replies.lock().unwrap() = Some(replies.into());
     }
     #[cfg(test)]
@@ -133,6 +140,7 @@ impl Service {
         self.replies.lock().unwrap().is_some()
     }
     fn infer(&self, messages: &[Value], cancel: &AtomicBool) -> Result<Value> {
+        let _span = task_model::profile::span("model_inference");
         self.study_trace_event("request", json!(messages))?;
         #[cfg(test)]
         if let Some(replies) = self.replies.lock().map_err(err)?.as_mut() {
@@ -439,6 +447,7 @@ impl Service {
                 s.inferences = 0;
                 if old_closed {
                     s.task = None;
+                    s.task_clock = None;
                     s.adapted = false;
                 }
             }
@@ -577,7 +586,10 @@ impl Service {
                 self.controlled(&req)?;
                 Ok(json!({"actions":session.lock().map_err(err)?.pending}))
             }
-            "tool" => self.propose(&session, string(&req, "name")?, req["arguments"].clone()),
+            "tool" => {
+                let _running = Running::begin(&session)?;
+                self.propose(&session, string(&req, "name")?, req["arguments"].clone())
+            }
             "approve" => {
                 self.controlled(&req)?;
                 if self.gui.load(Ordering::SeqCst) {
@@ -691,6 +703,7 @@ impl Service {
             announce_task: false,
             task_continue: None,
             inferences: 0,
+            task_clock: None,
         }));
         self.sessions
             .lock()
@@ -745,6 +758,7 @@ impl Service {
         args: &Value,
         before: Option<&Value>,
     ) -> Result<Value> {
+        let _span = task_model::profile::span("action_execution");
         let (workspace, cancel, source, id) = {
             let s = session.lock().map_err(err)?;
             (
@@ -763,7 +777,10 @@ impl Service {
             Some((
                 task,
                 action,
-                super::tasks::deadline(cancel.clone(), remaining),
+                super::tasks::deadline(
+                    cancel.clone(),
+                    remaining.saturating_sub(task_started.elapsed().as_millis() as u64),
+                ),
             ))
         } else {
             None
@@ -817,6 +834,15 @@ impl Service {
         } else {
             None
         };
+        if session
+            .lock()
+            .map_err(err)?
+            .task_clock
+            .as_ref()
+            .is_some_and(|c| c.remaining_ms() == 0)
+        {
+            cancel.store(true, Ordering::SeqCst);
+        }
         let result = actions::execute(&workspace, &cancel, name, args, before);
         let kind = execution_result(name, &result, cancel.load(Ordering::SeqCst));
         let evidence = format!(
@@ -1109,6 +1135,17 @@ fn local_chat(messages: &[Value], schemas: Value, cancel: &AtomicBool) -> Result
         return Err(format!("local inference failed (HTTP {code})"));
     }
     let response: Value = serde_json::from_slice(&bytes).map_err(err)?;
+    for (field, label) in [
+        ("load_duration", "model_load_ns"),
+        ("prompt_eval_duration", "model_prompt_ns"),
+        ("eval_duration", "model_generate_ns"),
+        ("prompt_eval_count", "model_prompt_tokens"),
+        ("eval_count", "model_generated_tokens"),
+    ] {
+        if let Some(value) = response[field].as_u64() {
+            task_model::profile::count(label, value);
+        }
+    }
     if !response["message"].is_object() {
         return Err("local model returned no message".into());
     }

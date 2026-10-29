@@ -83,6 +83,7 @@ fn files(root: &Path, copy_to: Option<&Path>) -> Result<BTreeMap<String, String>
 }
 
 pub fn prepare(workspace: &Path, request: &study::TrialRequest) -> Result<Pending> {
+    let _span = profile::span("archive_inputs");
     let base = PathBuf::from(std::env::var_os("LUCY_STUDY_ROOT").ok_or("study root missing")?)
         .canonicalize()
         .map_err(|e| e.to_string())?;
@@ -138,6 +139,7 @@ pub fn finish(
     request: &study::TrialRequest,
     store: &Store,
 ) -> Result<Value> {
+    let _span = profile::span("archive_outputs");
     let destination = pending.directory.join("outputs");
     fs::create_dir(&destination).map_err(|e| e.to_string())?;
     let archive = Archive {
@@ -160,6 +162,7 @@ pub fn finish(
 }
 
 pub fn replay(value: &Value) -> Result<bool> {
+    let _span = profile::span("archive_replay");
     let archive: Archive = serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
     let root = archive
         .directory

@@ -654,6 +654,41 @@ fn policy_is_revoked_by_missing_study_scope_change_or_explicit_disable() {
 }
 
 #[test]
+fn a_diagnostic_report_cannot_activate_even_if_its_eligibility_flag_is_forged() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::open(&temp.path().join("memory")).unwrap();
+    let mut data = synthetic_study();
+    data.live = false;
+    data.implementation = study::implementation().unwrap();
+    for trial in &mut data.trials {
+        trial.implementation = data.implementation.clone();
+    }
+    let mut report = study::score(&data).unwrap();
+    assert!(
+        report["scopes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| s["eligible"] == false)
+    );
+    for scope in report["scopes"].as_array_mut().unwrap() {
+        scope["eligible"] = json!(true);
+    }
+    let id = hash(&report);
+    let scope = study::policy_key(&data.trials[0].scope);
+    store.record(&Record { origin: "lucy:task-study:v1".into(),
+        payload: json!({"id":id,"private":true,"text":"Forged synthetic gate fixture","report":report}) }).unwrap();
+    assert!(
+        study::policy_command(
+            &store,
+            &json!({"scope":scope,"enabled":true,"study":id}).to_string()
+        )
+        .is_err()
+    );
+    assert!(!study::enabled(&store, &data.trials[0].scope).unwrap());
+}
+
+#[test]
 fn native_study_scoring_reopens_serialized_receipts_and_rejects_tampering() {
     // A synthetic mechanism fixture, never an empirical model trial.
     let temp = tempfile::tempdir().unwrap();

@@ -177,6 +177,11 @@ impl Service {
             )?;
             let mut s = session.lock().map_err(err)?;
             s.task = Some(task.id.clone());
+            s.task_clock = Some(task::runtime::ActiveClock::start(
+                started,
+                planning_ms,
+                task.definition.budget.active_ms,
+            ));
             s.task_turn = turn;
             s.adapted = false;
             s.planning_ms = 0;
@@ -186,6 +191,7 @@ impl Service {
         } else {
             let task = current.ok_or("no task is registered")?;
             let store = self.memory()?;
+            let clock = session.lock().map_err(err)?.task_clock.clone();
             match name {
                 "task_check" => {
                     #[derive(Deserialize)]
@@ -194,11 +200,12 @@ impl Service {
                         criterion: String,
                     }
                     let input: Input = serde_json::from_value(args).map_err(err)?;
-                    Ok(json!(task::check(
+                    Ok(json!(task::check_with_clock(
                         &store,
                         &workspace,
                         &task,
-                        &input.criterion
+                        &input.criterion,
+                        clock.as_ref()
                     )?))
                 }
                 "task_finish" | "task_status" => {
@@ -206,7 +213,7 @@ impl Service {
                         return Err("task status/finish takes no arguments".into());
                     }
                     if name == "task_finish" {
-                        task::finish(&store, &workspace, &task, false)?;
+                        task::finish_with_clock(&store, &workspace, &task, false, clock.as_ref())?;
                     }
                     let mut status = History::read(&store)?.status(Some(&task))?;
                     for row in status["tasks"].as_array_mut().unwrap() {
@@ -242,7 +249,14 @@ impl Service {
             if finish {
                 let changed = History::read(&store)?.task(&id)?.scope.environment
                     != self.task_environment()?;
-                task::finish(&store, &workspace, &id, interrupted || changed)?;
+                let clock = session.lock().map_err(err)?.task_clock.clone();
+                task::finish_with_clock(
+                    &store,
+                    &workspace,
+                    &id,
+                    interrupted || changed,
+                    clock.as_ref(),
+                )?;
             }
             History::read(&store)?.status(Some(&id))
         })();
@@ -273,7 +287,15 @@ impl Service {
             .definition
             .budget
             .active_ms
-            .saturating_sub(usage.active_ms);
+            .saturating_sub(usage.active_ms)
+            .min(
+                session
+                    .lock()
+                    .map_err(err)?
+                    .task_clock
+                    .as_ref()
+                    .map_or(u64::MAX, |c| c.remaining_ms()),
+            );
         if remaining == 0 {
             return Err("task active-time budget exhausted".into());
         }
@@ -310,6 +332,12 @@ impl Service {
         };
         let mut observations = Vec::new();
         for lesson in frozen.lessons.iter().filter(|l| l.active) {
+            let _span = task::profile::span("lesson_preflight");
+            let Some((_, remaining)) = self.task_remaining(session)? else {
+                break;
+            };
+            let cancel = session.lock().map_err(err)?.cancel.clone();
+            let _deadline = deadline(cancel.clone(), remaining);
             let started = Instant::now();
             let action = {
                 let store = self.memory()?;
@@ -323,6 +351,24 @@ impl Service {
                     &json!({"template":lesson.kind,"basis":lesson.basis}),
                 )?
             };
+            if cancel.load(Ordering::SeqCst)
+                || session
+                    .lock()
+                    .map_err(err)?
+                    .task_clock
+                    .as_ref()
+                    .is_some_and(|c| c.remaining_ms() == 0)
+            {
+                task::complete_action(
+                    &self.memory()?,
+                    &id,
+                    &action,
+                    Verdict::Inconclusive,
+                    started.elapsed().as_millis() as u64,
+                    None,
+                )?;
+                return Err("task active-time budget exhausted".into());
+            }
             let allowed = if self.study_adaptation.is_some() {
                 Some(self.study_records.lock().map_err(err)?.clone())
             } else {
@@ -380,6 +426,15 @@ impl Service {
         workspace: &Path,
         request: &task::study::TrialRequest,
     ) -> Result<(String, Value)> {
+        self.study_chat_since(workspace, request, Instant::now())
+    }
+
+    pub(crate) fn study_chat_since(
+        &self,
+        workspace: &Path,
+        request: &task::study::TrialRequest,
+        started: Instant,
+    ) -> Result<(String, Value)> {
         if self.study_adaptation.is_none() {
             return Err("study chat requires isolated service".into());
         }
@@ -403,6 +458,11 @@ impl Service {
         {
             let mut s = active.lock().map_err(err)?;
             s.task = Some(frozen.id.clone());
+            s.task_clock = Some(task::runtime::ActiveClock::start(
+                started,
+                0,
+                frozen.definition.budget.active_ms,
+            ));
             s.task_turn = "study".into();
         }
         let mut chat = client.clone();

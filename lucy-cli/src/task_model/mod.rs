@@ -3,13 +3,17 @@
 mod checks;
 mod command;
 mod journal;
+pub(crate) mod profile;
+pub(crate) mod runtime;
 pub mod study;
 mod study_artifacts;
 mod types;
 
+pub(crate) use checks::check_with_clock;
 pub(crate) use checks::inspect_inputs_scoped;
 pub use checks::{check, inspect_inputs};
 pub use command::command;
+pub(crate) use journal::finish_with_clock;
 pub use journal::{History, begin, complete_action, finish, overhead, reserve_action, revise};
 pub use types::*;
 
@@ -43,5 +47,7 @@ pub(crate) fn is_digest(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
+#[cfg(all(test, unix))]
+mod readiness;
 #[cfg(test)]
 mod tests;

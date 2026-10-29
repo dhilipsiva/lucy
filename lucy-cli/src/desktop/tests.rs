@@ -101,6 +101,72 @@ fn study_rejects_live_host_tools_before_execution() {
 }
 
 #[test]
+fn native_task_clock_pauses_for_approval_and_rejects_an_expired_write() {
+    let temp = tempfile::tempdir().unwrap();
+    let service = Service::new(temp.path().join("memory"), None);
+    service.scripted(vec![
+        task_declaration(),
+        task_call(
+            "write",
+            json!({"path":"late.txt","text":"must not execute"}),
+        ),
+    ]);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    let response = service
+        .dispatch(request(
+            &client,
+            json!({"op":"chat","text":"synthetic approval clock",
+        "event":"clock","workspace":temp.path()}),
+        ))
+        .unwrap();
+    let id = response["pending"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap();
+    let session = service
+        .active(
+            client["source"].as_str().unwrap(),
+            client["session"].as_str().unwrap(),
+        )
+        .unwrap();
+    let elapsed = session
+        .lock()
+        .unwrap()
+        .task_clock
+        .as_ref()
+        .unwrap()
+        .elapsed_ms();
+    std::thread::sleep(std::time::Duration::from_millis(15));
+    assert_eq!(
+        session
+            .lock()
+            .unwrap()
+            .task_clock
+            .as_ref()
+            .unwrap()
+            .elapsed_ms(),
+        elapsed
+    );
+    let mut expired = crate::task_model::runtime::ActiveClock::start(
+        std::time::Instant::now() - std::time::Duration::from_millis(101),
+        0,
+        100,
+    );
+    expired.pause();
+    session.lock().unwrap().task_clock = Some(expired);
+    let error = service
+        .dispatch(request(
+            &client,
+            json!({"op":"approve","action":id,"allow":true}),
+        ))
+        .unwrap_err();
+    assert!(error.contains("budget exhausted"), "{error}");
+    assert!(!temp.path().join("late.txt").exists());
+}
+
+#[test]
 fn study_rejects_an_oversized_task_before_it_can_disappear_from_model_context() {
     let temp = tempfile::tempdir().unwrap();
     let mut service = Service::new(temp.path().join("memory"), None);
