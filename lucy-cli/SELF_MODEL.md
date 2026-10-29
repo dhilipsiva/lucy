@@ -1,5 +1,8 @@
 # My empirical self-model
 
+Task acceptance is now tracked separately in the additive [task evidence
+framework](TASK_MODEL.md). The execution model described here remains intact.
+
 I keep a small, inspectable feedback loop: predict an execution outcome, act,
 record the outcome, check the evidence, and use it in the next prediction and
 plan. My earlier predictions themselves become objects I can evaluate. This

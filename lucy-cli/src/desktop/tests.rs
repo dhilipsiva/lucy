@@ -21,6 +21,165 @@ fn request(client: &Value, values: Value) -> Value {
     output
 }
 
+fn task_call(name: &str, args: Value) -> Value {
+    json!({"content":"","tool_calls":[{"id":name,"type":"function","function":{"name":name,"arguments":args}}]})
+}
+
+fn task_declaration() -> Value {
+    task_call(
+        "task_begin",
+        json!({"title":"Legacy execution fixture","family":"fixture","method":"direct",
+        "criteria":[{"id":"acceptance","description":"Manual acceptance remains unverified",
+        "check":{"kind":"reported","statement":"This fixture tests execution, not task acceptance."}}]}),
+    )
+}
+
+#[test]
+fn native_task_requires_frozen_criteria_and_checks_actual_output_after_approval() {
+    let temp = tempfile::tempdir().unwrap();
+    let service = Service::new(temp.path().join("memory"), None);
+    service.scripted(vec![
+        task_call("task_begin",json!({"title":"Write requested content","family":"verification","method":"write",
+            "criteria":[{"id":"content","description":"The note contains the requested JSON",
+                "check":{"kind":"json_equals","path":"result.json","pointer":"/answer","expected":42}}]})),
+        task_call("write",json!({"path":"result.json","text":"{\"answer\":42}"})),
+        task_call("task_check",json!({"criterion":"content"})),
+        task_call("task_finish",json!({})),
+        json!({"content":"The requested content is saved and checked."}),
+    ]);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    let pending=service.dispatch(request(&client,json!({"op":"chat","text":"Write the answer as JSON","event":"task","workspace":temp.path()}))).unwrap();
+    assert!(!temp.path().join("result.json").exists());
+    assert_eq!(
+        pending["task_status"]["tasks"][0]["task"]["definition"]["criteria"][0]["id"],
+        "content"
+    );
+    let id = pending["pending"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap();
+    let result = service
+        .dispatch(request(
+            &client,
+            json!({"op":"approve","action":id,"allow":true}),
+        ))
+        .unwrap();
+    assert_eq!(
+        result["task_status"]["tasks"][0]["outcome"]["verdict"],
+        "success"
+    );
+    let store = Store::open(&service.root).unwrap();
+    let history = crate::task_model::History::read(&store).unwrap();
+    let rows = history.rows(
+        result["task_status"]["tasks"][0]["task"]["id"]
+            .as_str()
+            .unwrap(),
+    );
+    assert!(matches!(
+        rows[0].event,
+        crate::task_model::Event::Begin { .. }
+    ));
+    assert_eq!(
+        rows.iter()
+            .filter(|e| matches!(e.event, crate::task_model::Event::ActionStarted { .. }))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn model_completion_prose_and_unregistered_tools_cannot_manufacture_verified_success() {
+    let temp = tempfile::tempdir().unwrap();
+    let service = Service::new(temp.path().join("memory"), None);
+    service.scripted(vec![
+        task_call("read", json!({"path":"never.txt"})),
+        task_declaration(),
+        task_call(
+            "task_check",
+            json!({"criterion":"acceptance","verdict":"success"}),
+        ),
+        json!({"content":"I say everything passed."}),
+    ]);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    let reply = service
+        .dispatch(request(
+            &client,
+            json!({"op":"chat","text":"Inspect evidence","event":"fake","workspace":temp.path()}),
+        ))
+        .unwrap();
+    assert_eq!(reply["text"], "I say everything passed.");
+    assert_eq!(
+        reply["task_status"]["tasks"][0]["outcome"]["verdict"],
+        "inconclusive"
+    );
+    let store = Store::open(&service.root).unwrap();
+    assert!(
+        crate::self_model::History::read(&store)
+            .unwrap()
+            .observations
+            .is_empty()
+    );
+}
+
+#[test]
+fn native_criteria_cannot_be_replaced_within_a_turn() {
+    let temp = tempfile::tempdir().unwrap();
+    let service = Service::new(temp.path().join("memory"), None);
+    service.scripted(vec![
+        task_declaration(),
+        task_call("task_finish", json!({})),
+        task_declaration(),
+        json!({"content":"Partial work."}),
+    ]);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    let reply = service
+        .dispatch(request(
+            &client,
+            json!({"op":"chat","text":"Do the task","event":"immutable","workspace":temp.path()}),
+        ))
+        .unwrap();
+    assert_eq!(reply["task_status"]["tasks"].as_array().unwrap().len(), 1);
+    let history = crate::task_model::History::read(&Store::open(&service.root).unwrap()).unwrap();
+    assert_eq!(
+        history
+            .entries
+            .values()
+            .filter(|e| matches!(e.event, crate::task_model::Event::Begin { .. }))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn native_clients_display_criteria_before_continuing_without_an_extra_approval() {
+    let temp = tempfile::tempdir().unwrap();
+    let service = Service::new(temp.path().join("memory"), None);
+    std::fs::write(temp.path().join("note.txt"), "a note").unwrap();
+    service.scripted(vec![
+        task_declaration(),
+        task_call("read", json!({"path":"note.txt"})),
+        json!({"content":"Read the note."}),
+    ]);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    let contract=service.dispatch(request(&client,json!({"op":"chat","text":"Read the note","event":"announce","workspace":temp.path(),"announce_task":true}))).unwrap();
+    assert!(contract["continue_task"].is_string());
+    assert!(
+        crate::self_model::History::read(&Store::open(&service.root).unwrap())
+            .unwrap()
+            .observations
+            .is_empty()
+    );
+    let continuation = request(
+        &client,
+        json!({"op":"continue-task","continuation":contract["continue_task"]}),
+    );
+    let reply = service.dispatch(continuation.clone()).unwrap();
+    assert_eq!(reply["text"], "Read the note.");
+    assert!(service.dispatch(continuation).is_err());
+}
+
 fn prompt(
     service: &Service,
     workspace: &std::path::Path,
@@ -199,6 +358,7 @@ fn agent_reads_then_returns_visible_response_without_provider_internals() {
     let root = temp.path().join("memory");
     let service = Service::new(root.clone(), None);
     service.scripted(vec![
+        task_declaration(),
         json!({"content":"","tool_calls":[{"id":"call-1","type":"function","function":{"name":"read","arguments":"{\"path\":\"note.txt\"}"}}],"reasoning":"provider internals"}),
         json!({"content":"The note says: a small note.","thinking":"provider internals"}),
     ]);
@@ -230,6 +390,7 @@ fn agent_write_needs_the_exact_ui_approval_and_can_only_run_once() {
     let temp = tempfile::tempdir().unwrap();
     let service = Service::new(temp.path().join("memory"), None);
     service.scripted(vec![
+        task_declaration(),
         json!({"content":"I can write that.","tool_calls":[{"id":"call-1","type":"function",
             "function":{"name":"write","arguments":{"path":"out.txt","text":"approved content"}}}]}),
         json!({"content":"Saved."}),
@@ -340,6 +501,7 @@ fn failed_reads_return_evidence_to_the_planner_within_the_turn() {
     let root = temp.path().join("memory");
     let service = Service::new(root.clone(), None);
     service.scripted(vec![
+        task_declaration(),
         json!({"content":"","tool_calls":[{"id":"missing","type":"function",
             "function":{"name":"read","arguments":{"path":"missing.txt"}}}]}),
         json!({"content":"That path is missing; I need a corrected path."}),
@@ -786,6 +948,7 @@ fn approving_synthetic_input_withdraws_every_other_pending_action() {
     let temp = tempfile::tempdir().unwrap();
     let service = Service::new(temp.path().join("memory"), None);
     service.scripted(vec![
+        task_declaration(),
         json!({"content":"","tool_calls":[{"id":"call-1","type":"function",
         "function":{"name":"gui","arguments":{"argv":["key","21:1","21:0"]}}}]}),
     ]);
@@ -988,6 +1151,7 @@ fn approving_synthetic_input_withdraws_other_conversations_proposals_too() {
     let temp = tempfile::tempdir().unwrap();
     let service = Service::new(temp.path().join("memory"), None);
     service.scripted(vec![
+        task_declaration(),
         json!({"content":"","tool_calls":[{"id":"call-1","type":"function",
         "function":{"name":"gui","arguments":{"argv":["key","21:1","21:0"]}}}]}),
     ]);

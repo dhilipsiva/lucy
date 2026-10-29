@@ -49,6 +49,7 @@ pub mod store;
 #[cfg(test)]
 mod store_tests;
 pub mod talk;
+pub mod task_model;
 pub mod topics;
 
 pub use cli::{Outcome, run};

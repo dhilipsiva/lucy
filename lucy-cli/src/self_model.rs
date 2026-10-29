@@ -462,6 +462,9 @@ pub fn context(store: &Store) -> Result<String> {
 }
 
 pub fn command(args: &[String], stdin: &str) -> Result<Value> {
+    if args.first().is_some_and(|arg| arg == "task") {
+        return crate::task_model::command(&args[1..], stdin);
+    }
     let operation = args.first().map(String::as_str).unwrap_or("status");
     let mut root = None;
     let mut use_stdin = false;

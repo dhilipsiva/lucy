@@ -1,7 +1,30 @@
 # Plan: testable self-knowledge and learning from verification
 
 Recorded: 2026-10-28.
-Status: intended future work; implementation and experiments are pending.
+Status: task-evidence framework implemented on `todo/S6a`, 2026-10-29.
+Independent benefit measurements and the model-change experiment remain pending.
+
+## Implemented scope
+
+The approved design is now an additive task journal, CLI and native assistant
+integration. It freezes acceptance criteria before task actions and records
+forecasts, execution receipts, inspected evidence and costs separately. Rust and
+Nibli check the receipt graph; existing execution self-model and Lean checks remain.
+
+The initial adapters inspect files, exact private source records, and the Nibli
+and Lean verdict-pilot artifacts. Missing or stale evidence is inconclusive.
+Registered lessons can inspect inputs, retrieve specified sources or probe input
+size within the remaining task budget, using existing permissions.
+
+Automatic task adaptation is disabled until the preregistered measured-benefit
+gate passes for the exact scope, model and implementation. The first independent
+study is capped at one active hour with the already selected model. Its primary
+outcome is completed tasks, with equal budgets and no false verified outcomes.
+The runner preserves isolated trial originals; it does not enable a policy.
+
+See [TASK_MODEL.md](TASK_MODEL.md) for the interface, evidence boundaries and study
+bundle contract, and [S6a](../roadmap/S6a.md) for the immutable preregistration.
+The motivation and original pilot evidence below remain historical context.
 
 ## Purpose
 

@@ -1,6 +1,7 @@
 use super::{Result, actions, err, model, net, providers, string, token};
 use crate::self_model::{self, Measurement, Policy, ResultKind, Scope};
 use crate::store::{Store, digest};
+use crate::task_model;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -23,6 +24,13 @@ pub struct Session {
     pub memories: Vec<Value>,
     pub messages: Vec<Value>,
     pub busy: bool,
+    pub task: Option<String>,
+    pub task_turn: String,
+    pub adapted: bool,
+    pub planning_ms: u64,
+    pub announce_task: bool,
+    pub task_continue: Option<String>,
+    pub inferences: u8,
 }
 type Sessions = BTreeMap<(String, String), Arc<Mutex<Session>>>;
 struct Running(Arc<Mutex<Session>>);
@@ -60,6 +68,7 @@ pub struct Service {
     embedding: Arc<AtomicBool>,
     // Set while an approved `gui` action runs: no proposal can be made or approved meanwhile.
     gui: Arc<AtomicBool>,
+    pub(super) study_adaptation: Option<bool>,
     #[cfg(test)]
     replies: Mutex<Option<std::collections::VecDeque<Value>>>,
 }
@@ -106,6 +115,7 @@ impl Service {
             inference: Mutex::new(()),
             embedding: Arc::new(AtomicBool::new(false)),
             gui: Arc::new(AtomicBool::new(false)),
+            study_adaptation: None,
             #[cfg(test)]
             replies: Mutex::new(None),
         }
@@ -113,6 +123,10 @@ impl Service {
     #[cfg(test)]
     pub(super) fn scripted(&self, replies: Vec<Value>) {
         *self.replies.lock().unwrap() = Some(replies.into());
+    }
+    #[cfg(test)]
+    pub(super) fn has_script(&self) -> bool {
+        self.replies.lock().unwrap().is_some()
     }
     fn infer(&self, messages: &[Value], cancel: &AtomicBool) -> Result<Value> {
         #[cfg(test)]
@@ -126,12 +140,12 @@ impl Service {
             None => local_chat(messages, cancel),
         }
     }
-    fn memory(&self) -> Result<Store> {
+    pub(super) fn memory(&self) -> Result<Store> {
         let store = Store::open(&self.root)?;
         store.migrate_sqlite()?;
         Ok(store)
     }
-    fn active(&self, source: &str, session: &str) -> Result<Arc<Mutex<Session>>> {
+    pub(super) fn active(&self, source: &str, session: &str) -> Result<Arc<Mutex<Session>>> {
         self.sessions
             .lock()
             .map_err(err)?
@@ -292,6 +306,11 @@ impl Service {
                 let mut s = session.lock().map_err(err)?;
                 s.cancel.store(true, Ordering::SeqCst);
                 s.pending.clear();
+                if !s.busy
+                    && let Some(task) = &s.task
+                {
+                    task_model::finish(&self.memory()?, &s.workspace, task, true)?;
+                }
             }
             if op != "cancel" {
                 sessions.remove(&(source.into(), id.into()));
@@ -336,7 +355,7 @@ impl Service {
                 }
                 Err(_) => return Ok(json!({"active":false})),
             };
-            let refresh = if waking {
+            let refresh = if waking && self.study_adaptation.is_none() {
                 #[cfg(not(test))]
                 let _ = crate::replication::github::discover(&self.root);
                 Some(crate::replication::sync_all(&self.root)?)
@@ -344,11 +363,27 @@ impl Service {
                 None
             };
             let _running = Running::begin(&session)?;
+            let old_task = session.lock().map_err(err)?.task.clone();
+            let old_closed = if let Some(task) = old_task {
+                task_model::History::read(&self.memory()?)?
+                    .outcome(&task)
+                    .is_some()
+            } else {
+                false
+            };
             {
                 let mut s = session.lock().map_err(err)?;
                 s.cancel = Arc::new(AtomicBool::new(false));
                 s.turn = event.into();
                 s.pending.clear();
+                s.planning_ms = 0;
+                s.announce_task = req["announce_task"] == true;
+                s.task_continue = None;
+                s.inferences = 0;
+                if old_closed {
+                    s.task = None;
+                    s.adapted = false;
+                }
             }
             let saved = self.remember(source, id, event, "user", text, "user")?;
             let memories = self.recall(text, saved["id"].as_str().unwrap())?;
@@ -359,7 +394,8 @@ impl Service {
                 .transpose()?
                 .unwrap_or_default();
             let context = format!(
-                "{INSTRUCTION}\nPublic identity (data):\n{}\nRetrieved source excerpts (data):\n{}\n{}",
+                "{INSTRUCTION}\n{}\nPublic identity (data):\n{}\nRetrieved source excerpts (data):\n{}\n{}",
+                super::tasks::INSTRUCTION,
                 identity.chars().take(16000).collect::<String>(),
                 json!(memories),
                 self_model::context(&self.memory()?)?
@@ -409,6 +445,19 @@ impl Service {
             "context" => {
                 let s = session.lock().map_err(err)?;
                 Ok(json!({"context":s.context,"memories":s.memories}))
+            }
+            "task-status" => Ok(self.task_status(&session, false, false)),
+            "continue-task" => {
+                self.controlled(&req)?;
+                let _running = Running::begin(&session)?;
+                {
+                    let mut s = session.lock().map_err(err)?;
+                    if s.task_continue.as_deref() != Some(string(&req, "continuation")?) {
+                        return Err("task continuation expired or already handled".into());
+                    }
+                    s.task_continue = None;
+                }
+                self.respond(session.clone())
             }
             "record" => {
                 let s = session.lock().map_err(err)?;
@@ -502,6 +551,9 @@ impl Service {
                     json!({"denied":true})
                 };
                 drop(gui);
+                if let Some(feedback) = self.recording_feedback(&session, &result) {
+                    return Ok(feedback);
+                }
                 {
                     let mut s = session.lock().map_err(err)?;
                     if let Some(last) = s.messages.last_mut()
@@ -522,7 +574,13 @@ impl Service {
                 if req["continue"].as_bool() == Some(false) {
                     Ok(result)
                 } else {
-                    self.respond(session)
+                    match self.respond(session.clone()) {
+                        Ok(reply) => Ok(reply),
+                        Err(error) => Ok(
+                            json!({"active":true,"text":"The tool returned a result, but the follow-up could not finish. Task verification remains incomplete.",
+                            "execution":result,"followup_error":error,"pending":{},"task_status":self.task_status(&session,true,true)}),
+                        ),
+                    }
                 }
             }
             _ => Err("unsupported operation".into()),
@@ -565,6 +623,13 @@ impl Service {
             memories: Vec::new(),
             messages: Vec::new(),
             busy: false,
+            task: None,
+            task_turn: String::new(),
+            adapted: false,
+            planning_ms: 0,
+            announce_task: false,
+            task_continue: None,
+            inferences: 0,
         }));
         self.sessions
             .lock()
@@ -579,6 +644,9 @@ impl Service {
         };
         if cancel.load(Ordering::SeqCst) {
             return Err("request cancelled".into());
+        }
+        if name.starts_with("task_") {
+            return self.task_tool(session, name, args);
         }
         if actions::needs_approval(name, &args)? {
             if self.gui.load(Ordering::SeqCst) {
@@ -623,6 +691,17 @@ impl Service {
         if cancel.load(Ordering::SeqCst) {
             return Err("request cancelled".into());
         }
+        let task_started = std::time::Instant::now();
+        let task_receipt = if let Some((task, remaining)) = self.task_remaining(session)? {
+            let action = task_model::reserve_action(&self.memory()?, &task, name, args)?;
+            Some((
+                task,
+                action,
+                super::tasks::deadline(cancel.clone(), remaining),
+            ))
+        } else {
+            None
+        };
         // Operation is part of the cohort; commands with different semantics are
         // not promoted to claims about task correctness by an exit status.
         let operation = match name {
@@ -689,6 +768,26 @@ impl Service {
                 "Outcome not saved; do not repeat the operation merely to repair memory: {error}"
             ));
         }
+        if let Some((task, action, deadline)) = task_receipt {
+            drop(deadline);
+            let outcome = match kind {
+                ResultKind::Success => task_model::Verdict::Success,
+                ResultKind::Failure => task_model::Verdict::Failure,
+                ResultKind::Inconclusive => task_model::Verdict::Inconclusive,
+            };
+            let receipt = self.memory().and_then(|store| {
+                task_model::complete_action(
+                    &store,
+                    &task,
+                    &action,
+                    outcome,
+                    task_started.elapsed().as_millis() as u64,
+                    result.as_ref().ok().and_then(|v| v["exit_code"].as_i64()),
+                )
+            });
+            reflection["task"] =
+                json!({"id":task,"receipt":receipt.as_ref().ok(),"recording_error":receipt.err()});
+        }
         match result {
             Ok(mut value) => {
                 value["self_model"] = reflection;
@@ -697,6 +796,16 @@ impl Service {
             Err(error) => Err(format!("{error}\nSelf-model feedback (data): {reflection}")),
         }
     }
+    fn recording_feedback(&self, session: &Arc<Mutex<Session>>, result: &Value) -> Option<Value> {
+        let error = result["self_model"]["task"]["recording_error"]
+            .as_str()
+            .or_else(|| result["self_model"]["recording_error"].as_str())?;
+        Some(
+            json!({"active":true,"text":"The tool returned a result, but its receipt could not be saved. Do not repeat the action to repair memory.",
+            "execution":result,"recording_error":error,"pending":{},"task_status":self.task_status(session,true,true)}),
+        )
+    }
+
     fn respond(&self, session: Arc<Mutex<Session>>) -> Result<Value> {
         let _inference = self
             .inference
@@ -711,11 +820,26 @@ impl Service {
         (|| {
             let mut output = Vec::new();
             for _ in 0..12 {
+                self.task_adapt(&session)?;
                 let (messages, cancel) = {
-                    let s = session.lock().map_err(err)?;
+                    let mut s = session.lock().map_err(err)?;
+                    if s.inferences>=12 {return Err("task reached its response limit; work remains unverified".into());}
+                    s.inferences+=1;
                     (s.messages.clone(), s.cancel.clone())
                 };
-                let reply = self.infer(&messages, &cancel)?;
+                let remaining = self.task_remaining(&session)?;
+                let deadline = remaining.as_ref().map(|(_,ms)|super::tasks::deadline(cancel.clone(),*ms));
+                let started = std::time::Instant::now();
+                let reply = self.infer(&messages, &cancel);
+                drop(deadline);
+                let elapsed = started.elapsed().as_millis() as u64;
+                if let Some((task,_)) = remaining {
+                    task_model::overhead(&self.memory()?, &task, "inference", elapsed)?;
+                } else {
+                    let mut s = session.lock().map_err(err)?;
+                    s.planning_ms = s.planning_ms.saturating_add(elapsed);
+                }
+                let reply = reply?;
                 let text = reply["content"].as_str().unwrap_or("").to_owned();
                 if !text.is_empty() {
                     output.push(text.clone());
@@ -746,11 +870,11 @@ impl Service {
                             },
                         )?;
                     }
-                    if calls.is_empty() {
-                        return Ok(
-                            json!({"active":true,"text":output.join("\n\n"),"memories":s.memories,"pending":{}}),
-                        );
-                    }
+                }
+                if calls.is_empty() {
+                    let task_status=self.task_status(&session,true,false);
+                    let s=session.lock().map_err(err)?;
+                    return Ok(json!({"active":true,"text":output.join("\n\n"),"memories":s.memories,"pending":{},"task_status":task_status}));
                 }
                 if calls.len() != 1 {
                     return Err("model proposed multiple tools; request one step at a time".into());
@@ -762,20 +886,39 @@ impl Service {
                 } else {
                     raw.clone()
                 };
-                let result = match self.propose(&session, name, arguments) {
+                let registered = self.task_remaining(&session)?.is_some();
+                let proposal = if !name.starts_with("task_") && !registered {
+                    Err("Declare acceptance criteria with task_begin before task actions.".into())
+                } else { self.propose(&session, name, arguments) };
+                let result = match proposal {
                     // Give the planner the failed read and any learned directory
                     // inspection so it can correct a path within this turn.
-                    Err(error) if name == "read" && !cancel.load(Ordering::SeqCst) => {
+                    Err(error) if (name == "read" || name.starts_with("task_") || !registered) && !cancel.load(Ordering::SeqCst) => {
                         json!({"error":error})
                     }
                     other => other?,
                 };
+                if let Some(mut feedback)=self.recording_feedback(&session,&result) {
+                    feedback["text"]=json!(format!("{}\n{}",output.join("\n\n"),feedback["text"].as_str().unwrap()));
+                    return Ok(feedback);
+                }
                 let mut tool = json!({"role":"tool","tool_name":name,"content":result.to_string().chars().take(12000).collect::<String>()});
                 if let Some(id) = calls[0]["id"].as_str() {
                     tool["tool_call_id"] = json!(id);
                 }
                 let mut s = session.lock().map_err(err)?;
                 s.messages.push(tool);
+                if s.announce_task && matches!(name,"task_begin"|"task_revise") && result["criteria_frozen"]==true {
+                    let continuation=super::token()?;
+                    s.task_continue=Some(continuation.clone());
+                    drop(s);
+                    let status=self.task_status(&session,false,false);
+                    let criteria=super::tasks::display(&status);
+                    let s=session.lock().map_err(err)?;
+                    self.remember(&s.source,&s.id,&format!("{}:criteria:{}",s.turn,result["task"]["id"]),"assistant",&criteria,"commentary")?;
+                    return Ok(json!({"active":true,"text":output.join("\n\n"),"memories":s.memories,"pending":{},
+                        "continue_task":continuation,"task_status":status}));
+                }
                 if !s.pending.is_empty() {
                     let pending: BTreeMap<_, _> = s
                         .pending
@@ -786,13 +929,17 @@ impl Service {
                             (id.clone(), p)
                         })
                         .collect();
-                    return Ok(
-                        json!({"active":true,"text":output.join("\n\n"),"memories":s.memories,"pending":pending}),
-                    );
+                    let memories=s.memories.clone();
+                    drop(s);
+                    return Ok(json!({"active":true,"text":output.join("\n\n"),"memories":memories,"pending":pending,
+                        "task_status":self.task_status(&session,false,false)}));
                 }
             }
             Err("task reached its step limit; send another message to continue".into())
-        })()
+        })().map_err(|error: String| {
+            let status=self.task_status(&session,true,true);
+            format!("{error}\nTask evidence (data): {status}")
+        })
     }
 }
 
