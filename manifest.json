@@ -1,20 +1,151 @@
 {
-  "hashes": {
-    "operations.nibli": "b6a5b9ca4f323e98f561892f84b7ce76a573b4585ca19248a0c32abe30407a35",
-    "snapshot.nibli": "a266888c6f2b509a60708ff9f50c7cb3cac13825b34bb6053005cf05f1abbdbb"
+  "artifacts": {
+    "operations": {
+      "bytes": 35751938,
+      "parts": [
+        {
+          "bytes": 4194304,
+          "path": "parts/f195c4cd2e5a7aee3510377cfc03946554244fcf00b61b8567bbd077c81fbb4e.txt",
+          "sha256": "f195c4cd2e5a7aee3510377cfc03946554244fcf00b61b8567bbd077c81fbb4e"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/720324d7b065ba00c7df2d45fff3ea6097383aa05b69356fad54d46fa94ff0e5.txt",
+          "sha256": "720324d7b065ba00c7df2d45fff3ea6097383aa05b69356fad54d46fa94ff0e5"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/4da1bb6c04f344909bf91df1ac478b2deb706c25a2304e926430a65fe1ab637c.txt",
+          "sha256": "4da1bb6c04f344909bf91df1ac478b2deb706c25a2304e926430a65fe1ab637c"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/22fdc7cc88f7311d87819a9257c06dc5a4be0acea6a553fea284e2d7ebe246c5.txt",
+          "sha256": "22fdc7cc88f7311d87819a9257c06dc5a4be0acea6a553fea284e2d7ebe246c5"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/2c7d84263dab75d5181b23047f2f3a389c4288ede00e133e6d9d4ed65b3f10fa.txt",
+          "sha256": "2c7d84263dab75d5181b23047f2f3a389c4288ede00e133e6d9d4ed65b3f10fa"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/d83acdb33aaeeb3361486a9e9b548feb0b8749325e505963e548537ab9f956bc.txt",
+          "sha256": "d83acdb33aaeeb3361486a9e9b548feb0b8749325e505963e548537ab9f956bc"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/4d6ddd9216f66bbc08d00d75d35774fec1a0f1eeb6218c7ed41cdd9a28fc768a.txt",
+          "sha256": "4d6ddd9216f66bbc08d00d75d35774fec1a0f1eeb6218c7ed41cdd9a28fc768a"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/be7b39f8f0f45cd1213fb03768bbbcd5e65f39e1b453912ef96c9e252f83ff54.txt",
+          "sha256": "be7b39f8f0f45cd1213fb03768bbbcd5e65f39e1b453912ef96c9e252f83ff54"
+        },
+        {
+          "bytes": 2197506,
+          "path": "parts/bcdae9bcf1253856f14f11cdfecdfec12145fa5f24f8bdaacfd91c969f2f6d80.txt",
+          "sha256": "bcdae9bcf1253856f14f11cdfecdfec12145fa5f24f8bdaacfd91c969f2f6d80"
+        }
+      ],
+      "sha256": "3b573856f058cdb82b6c7f5dbe2ce2fdef138aea00c84b48b0f8fae38644062b"
+    },
+    "snapshot": {
+      "bytes": 63938129,
+      "parts": [
+        {
+          "bytes": 4194304,
+          "path": "parts/549ab9a78e1f91789ab25a300017a7b6d50c6b31047557e34e78617cb384c37a.txt",
+          "sha256": "549ab9a78e1f91789ab25a300017a7b6d50c6b31047557e34e78617cb384c37a"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/069d56b1dcdd739bb2b7d0559b8874cf5d85f3b6a4a1746a8cf16d6aa5ec7190.txt",
+          "sha256": "069d56b1dcdd739bb2b7d0559b8874cf5d85f3b6a4a1746a8cf16d6aa5ec7190"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/aa3c71305f2860ae5be5885068705eac0ce43197952b5ca9c73b1f75e28ce97c.txt",
+          "sha256": "aa3c71305f2860ae5be5885068705eac0ce43197952b5ca9c73b1f75e28ce97c"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/e279239764b08a6ea8f2aeef13a3c64c9f23802e90346a42fa61f43e005ba0d2.txt",
+          "sha256": "e279239764b08a6ea8f2aeef13a3c64c9f23802e90346a42fa61f43e005ba0d2"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/c72d66eca7c1609a997c0bd83131bee604d44d1cc490218eea864d21821e2427.txt",
+          "sha256": "c72d66eca7c1609a997c0bd83131bee604d44d1cc490218eea864d21821e2427"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/97cef86e3b6a1b39c12f56977da23f4b4e1bb36ffebff5ba7ca34f35909efde3.txt",
+          "sha256": "97cef86e3b6a1b39c12f56977da23f4b4e1bb36ffebff5ba7ca34f35909efde3"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/eb5c82ec322334db3167e0d9f8327e5bcce712e64d1869f6a99812e7ad034ecb.txt",
+          "sha256": "eb5c82ec322334db3167e0d9f8327e5bcce712e64d1869f6a99812e7ad034ecb"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/8c729b61f5eccc1908d3ca9f213756ca8f092ce5a3410dda459d5fe057672dcc.txt",
+          "sha256": "8c729b61f5eccc1908d3ca9f213756ca8f092ce5a3410dda459d5fe057672dcc"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/ec67dab762ca0eccd3d2322ea8ce6f6489d3b4b83b77ae7ef881ca5aeac4c32f.txt",
+          "sha256": "ec67dab762ca0eccd3d2322ea8ce6f6489d3b4b83b77ae7ef881ca5aeac4c32f"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/210e55a3072e6b9b013639de760652f54f13d7a37e5f813779f845cd52f4f860.txt",
+          "sha256": "210e55a3072e6b9b013639de760652f54f13d7a37e5f813779f845cd52f4f860"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/4bd44b2bba3a7a4e49b51e971cbd52a81ad3d4b1cb4458ab7b6dc8a7ada251a8.txt",
+          "sha256": "4bd44b2bba3a7a4e49b51e971cbd52a81ad3d4b1cb4458ab7b6dc8a7ada251a8"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/a4f3737f47d6dedf5b9206aeafe8d4c8b308b44c2064a308c5ef707493e82bec.txt",
+          "sha256": "a4f3737f47d6dedf5b9206aeafe8d4c8b308b44c2064a308c5ef707493e82bec"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/45e7c268912143e2902d90ff1823bece68753d44a25d15e286b17795dd817d7c.txt",
+          "sha256": "45e7c268912143e2902d90ff1823bece68753d44a25d15e286b17795dd817d7c"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/6394dd600df753eb36747f080ced8a7104328635714da8cd8f91b26d222a85a6.txt",
+          "sha256": "6394dd600df753eb36747f080ced8a7104328635714da8cd8f91b26d222a85a6"
+        },
+        {
+          "bytes": 4194304,
+          "path": "parts/a5037b9d72f1b439cd07e3cd397f9b1afaba8360a6029238dda71c5ec075d2e0.txt",
+          "sha256": "a5037b9d72f1b439cd07e3cd397f9b1afaba8360a6029238dda71c5ec075d2e0"
+        },
+        {
+          "bytes": 1023569,
+          "path": "parts/f50854e0c8ce1e1f93b3df3923bd6c07f8aceda6fe48f24cc224e55253eeca70.txt",
+          "sha256": "f50854e0c8ce1e1f93b3df3923bd6c07f8aceda6fe48f24cc224e55253eeca70"
+        }
+      ],
+      "sha256": "b3fb3c5939292df5b313479052bcb7769c52a77aaa9c4dd676687884f9a0b0af"
+    }
   },
   "identity": "lucy",
   "keys": {
     "9fdbbd26c247390168967134d401f1a1c685a39b262aeeee5f2f6c0a16fa2099": "QKhsIyW90nKUa+Ti/ie4xbcJNb2YRZOPSvgZsT8TH+w="
-  },
-  "paths": {
-    "operations": "operations.nibli",
-    "snapshot": "snapshot.nibli"
   },
   "public": true,
   "ref": "lucy-memory",
   "repository": "dhilipsiva/lucy",
   "schema": "lucy-operations-v1",
   "scope": "lucy-public",
-  "version": 1
+  "version": 2
 }
