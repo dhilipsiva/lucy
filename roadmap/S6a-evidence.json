@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "item": "S6a",
+  "observations": [
+    {
+      "recorded_date": "2026-10-29",
+      "implementation_commit": "f3f2bd4fa05d61558689019de14977f2a188fa8c",
+      "preregistration_commit": "cca44f1e5d89da21b01dfb5247907b32770c0cbd",
+      "protocol_sha256": "c34d4d898b5df886566ca2c34b537400dd12b88fc0537ccf2d458fb21f9762f8",
+      "checker_sha256": "e4d5ab7a8ef6f11fdc16cf9e30bd324eee652ef33822ab2a95a5cfcfdd310a1f",
+      "debug_binary_sha256": "1435dc2ca278f807dba3cad5b720e52f1d58746cc6a2dda4f4df66b9513f1a92",
+      "status": "Mechanism implemented and tested; independent benefit study pending.",
+      "validation": [
+        {
+          "command": "nix develop --command just ci",
+          "result": "passed",
+          "rust_tests": 138,
+          "python_runner_tests": 4
+        },
+        {
+          "command": "nix develop .#desktop --command just ci-desktop",
+          "result": "passed",
+          "rust_tests": 138
+        },
+        {
+          "command": "nix develop --command cargo build --locked --bin lucy",
+          "result": "passed"
+        },
+        {
+          "repository": "nibli",
+          "commit": "71e88f59d3aefb58246b9092c217a1923b378dc4",
+          "command": "nix develop --command just verify-self-check-nibli-verdicts",
+          "result": "passed",
+          "production_verdict_cases": 210,
+          "mutation_control": "verified",
+          "deliberate_mutations_detected": 5
+        },
+        {
+          "repository": "nibli",
+          "commit": "71e88f59d3aefb58246b9092c217a1923b378dc4",
+          "command": "nix develop --command just verify-self-check-verdicts",
+          "result": "passed",
+          "scope": "Production verdict algebra; full self-check equivalence remains unproved."
+        }
+      ],
+      "report_adapter_inspections": [
+        {
+          "repository": "nibli",
+          "report": "target/self-check-proof/nibli-verdicts/report.json",
+          "classification": "inspected",
+          "files_inspected": 185,
+          "result": "success"
+        },
+        {
+          "repository": "nibli",
+          "report": "target/self-check-proof/verdicts-report.json",
+          "classification": "inspected",
+          "files_inspected": 147,
+          "result": "success"
+        }
+      ],
+      "journal_readback": "Passed in mechanism and report-adapter fixtures.",
+      "fault_coverage": [
+        "Execution success without completed criteria remains inconclusive.",
+        "Changed artifacts, newly added proof sources and missing named theorems invalidate evidence.",
+        "Missing records, wrong hashes, invented success reports and unsupported manual requirements do not verify.",
+        "Cross-task, cross-observer, future and cyclic support are rejected; valid controls recover.",
+        "Interrupted execution and exhausted budgets cannot be promoted to success.",
+        "A receipt-write failure preserves the executed command result without replay.",
+        "Native clients expose frozen criteria before execution and retain exact existing approvals.",
+        "CLI calls cannot resolve native tasks or inject verdicts through check arguments.",
+        "Missing study evidence, scope changes and explicit disable revoke policy activation.",
+        "Study isolation rejects real or overlapping state; frozen calibration prevents trial-to-trial learning.",
+        "Study timeouts stop descendant commands even when they create separate process groups."
+      ],
+      "limitations": [
+        "Some existing bubblewrap-dependent tests returned early because that sandbox was unavailable in this environment.",
+        "The desktop feature was compiled and tested; no interactive visual UI inspection was performed.",
+        "Imported report inspection is distinct from the fresh Nibli and Lean gate executions listed above.",
+        "Unit fixtures and scripted native conversations establish mechanism, not measured benefit.",
+        "Resource bounds include cooperative cancellation and cleanup; overruns disqualify study activation.",
+        "Evidence digests do not cryptographically establish the independence of an evaluator."
+      ],
+      "empirical_study": {
+        "calibration_tasks_run": 0,
+        "held_out_trials_run": 0,
+        "selected_model": null,
+        "bundle": null,
+        "reason": "Independent cases must be sealed for the frozen implementation before running the study.",
+        "adaptation_enabled": false,
+        "adjudicators": [],
+        "adjudicator_models": [],
+        "disagreements": null,
+        "position_private_record_id": null,
+        "model_change_requirement_met": false,
+        "s6a_complete": false
+      },
+      "next_action": "An independent evaluator prepares the private bundle described in lucy-cli/TASK_MODEL.md; run the isolated study within one active hour using the already selected model."
+    }
+  ]
+}
