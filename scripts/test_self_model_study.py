@@ -75,9 +75,11 @@ class RunnerTests(unittest.TestCase):
                 if arm == "calibration":
                     (data / "frozen-only").write_text("calibration")
                 else:
-                    self.checks.append((arm, (data / "frozen-only").exists(), (data / "held-out-leak").exists()))
+                    self.checks.append((arm, (data / "frozen-only").exists(), (data / "held-out-leak").exists(),
+                                        (data / "trial.json").exists(), (data / "visible-trace.json").exists()))
                     (data / "held-out-leak").write_text(case["id"])
                 (data / "trial.json").write_text("{}")
+                (data / "visible-trace.json").write_text("[]")
                 return {"scope": {"family": case["definition"]["family"]}}
 
             def key(self, trial):
@@ -92,7 +94,8 @@ class RunnerTests(unittest.TestCase):
             runner.run(dict(implementation="fixture", protocol="fixture", calibration=[case], held_out=[case, case]))
             self.assertEqual(len(runner.checks), 16)
             self.assertTrue(all(has_calibration == (arm != "memory_removed") and not leak
-                                for arm, has_calibration, leak in runner.checks))
+                                and not old_trial and not old_trace
+                                for arm, has_calibration, leak, old_trial, old_trace in runner.checks))
 
     def test_preparation_is_charged_before_running_any_trial(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -125,22 +128,28 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "sealed case"):
                 s6a_evidence.bind_request(altered, case, "protocol")
 
-    def test_report_timeout_retains_preparation_and_does_not_claim_successful_replay(self):
-        with tempfile.TemporaryDirectory() as directory:
-            runner = object.__new__(study.Runner)
-            runner.base, runner.started = Path(directory), 100
-            runner.final_deadline, runner.prior_active_ms = 3690, 10000
-            runner.info = dict(protocol="fixture", implementation="fixture", model="fixture")
-            runner.calibration, runner.trials, runner.originals, runner.calibration_originals = {}, [], [], []
-            runner.replay_error = True
-            runner.environment = lambda _: {}
-            runner.call = lambda *args: (_ for _ in ()).throw(TimeoutError())
-            with patch.object(study.time, "monotonic", return_value=200):
-                runner.report(dict(evaluator="fixture", evaluator_model="fixture"), False, "fixture timeout")
-            report = json.loads((runner.base / "report.json").read_bytes())
-            self.assertEqual(report["active_ms"], 110000)
-            self.assertFalse(report["independent_replay"])
-            self.assertFalse(report["complete"])
+    def test_report_failure_retains_identity_preparation_and_replay_status(self):
+        for error in (TimeoutError, RuntimeError):
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as directory:
+                runner = object.__new__(study.Runner)
+                runner.base, runner.started = Path(directory), 100
+                runner.final_deadline, runner.prior_active_ms = 3690, 10000
+                runner.info = dict(protocol="fixture-protocol", implementation="fixture-implementation", model="fixture-model")
+                runner.calibration, runner.trials, runner.originals, runner.calibration_originals = {}, [], [], []
+                runner.replay_error = True
+                runner.environment = lambda _: {}
+                runner.call = lambda *args: (_ for _ in ()).throw(error())
+                with patch.object(study.time, "monotonic", return_value=200):
+                    runner.report(dict(evaluator="fixture", evaluator_model="fixture"), True, "fixture scoring failure")
+                report = json.loads((runner.base / "report.json").read_bytes())
+                self.assertEqual(report["active_ms"], 110000)
+                self.assertFalse(report["independent_replay"])
+                self.assertFalse(report["complete"])
+                self.assertFalse(report["s6a_complete"])
+                self.assertFalse(report["scoring_complete"])
+                self.assertEqual(report["scopes"], [])
+                for key, value in runner.info.items():
+                    self.assertEqual(report[key], value)
 
     def test_preservation_may_not_consume_review_reserve(self):
         class FixtureRunner(study.Runner):

@@ -424,7 +424,7 @@ def main():
     finally:
         with clock.phase("final metadata and readback", MODELS):
             provider_after = file_hash(provider_path) if provider_path.exists() else None
-            outcome.update(ended_at=now(), models=states, source_commit=commit,
+            outcome.update(models=states, source_commit=commit,
                            provider_unchanged=provider_before == provider_after,
                            persistence="local originals; no replication attempted")
             if provider_before != provider_after:
@@ -453,6 +453,7 @@ def main():
             outcome["technical_qualification"] = False
             outcome["status"] = "incomplete: active-time ceiling exceeded"
         outcome["active_ms"] = clock.active
+        outcome["ended_at"] = now()
         save(base / "final-report.json", outcome)
         print(json.dumps(dict(status=outcome["status"], technical_qualification=outcome["technical_qualification"],
                               s6a_complete=False, active_ms=clock.active, report=str(base / "final-report.json"))), flush=True)

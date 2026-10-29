@@ -263,6 +263,10 @@ class Runner:
                 data.mkdir(mode=0o700)
             else:
                 shutil.copytree(frozen, data)
+            # Restore learning history, not the calibration trial's output
+            # files. An interrupted trial must not appear to have an original.
+            for name in ("trial.json", "visible-trace.json"):
+                (data / name).unlink(missing_ok=True)
             trial = self.one(bundle["held_out"][case_index], disguise, arm, data, f"trial-{index}")
             self.trials.append(trial)
             self.originals.append(str(data / "trial.json"))
@@ -288,8 +292,11 @@ class Runner:
         try:
             report = self.call(["self-model", "task", "study-score", "--root", str(data), "--stdin"],
                                request, self.environment(data), "score")
+            report["scoring_complete"] = True
         except (TimeoutError, RuntimeError, OSError, ValueError):
-            report = {"complete": False, "scopes": [],
+            report = {"schema": 2, "protocol": self.info["protocol"],
+                      "implementation": self.info["implementation"], "model": self.info["model"],
+                      "complete": False, "s6a_complete": False, "scoring_complete": False, "scopes": [],
                       "meaning": "Adjudication incomplete; originals and score-input preserved; no eligible policy."}
             complete = False
         report["stop_reason"] = reason

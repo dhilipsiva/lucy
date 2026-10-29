@@ -568,8 +568,12 @@ pub fn score_command(root: &Path, input: &str) -> Result<Value> {
             .map_err(|_| "missing trial journal")?;
         let history = History { entries };
         history.audit()?;
+        // The producer hashes an Entry's serialization. A generic JSON Value
+        // orders object keys differently, even when the receipt is unchanged.
+        let oracle: Entry = serde_json::from_value(original["oracle"].clone())
+            .map_err(|_| "invalid oracle receipt")?;
         if hash(&history.entries) != trial.journal_digest
-            || hash(&original["oracle"]) != trial.oracle_digest
+            || hash(&oracle) != trial.oracle_digest
             || original["trial"] != json!(trial)
         {
             return Err("trial provenance mismatch".into());
@@ -579,8 +583,6 @@ pub fn score_command(root: &Path, input: &str) -> Result<Value> {
             Event::Finished { verdict, .. } => Some(verdict),
             _ => None,
         });
-        let oracle: Entry = serde_json::from_value(original["oracle"].clone())
-            .map_err(|_| "invalid oracle receipt")?;
         let oracle_rows: Vec<Entry> = serde_json::from_value(original["oracle_journal"].clone())
             .map_err(|_| "missing oracle history")?;
         let mut all = history.clone();

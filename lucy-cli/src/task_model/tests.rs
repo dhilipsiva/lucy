@@ -652,3 +652,103 @@ fn policy_is_revoked_by_missing_study_scope_change_or_explicit_disable() {
     assert!(!study::enabled(&store, &scope).unwrap());
     assert!(store.all().unwrap().contains(&original));
 }
+
+#[test]
+fn native_study_scoring_reopens_serialized_receipts_and_rejects_tampering() {
+    // A synthetic mechanism fixture, never an empirical model trial.
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = temp.path().join("workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    let store = Store::open(&temp.path().join("memory")).unwrap();
+    let criteria = definition(Check::JsonEquals {
+        path: "answer.json".into(),
+        pointer: "/answer".into(),
+        expected: json!(42),
+    });
+    let task = begin(&store, &workspace, criteria.clone(), Observer::Native).unwrap();
+    let answer = b"{\"answer\":42}";
+    std::fs::write(workspace.join("answer.json"), answer).unwrap();
+    check(&store, &workspace, &task.id, "output").unwrap();
+    assert_eq!(
+        outcome(&finish(&store, &workspace, &task.id, false).unwrap()),
+        Verdict::Success
+    );
+    let history = History::read(&store).unwrap();
+    let usage = history.usage(&task.id);
+    let mut oracle_definition = criteria.clone();
+    oracle_definition.source = "synthetic-independent-oracle".into();
+    oracle_definition.session = "synthetic-oracle-session".into();
+    let oracle_task = begin(&store, &workspace, oracle_definition, Observer::Cli).unwrap();
+    check(&store, &workspace, &oracle_task.id, "output").unwrap();
+    let oracle = finish(&store, &workspace, &oracle_task.id, false).unwrap();
+    assert_eq!(outcome(&oracle), Verdict::Success);
+    let all = History::read(&store).unwrap();
+    let archive = temp.path().join("archive");
+    std::fs::create_dir_all(archive.join("inputs")).unwrap();
+    std::fs::create_dir(archive.join("outputs")).unwrap();
+    std::fs::write(archive.join("outputs/answer.json"), answer).unwrap();
+    let checking_ms = history
+        .rows(&task.id)
+        .iter()
+        .map(|entry| match entry.event {
+            Event::Checked { active_ms, .. } | Event::Finished { active_ms, .. } => active_ms,
+            _ => 0,
+        })
+        .sum();
+    let trial = study::Trial {
+        case: "synthetic-calibration".into(),
+        disguise: "a".into(),
+        arm: "calibration".into(),
+        scope: task.scope.clone(),
+        criteria_digest: hash(&criteria.criteria),
+        inputs_digest: digest(b"synthetic-inputs"),
+        budget: task.definition.budget,
+        completed: true,
+        false_verified: false,
+        budget_violation: false,
+        inconclusive: false,
+        probability_ppm: task.probability_ppm,
+        observed: Some(true),
+        active_ms: usage.active_ms + 1,
+        checking_ms,
+        task: task.id.clone(),
+        journal_digest: hash(&history.entries),
+        oracle_digest: hash(&oracle),
+        implementation: digest(b"synthetic-implementation"),
+        model: task.scope.model.clone(),
+    };
+    let original = json!({"schema":2,"trial":trial,"native_active_ms":usage.active_ms,
+        "journal":history.entries,"oracle":oracle,"oracle_journal":all.rows(&oracle_task.id),
+        "artifacts":{"directory":archive,"inputs":{},"outputs":{"answer.json":digest(answer)},
+            "records":[],"oracle":criteria.criteria}});
+    let original_path = temp.path().join("original.json");
+    std::fs::write(&original_path, serde_json::to_vec(&original).unwrap()).unwrap();
+    let study = study::Study {
+        schema: 2,
+        protocol: digest(PROTOCOL.as_bytes()),
+        implementation: trial.implementation.clone(),
+        model: trial.model.clone(),
+        evaluator: "synthetic-evaluator".into(),
+        evaluator_model: "synthetic-evaluator-model".into(),
+        bundle_digest: digest(b"synthetic-bundle"),
+        live: false,
+        complete: false,
+        active_ms: trial.active_ms + 1000,
+        calibration: BTreeMap::from([(study::policy_key(&trial.scope), 1)]),
+        trials: vec![],
+    };
+    let request =
+        json!({"study":study,"originals":[],"calibration_originals":[original_path]}).to_string();
+    let report_root = temp.path().join("report");
+    let report = study::score_command(&report_root, &request).unwrap();
+    assert_eq!(report["complete"], false);
+    assert_eq!(report["s6a_complete"], false);
+    assert_eq!(report["calibration_safe"], true);
+    let mut tampered = original.clone();
+    tampered["oracle"]["event"]["reason"] = json!("tampered receipt");
+    std::fs::write(&original_path, serde_json::to_vec(&tampered).unwrap()).unwrap();
+    assert!(study::score_command(&report_root, &request).is_err());
+    std::fs::write(&original_path, serde_json::to_vec(&original).unwrap()).unwrap();
+    std::fs::write(archive.join("outputs/answer.json"), b"{\"answer\":43}").unwrap();
+    assert!(study::score_command(&report_root, &request).is_err());
+}
