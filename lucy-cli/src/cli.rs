@@ -29,7 +29,7 @@ pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli te
   lucy peer enroll|list|change       enroll scoped peers or append signed changes (--stdin)
   lucy room import FILE --peer NAME [--commit]
                                      preview or preserve and publish a private room archive
-  lucy sync                          refresh every enrolled peer; retain pending uploads
+  lucy sync [--peer NAME [--retry]]   refresh peers; retry a selected failed upload
   lucy doctor                        inspect local integrity without invoking a model
   lucy continuity since|ack          durable events (--consumer ID --scope S --cursor C)
   lucy self-model status|audit|events|facts [--root DIR]

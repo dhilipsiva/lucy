@@ -1,4 +1,56 @@
 use super::*;
+
+#[test]
+fn targeted_retry_retains_failure_reason_honors_rate_limit_and_preserves_other_peers() {
+    let temp = tempfile::tempdir().unwrap();
+    let r = Replica::open(temp.path()).unwrap();
+    let p = peer(&r);
+    r.enroll(p.clone()).unwrap();
+    save(
+        &r.root.join("status.json"),
+        br#"{"peers":[{"peer":"other","status":"cached"}]}"#,
+    )
+    .unwrap();
+    drop(r);
+    let fail = sync_using(temp.path(), Some("test"), false, |_, _| {
+        Err("GitHub status 422 at blobs".into())
+    })
+    .unwrap();
+    assert_eq!(fail["peers"][0]["last_error"], "GitHub status 422 at blobs");
+    let deferred = sync_using(temp.path(), Some("test"), false, |_, _| {
+        panic!("backoff must defer")
+    })
+    .unwrap();
+    assert_eq!(
+        deferred["peers"][0]["last_error"],
+        fail["peers"][0]["last_error"]
+    );
+    let rate = sync_using(temp.path(), Some("test"), true, |_, _| {
+        Err("GitHub rate limit; retry after 172800 (HTTP 429 at blobs)".into())
+    })
+    .unwrap();
+    assert_eq!(rate["peers"][0]["rate_limit"], true);
+    let blocked = sync_using(temp.path(), Some("test"), true, |_, _| {
+        panic!("explicit retry must honor rate limit")
+    })
+    .unwrap();
+    assert_eq!(
+        blocked["peers"][0]["retry_at"],
+        rate["peers"][0]["retry_at"]
+    );
+    let saved: Value =
+        serde_json::from_slice(&fs::read(temp.path().join("replication-v1/status.json")).unwrap())
+            .unwrap();
+    assert!(
+        saved["peers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["peer"] == "other")
+    );
+    assert!(sync_using(temp.path(), None, true, |_, _| unreachable!()).is_err());
+    assert!(sync_using(temp.path(), Some("missing"), false, |_, _| unreachable!()).is_err());
+}
 fn peer(replica: &Replica) -> Peer {
     Peer {
         name: "test".into(),
