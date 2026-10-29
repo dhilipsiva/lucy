@@ -1,4 +1,5 @@
 //! Exact visible messages. Provenance is reported evidence, never authentication.
+pub mod transport;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;

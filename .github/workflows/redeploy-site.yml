@@ -4,7 +4,7 @@ name: Redeploy dhilipsiva.dev
 on:
   push:
     branches: [main]
-    paths: ['nell/**', 'room/**', 'lucy/constitution.nibli', 'lucy/memory.nibli']
+    paths: ['nell/**', 'room/**', 'room-memory/**', 'lucy/constitution.nibli', 'lucy/memory.nibli']
   workflow_dispatch:
 permissions:
   contents: read

@@ -206,6 +206,11 @@ fn corrupt_remote_and_rate_limit_keep_original_log() {
 }
 #[test]
 fn concurrent_non_force_push_refetches_and_preserves_both_writers() {
+    for version in [1, 2] {
+        concurrent_writers(version);
+    }
+}
+fn concurrent_writers(version: u64) {
     let (temp, mut p, _) = fixture();
     let other = tempfile::tempdir().unwrap();
     let r = Replica::open(other.path()).unwrap();
@@ -244,12 +249,20 @@ fn concurrent_non_force_push_refetches_and_preserves_both_writers() {
         } else {
             BTreeMap::new()
         };
-        let text = encode(&log);
-        if path.contains("manifest.json") {
-            return (200,json!({"version":1,"scope":q.scope,"public":q.public,"repository":q.repository,"hashes":{"operations.nibli":digest(text.as_bytes())}}).to_string(),vec![]);
-        }
-        if path.contains("operations.nibli") {
-            return (200, text, vec![]);
+        let bundle = bundle_for(&q, &log, version);
+        if method == "GET" && path.contains("/contents/") {
+            let name = path
+                .split_once("/contents/")
+                .unwrap()
+                .1
+                .split('?')
+                .next()
+                .unwrap();
+            return (
+                200,
+                bundle.files.into_iter().find(|(p, _)| p == name).unwrap().1,
+                vec![],
+            );
         }
         if path.ends_with("/git/blobs") {
             blobs += 1;
@@ -297,21 +310,12 @@ fn concurrent_non_force_push_refetches_and_preserves_both_writers() {
             .unwrap()
             .ends_with("refs/heads/lucy-memory")
     }));
-    let last_blob = requests
-        .iter()
-        .filter(|r| r["path"].as_str().unwrap().ends_with("git/blobs"))
-        .rev()
-        .nth(2)
-        .unwrap();
-    let published = decode(
-        &String::from_utf8(
-            B64.decode(last_blob["body"]["content"].as_str().unwrap())
-                .unwrap(),
-        )
-        .unwrap(),
-    )
-    .unwrap();
-    assert_eq!(published, log);
+    assert!(
+        requests
+            .iter()
+            .any(|r| r["path"].as_str().unwrap().ends_with("git/blobs")
+                && r["body"]["content"] == B64.encode(encode(&log)))
+    );
 }
 
 #[test]
@@ -328,6 +332,287 @@ fn public_discovery_cannot_name_local_credentials_or_origin_routes() {
     let mut planted = peer;
     planted.credential_env = Some("LOCAL_SECRET".into());
     assert!(public_enrollment(&planted).is_err());
+}
+
+fn memory_server(
+    initial: Option<transport::Bundle>,
+    corrupt: Arc<AtomicBool>,
+    fail_after_publish: bool,
+) -> Mock {
+    let mut blobs = BTreeMap::<String, String>::new();
+    let mut files: BTreeMap<String, String> = initial
+        .map(|b| b.files.into_iter().collect())
+        .unwrap_or_default();
+    let mut tree = BTreeMap::new();
+    let mut generation = usize::from(!files.is_empty());
+    Mock::new(move |method, path, body| {
+        if path == "/repos/example/memory" {
+            return (200, json!({"private":true}).to_string(), vec![]);
+        }
+        if path.contains("/git/ref/") {
+            return if generation == 0 {
+                (404, "{}".into(), vec![])
+            } else {
+                (200,json!({"ref":"refs/heads/lucy-memory","object":{"sha":format!("c{generation}")}}).to_string(),vec![])
+            };
+        }
+        if method == "GET" && path.contains("/contents/") {
+            let (name, revision) = path
+                .split_once("/contents/")
+                .unwrap()
+                .1
+                .split_once('?')
+                .unwrap();
+            assert_eq!(revision, format!("ref=c{generation}"));
+            if corrupt.load(Ordering::SeqCst) && name.starts_with("parts/") {
+                return (200, "corrupted part".into(), vec![]);
+            }
+            return files
+                .get(name)
+                .map(|s| (200, s.clone(), vec![]))
+                .unwrap_or((404, "{}".into(), vec![]));
+        }
+        if path.ends_with("/git/blobs") {
+            let text =
+                String::from_utf8(B64.decode(body["content"].as_str().unwrap()).unwrap()).unwrap();
+            assert!(text.len() <= transport::PART_BYTES);
+            let sha = digest(text.as_bytes());
+            blobs.insert(sha.clone(), text);
+            return (201, json!({"sha":sha}).to_string(), vec![]);
+        }
+        if path.ends_with("/git/trees") {
+            tree.clear();
+            for entry in body["tree"].as_array().unwrap() {
+                let path = entry["path"].as_str().unwrap().to_owned();
+                assert!(
+                    tree.insert(path, blobs[entry["sha"].as_str().unwrap()].clone())
+                        .is_none()
+                );
+            }
+            return (201, json!({"sha":"tree"}).to_string(), vec![]);
+        }
+        if path.ends_with("/git/commits") {
+            return (
+                201,
+                json!({"sha":format!("c{}",generation+1)}).to_string(),
+                vec![],
+            );
+        }
+        if method == "PATCH" {
+            assert_eq!(body["force"], false);
+        } else {
+            assert_eq!(body["ref"], "refs/heads/lucy-memory");
+        }
+        files = tree.clone();
+        generation += 1;
+        if fail_after_publish && generation == 2 {
+            corrupt.store(true, Ordering::SeqCst);
+        }
+        (200, "{}".into(), vec![])
+    })
+}
+fn bundle_for(p: &Peer, log: &BTreeMap<String, Operation>, version: u64) -> transport::Bundle {
+    transport::bundle(json!({"identity":p.name,"repository":p.repository,"scope":p.scope,"public":p.public,"ref":"lucy-memory","schema":"lucy-operations-v1"}),encode(log),snapshot(log).unwrap(),version).unwrap()
+}
+
+#[test]
+fn large_private_archive_migrates_restores_and_unchanged_sync_does_not_upload() {
+    let (temp, p, initial) = fixture();
+    let r = Replica::open(temp.path()).unwrap();
+    let marker = format!(
+        "private-only-sentinel 🐦{}",
+        "z".repeat(transport::PART_BYTES)
+    );
+    r.append(&p,"large",Change::Add,json!({"record":{"origin":"private-test","payload":{"id":"large","text":marker,"private":true}}}),json!({})).unwrap();
+    let expected = r.read(&p).unwrap();
+    drop(r);
+    let mock = memory_server(
+        Some(bundle_for(&p, &initial, 1)),
+        Arc::new(AtomicBool::new(false)),
+        false,
+    );
+    let report = sync_with(temp.path(), &p, &mock.api).unwrap();
+    assert_eq!(report["format"], 2);
+    assert_eq!(report["pending"], false);
+    let requests = mock.requests.lock().unwrap();
+    let first_write = requests.iter().position(|r| r["method"] == "POST").unwrap();
+    assert!(
+        requests[..first_write]
+            .iter()
+            .any(|r| r["path"] == "/repos/example/memory")
+    );
+    let writes = requests.iter().filter(|r| r["method"] != "GET").count();
+    drop(requests);
+    assert_eq!(
+        sync_with(temp.path(), &p, &mock.api).unwrap()["pending"],
+        false
+    );
+    assert_eq!(
+        mock.requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r["method"] != "GET")
+            .count(),
+        writes
+    );
+    let restored = tempfile::tempdir().unwrap();
+    let mut reader = p.clone();
+    reader.upload = false;
+    sync_with(restored.path(), &reader, &mock.api).unwrap();
+    assert_eq!(
+        Replica::open(restored.path())
+            .unwrap()
+            .read(&reader)
+            .unwrap(),
+        expected
+    );
+    let mut public = p.clone();
+    public.public = true;
+    let rejected =
+        Mock::new(|_, _, _| panic!("private content must be rejected before any public request"));
+    assert!(rejected.api.publish(&public, None, &expected, 2).is_err());
+    assert!(rejected.requests.lock().unwrap().is_empty());
+}
+
+#[test]
+fn failed_chunk_readback_stays_pending_until_remote_is_verified() {
+    let (temp, p, log) = fixture();
+    // Starting with v2 forces even small future writes to retain v2.
+    let remote = BTreeMap::new();
+    let broken = Arc::new(AtomicBool::new(false));
+    let mock = memory_server(Some(bundle_for(&p, &remote, 2)), broken.clone(), true);
+    // The remote commit lands, but downloading its parts fails. Retain the outbox.
+    assert!(sync_with(temp.path(), &p, &mock.api).is_err());
+    assert_eq!(Replica::open(temp.path()).unwrap().read(&p).unwrap(), log);
+    broken.store(false, Ordering::SeqCst);
+    assert_eq!(sync_with(temp.path(), &p, &mock.api).unwrap()["format"], 2);
+    // Clear only rebuildable part cache; a damaged remote cannot earn a receipt.
+    fs::remove_dir_all(temp.path().join("replication-v1/parts")).unwrap();
+    broken.store(true, Ordering::SeqCst);
+    assert!(sync_with(temp.path(), &p, &mock.api).is_err());
+    broken.store(false, Ordering::SeqCst);
+    assert_eq!(
+        sync_with(temp.path(), &p, &mock.api).unwrap()["pending"],
+        false
+    );
+}
+
+#[test]
+fn github_errors_report_stage_and_size_without_echoing_credentials_or_content() {
+    let mock = Mock::new(|_, _, _| {
+        (422,json!({"message":"secret private-only-sentinel","errors":[{"value":"test-credential"}]}).to_string(),vec![])
+    });
+    let error = mock
+        .api
+        .value(
+            Method::POST,
+            "/repos/example/memory/git/blobs",
+            Some(json!({"content":"private-only-sentinel"})),
+        )
+        .unwrap_err();
+    assert!(
+        error.contains("422") && error.contains("git/blobs") && error.contains("request bytes")
+    );
+    assert!(!error.contains("private-only-sentinel") && !error.contains("test-credential"));
+}
+
+#[test]
+fn interrupted_download_reuses_only_verified_scope_local_parts() {
+    let (temp, mut p, original) = fixture();
+    let r = Replica::open(temp.path()).unwrap();
+    r.append(&p,"big",Change::Add,json!({"record":{"origin":"private-fixture","payload":{"id":"big","private":true,"text":"z".repeat(transport::PART_BYTES)}}}),json!({})).unwrap();
+    let expected = r.read(&p).unwrap();
+    drop(r);
+    let bundle = bundle_for(&p, &expected, 2);
+    let manifest = Manifest::parse(
+        &bundle.files.last().unwrap().1,
+        &p.repository,
+        &p.scope,
+        p.public,
+    )
+    .unwrap();
+    let first = manifest.artifact("operations").unwrap().parts[0]
+        .path
+        .clone();
+    let second = manifest.artifact("operations").unwrap().parts[1]
+        .path
+        .clone();
+    let files: BTreeMap<_, _> = bundle.files.into_iter().collect();
+    let mut interrupted = false;
+    let mock = Mock::new(move |method, path, _| {
+        assert_eq!(method, "GET");
+        if path.contains("/git/ref/") {
+            return (
+                200,
+                json!({"ref":"refs/heads/lucy-memory","object":{"sha":"fixed"}}).to_string(),
+                vec![],
+            );
+        }
+        let name = path
+            .split_once("/contents/")
+            .unwrap()
+            .1
+            .split('?')
+            .next()
+            .unwrap();
+        if name == second && !interrupted {
+            interrupted = true;
+            return (503, "{}".into(), vec![]);
+        }
+        (200, files[name].clone(), vec![])
+    });
+    let reader = tempfile::tempdir().unwrap();
+    p.upload = false;
+    Replica::open(reader.path())
+        .unwrap()
+        .merge(&p, original.clone())
+        .unwrap();
+    assert!(sync_with(reader.path(), &p, &mock.api).is_err());
+    assert_eq!(
+        Replica::open(reader.path()).unwrap().read(&p).unwrap(),
+        original
+    );
+    assert!(
+        !reader
+            .path()
+            .join("replication-v1")
+            .join(format!("{}.remote.json", p.scope))
+            .exists()
+    );
+    assert_eq!(
+        sync_with(reader.path(), &p, &mock.api).unwrap()["pending"],
+        false
+    );
+    assert_eq!(
+        Replica::open(reader.path()).unwrap().read(&p).unwrap(),
+        expected
+    );
+    assert_eq!(
+        mock.requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r["path"].as_str().unwrap().contains(&first))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn expired_rate_limit_reset_is_not_mistaken_for_a_multi_year_delay() {
+    let mock = Mock::new(|_, _, _| {
+        (
+            403,
+            "{}".into(),
+            vec![
+                ("X-RateLimit-Remaining".into(), "0".into()),
+                ("X-RateLimit-Reset".into(), "1".into()),
+            ],
+        )
+    });
+    let error = mock.api.value(Method::GET, "/test", None).unwrap_err();
+    assert!(error.contains("retry after 0 (HTTP 403"));
 }
 
 #[test]
@@ -436,7 +721,7 @@ fn room_archive_import_publish_restore_and_recall_keep_origin() {
     assert!(
         public
             .api
-            .publish(&p, None, &expected)
+            .publish(&p, None, &expected, 1)
             .unwrap_err()
             .contains("private repository")
     );
