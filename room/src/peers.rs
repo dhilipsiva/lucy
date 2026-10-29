@@ -1,5 +1,10 @@
 //! Public archives are attributed evidence. They are never asserted into the engine.
-use crate::{journal, recall::HashSpace, sources::fetch_text};
+use crate::{
+    journal,
+    recall::HashSpace,
+    sources::{fetch_text, fetch_text_bounded},
+};
+use lucy_room_memory::transport::{self, Manifest, MANIFEST_BYTES};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -79,8 +84,8 @@ pub fn parse_records(text: &str, peer: &str) -> Result<Vec<Record>, String> {
             if p.get("id").and_then(Value::as_str) != Some(&id) {
                 return Err("record id disagrees with payload".into());
             }
-            if p.get("private") == Some(&Value::Bool(true)) {
-                return Err("private record in public archive".into());
+            if p.get("private") != Some(&Value::Bool(false)) {
+                return Err("record is not explicitly public".into());
             }
             if p.get("channel")
                 .and_then(Value::as_str)
@@ -154,25 +159,44 @@ impl Memory {
     }
 }
 async fn snapshot(peer: &Peer) -> Result<Vec<Record>, String> {
+    if !peer.public || !transport::repository(&peer.repository) {
+        return Err("invalid public peer".into());
+    }
+    let reference: Value = serde_json::from_str(
+        &fetch_text_bounded(
+            &format!(
+                "https://api.github.com/repos/{}/git/ref/heads/lucy-memory",
+                peer.repository
+            ),
+            MANIFEST_BYTES,
+        )
+        .await?,
+    )
+    .map_err(|e| e.to_string())?;
+    let head = reference["object"]["sha"]
+        .as_str()
+        .ok_or("memory revision missing")?;
+    if reference["ref"] != "refs/heads/lucy-memory"
+        || head.len() != 40
+        || !head.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        return Err("invalid memory revision".into());
+    }
     let base = format!(
-        "https://raw.githubusercontent.com/{}/lucy-memory",
+        "https://raw.githubusercontent.com/{}/{head}",
         peer.repository
     );
-    let manifest: Value =
-        serde_json::from_str(&fetch_text(&format!("{base}/manifest.json")).await?)
-            .map_err(|e| e.to_string())?;
-    if manifest["version"] != 1
-        || manifest["public"] != true
-        || manifest["repository"] != peer.repository
-        || manifest["scope"] != peer.scope
-    {
-        return Err("snapshot scope mismatch".into());
+    let manifest = Manifest::parse(
+        &fetch_text_bounded(&format!("{base}/manifest.json"), MANIFEST_BYTES).await?,
+        &peer.repository,
+        &peer.scope,
+        true,
+    )?;
+    let mut archive = manifest.assembler("snapshot")?;
+    for part in &manifest.artifact("snapshot")?.parts {
+        archive.push(&fetch_text_bounded(&format!("{base}/{}", part.path), part.bytes).await?)?;
     }
-    let text = fetch_text(&format!("{base}/snapshot.nibli")).await?;
-    if manifest["hashes"]["snapshot.nibli"] != lucy_room_memory::digest(text.as_bytes()) {
-        return Err("snapshot hash mismatch".into());
-    }
-    parse_snapshot(&text, &peer.name)
+    parse_snapshot(&archive.finish()?, &peer.name)
 }
 pub fn parse_snapshot(text: &str, peer: &str) -> Result<Vec<Record>, String> {
     let mut out = vec![];
@@ -363,6 +387,41 @@ pub async fn load(query: &str) -> Memory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn both_transport_versions_feed_the_same_public_snapshot_parser() {
+        let payload = serde_json::json!({"record":{"payload":{"id":"shared","text":"exact 🐦\nmessage","private":false,"channel":"user"}}});
+        let text = format!(
+            "record(\"target\", {}, Snapshot, Json).\n",
+            serde_json::json!(payload.to_string())
+        );
+        for version in [1, 2] {
+            let bundle = transport::bundle(serde_json::json!({"identity":"test","repository":"example/memory","scope":"test","public":true,"ref":"lucy-memory","schema":"lucy-operations-v1"}),"".into(),text.clone(),version).unwrap();
+            let manifest = Manifest::parse(
+                &bundle.files.last().unwrap().1,
+                "example/memory",
+                "test",
+                true,
+            )
+            .unwrap();
+            let mut archive = manifest.assembler("snapshot").unwrap();
+            for part in &manifest.artifact("snapshot").unwrap().parts {
+                archive
+                    .push(
+                        &bundle
+                            .files
+                            .iter()
+                            .find(|(path, _)| path == &part.path)
+                            .unwrap()
+                            .1,
+                    )
+                    .unwrap();
+            }
+            let records = parse_snapshot(&archive.finish().unwrap(), "test").unwrap();
+            assert_eq!(records.len(), 1);
+            assert_eq!(records[0].text, "exact 🐦\nmessage");
+        }
+        assert!(parse_snapshot(&text.replace("false", "true"), "test").is_err());
+    }
     #[test]
     fn actual_archive_is_evidence() {
         let r = parse_records(include_str!("../../lucy/interactions.nibli"), "lucy").unwrap();

@@ -15,8 +15,13 @@ as the workspace identity. Preserve the host's chosen model and permission rules
 2. **Refresh on every wake.** Fetch the current `peers.json` from the origin.
    Attempt every public peer there and every private peer this user has separately
    authorized. Prefer its `lucy-memory/manifest.json` and verify the listed hashes
-   when tools permit; read `snapshot.nibli` for current memory and the operation
-   log for provenance or disputes. If that branch is absent, fetch the listed
+   when tools permit. Version 1 names `snapshot.nibli` and `operations.nibli`.
+   Version 2 lists ordered parts under `artifacts.snapshot` and
+   `artifacts.operations`: fetch them at the same immutable commit, verify their
+   byte lengths and SHA-256 hashes, and concatenate without extra separators.
+   Verify the assembled archive's length and hash before reading it. Parts can
+   split individual records. Read the snapshot for current memory and the
+   operation log for provenance or disputes. If that branch is absent, fetch the listed
    source files at the current code ref. Do not assume an old clone is current.
    Classify each source as fresh, cached, unavailable or pending upload. Preserve
    the last good copy when a refresh fails and state any gap. Use relevant excerpts
