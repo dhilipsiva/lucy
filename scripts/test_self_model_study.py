@@ -23,6 +23,18 @@ readiness_spec.loader.exec_module(readiness)
 
 
 class RunnerTests(unittest.TestCase):
+    def test_readiness_report_distinguishes_smoke_success_from_learning_evidence(self):
+        text = readiness.render_report(dict(scripted=dict(trials=40, planned_trials=320,
+            mechanics_ready=False, active_ms=1676000), models={"fixture":dict(trials=8, planned_trials=8,
+            completed=8, model_ready=True, active_ms=480000)}, provider_unchanged=True,
+            frozen_implementation_unchanged=True))
+        self.assertIn("40 / 320", text)
+        self.assertIn("8 / 8 | 8 | 8.00 min | passed", text)
+        self.assertIn("S6a remains incomplete", text)
+        self.assertIn("Missing comparisons remain unavailable", text)
+        self.assertIn("unavailable originals replayed", text)
+        self.assertNotIn("None", readiness.render_report({}))
+
     def test_readiness_fixtures_are_complete_and_synthetic(self):
         bundle = readiness.fixtures.bundle(dict(protocol="fixture", implementation="fixture"))
         study.validate_bundle(bundle)

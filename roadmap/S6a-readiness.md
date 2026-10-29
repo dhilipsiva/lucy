@@ -62,6 +62,79 @@ JSON reports observed local persistence and any missing evidence explicitly.
 
 ## Observed results
 
-Pending the bounded readiness run. Results will distinguish harness correctness,
-model limitations and runtime feasibility. Any extrapolation to a one-hour study
-will be labelled an estimate from synthetic tasks, not a learning result.
+Run on **2026-10-29, 14:40:15–15:18:45 UTC**, using frozen source
+`8e10692f6f3b3fc2d769f776a2d121c0db33cea1`. **Readiness did not pass; S6a remains
+incomplete.** The source and executable pins and host provider configuration
+were unchanged throughout the run.
+
+| Diagnostic | Preserved trials | Verified successes | Active time | Result |
+| --- | ---: | ---: | ---: | --- |
+| Scripted matrix | 40/320, plus all 20 calibration tasks | 32; eight expected missing-source failures | 27m56.515s | Incomplete at the trial cutoff |
+| Qwen 3.6 35B A3B | 8/8 | 8 | 8m01.117s | Smoke gate passed |
+| Llama 3.1 8B | 8/8 | 0; eight inconclusive | 2m32.596s | Smoke gate failed |
+
+All 76 preserved originals passed independent Python replay, and Python agreed
+with native Rust scoring for each run. No preserved trial had false verification
+or a budget violation; calibration was also safe. All four intervention controls
+were observed. The interrupted scripted trial retained its partial workspace and
+had no completed original. Missing paired comparisons and confidence intervals
+remained null. No report qualified for policy activation.
+
+The eight-task model smoke schedule deliberately does not populate the full
+registered matrix. Its native reports therefore retain `complete:false` and
+`complete_originals:false`, including Qwen's successful smoke test. This is not
+missing evidence for the eight scheduled diagnostic tasks.
+
+The dominant cost was repeated whole-history Nibli auditing:
+
+| Prior calibration tasks | Example native wall time | Nibli auditing | Audit calls |
+| ---: | ---: | ---: | ---: |
+| 0 | 0.408s | 0.135s | 45 |
+| 10 | 11.850s | 9.705s | 62 |
+| 20 | 49.345s | 43.096s | 52 |
+
+These are individual synthetic timing samples, not matched performance or
+learning comparisons. Weighting the observed mean native duration of each
+family/arm cell by its 40 planned trials projects **221.4 minutes** for the
+320-trial matrix alone. This estimate excludes complete-run calibration,
+scoring, and actual model inference. It is not a statistical bound or a forecast
+for independently selected tasks. It nevertheless gives no support for a
+one-hour run at the present implementation's measured throughput.
+
+Llama's new synthetic traces identified three prose-only responses, two attempts
+to begin/revise an already frozen contract with invalid tool arguments, two
+rejected multi-tool batches, and one successful write without required checks.
+These are workflow failures, not demonstrated inability to solve the underlying
+questions. No prior sealed empirical cases or traces were consulted.
+
+Validation passed: **159 Rust tests**, the desktop feature gate, **23 Python
+tests** (including the final readable-report formatter), all **50 constitution
+and eight counterfactual Nibli pins**, and the release build. The test-only
+subprocess bridge is intentionally ignored by ordinary Cargo tests and was
+exercised by the scripted diagnostic. Before the full run, a smaller integration
+check passed with four calibration tasks and 16 trials. No interactive desktop
+inspection or new Lean proof execution was performed; Lean remains intact.
+
+Private readback verified **7,733 scripted-run files, 1,263 Qwen files, and 1,130
+Llama files**. Originals remain local; no replication or publication was
+attempted. Their exact directory is retained in Lucy's private session record.
+References within that directory are `freeze.json`, `readiness.json`, and each
+run's `report.json`, `score-input.json`, originals, profiles and
+`preserved-hashes.json`. The top-level readiness report SHA-256 is
+`f68d18baaf7c600605179ce6bca3cbad79423c14e2d02db94c9c76f5f892f64b`;
+the freeze SHA-256 is
+`3b2a39800822f526fa91356af3a47ac82cf30487b311b062774a8d2be14ac3e6`.
+The readable report formatter was added after the frozen run; it does not alter
+those originals or their results.
+
+## Next useful work
+
+1. Reduce repeated whole-history Nibli revalidation while preserving the same
+   Rust/Nibli invariants, tamper detection, and Lean checks. Measure any proposed
+   reuse of already checked history before adopting it; do not simply omit audits.
+2. Clarify the already frozen contract and tool argument protocol for Llama,
+   retaining individual approvals and evidence requirements. Validate it on new
+   synthetic diagnostics without silently substituting a model.
+3. Repeat bounded engineering readiness after those changes. Only then design a
+   fresh registration with independently selected cases and a feasible budget.
+   The current observations do not demonstrate learning from experience.

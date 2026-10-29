@@ -240,6 +240,55 @@ def build_test_binary():
                      and row.get("target", {}).get("name") == "lucy_cli"))
 
 
+def render_report(result):
+    """Readable aggregate report; never include prompts, traces, or private paths."""
+    def minutes(value):
+        return "unavailable" if value is None else f"{value/60000:.2f} min"
+    lines = ["# S6a engineering readiness", "", "Synthetic engineering diagnostics; S6a remains incomplete.", "",
+        "| Run | Preserved / planned trials | Verified successes | Elapsed | Readiness gate |",
+        "| --- | ---: | ---: | ---: | --- |"]
+    scripted = result.get("scripted", {})
+    if scripted:
+        lines.append(f"| Scripted matrix | {scripted.get('trials',0)} / {scripted.get('planned_trials',320)} | "
+            f"not a model capability score | {minutes(scripted.get('active_ms'))} | "
+            + ("passed" if scripted.get("mechanics_ready") else "not passed") + " |")
+    for model, row in result.get("models", {}).items():
+        lines.append(f"| {model} | {row.get('trials',0)} / {row.get('planned_trials',8)} | "
+            f"{row.get('completed','unavailable')} | {minutes(row.get('active_ms'))} | "
+            + ("passed" if row.get("model_ready") else "not passed") + " |")
+    lines += ["", "Model smoke completeness is judged against eight scheduled tasks, not the full registered matrix. "
+        "Its native study report therefore remains incomplete and non-qualifying even when the smoke gate passes.", "",
+        "No independent evaluator, human approval, empirical learning benefit, or policy activation is claimed.", "",
+        "## Evidence and gaps", ""]
+    for name, row in [("Scripted matrix", scripted), *result.get("models", {}).items()]:
+        if not row:
+            continue
+        original = row.get("replay", {})
+        scoring = row.get("score_replay", {})
+        persistence = row.get("persistence", {})
+        lines.append(f"- {name}: {original.get('originals_verified','unavailable')} originals replayed; "
+            f"original replay valid={original.get('valid','unavailable')}; score replay valid={scoring.get('valid','unavailable')}; "
+            f"persistence={persistence.get('status','unavailable')} ({persistence.get('files','unavailable')} files).")
+    if not scripted.get("mechanics_ready", False):
+        lines.append("- The complete scripted matrix has not passed its readiness gate. Missing comparisons remain unavailable.")
+    for model, row in result.get("models", {}).items():
+        if not row.get("model_ready", False):
+            lines.append(f"- {model}: {row.get('inconclusive','unavailable')} inconclusive outcomes; inspect the private synthetic traces before another study.")
+    lines += ["", "## Timing samples", "", "Inclusive Nibli timings are nested within wall time; do not add them.", "",
+        "| Prior synthetic calibration tasks | Native wall time | Nibli audit time | Audit calls |",
+        "| ---: | ---: | ---: | ---: |"]
+    for history, sample in scripted.get("profile", {}).get("history_sizes", {}).items():
+        if sample:
+            audit = sample.get("stages", {}).get("nibli_audit", {})
+            lines.append(f"| {history} | {sample['wall_ms']/1000:.3f} s | "
+                f"{audit.get('total_us',0)/1000000:.3f} s | {audit.get('calls','unavailable')} |")
+    lines += ["", f"Provider unchanged: {result.get('provider_unchanged','unavailable')}. "
+        f"Frozen implementation unchanged during the run: {result.get('frozen_implementation_unchanged','unavailable')}.", "",
+        "Originals remain local. No replication or publication was attempted. See each run's preserved-hashes.json "
+        "for readback evidence. Future empirical work requires a fresh registration; do not treat these diagnostics as held-out results.", ""]
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
@@ -290,10 +339,13 @@ def main():
         result["ready_for_registration_design"] = (result.get("scripted",{}).get("mechanics_ready",False)
             and len(result["models"])==2 and all(r["model_ready"] for r in result["models"].values())
             and before==after and result["frozen_implementation_unchanged"])
+        readable = render_report(result)
+        (base / "README.md").write_text(readable)
+        if (base / "README.md").read_text() != readable:
+            raise ValueError("readiness report readback mismatch")
+        result["readable_report_readback"] = "verified locally"
+        result["ended_at"] = now()
         save(base / "readiness.json", result)
-        (base / "README.md").write_text("# Engineering readiness diagnostics\n\n"
-            + "These are synthetic engineering checks, not empirical learning evidence. "
-            + "No independent evaluator or human approval is claimed. See readiness.json and preserved-hashes.json within each run.\n")
     print(json.dumps(dict(ready_for_registration_design=result["ready_for_registration_design"],
                          s6a_complete=False, report=str(base/"readiness.json"))))
     return 0 if result["ready_for_registration_design"] else 2
