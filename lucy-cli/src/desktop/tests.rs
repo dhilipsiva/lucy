@@ -35,6 +35,219 @@ fn task_declaration() -> Value {
 }
 
 #[test]
+fn study_recall_filters_before_ranking_and_drops_nested_journals() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut service = Service::new(temp.path().join("memory"), None);
+    service.study_adaptation = Some(false);
+    let store = Store::open(&service.root).unwrap();
+    let allowed = crate::store::Record {
+        origin: "fixture:synthetic".into(),
+        payload: json!({"id":"fact","text":"synthetic source fact","private":true,
+            "entry":{"lessons":"nested canary"}}),
+    };
+    store.record(&allowed).unwrap();
+    service.study_records.lock().unwrap().insert(allowed.key());
+    for origin in ["lucy:task-model:v1", "fixture:unassigned"] {
+        store.record(&crate::store::Record { origin:origin.into(),
+            payload:json!({"id":"journal","text":"synthetic source fact lessons roadmap canary","private":true}) }).unwrap();
+    }
+    drop(store);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    service
+        .dispatch(request(
+            &client,
+            json!({"op":"begin-archive","workspace":temp.path()}),
+        ))
+        .unwrap();
+    let result = service
+        .dispatch(request(
+            &client,
+            json!({"op":"recall","query":"synthetic source"}),
+        ))
+        .unwrap();
+    assert_eq!(
+        result["memories"],
+        json!([{"origin":"fixture:synthetic","id":"fact","excerpt":"synthetic source fact"}])
+    );
+    service.study_records.lock().unwrap().clear();
+    assert_eq!(
+        service
+            .dispatch(request(
+                &client,
+                json!({"op":"recall","query":"synthetic source"})
+            ))
+            .unwrap()["memories"],
+        json!([])
+    );
+}
+
+#[test]
+fn study_rejects_live_host_tools_before_execution() {
+    for tool in ["diagnostics", "window", "service", "http", "git"] {
+        let temp = tempfile::tempdir().unwrap();
+        let mut service = Service::new(temp.path().join("memory"), None);
+        service.study_adaptation = Some(false);
+        service.scripted(vec![task_declaration(), task_call(tool, json!({}))]);
+        let client = service.dispatch(json!({"op":"open"})).unwrap();
+        let error = service.dispatch(request(&client,json!({"op":"chat","text":"Synthetic dispatch boundary fixture","event":"fixture","workspace":temp.path()}))).unwrap_err();
+        assert!(error.contains("limited to the synthetic workspace"));
+        assert!(
+            crate::self_model::grouped::History::read(&Store::open(&service.root).unwrap())
+                .unwrap()
+                .predictions
+                .is_empty()
+        );
+    }
+}
+
+#[test]
+fn native_task_clock_pauses_for_approval_and_rejects_an_expired_write() {
+    let temp = tempfile::tempdir().unwrap();
+    let service = Service::new(temp.path().join("memory"), None);
+    service.scripted(vec![
+        task_declaration(),
+        task_call(
+            "write",
+            json!({"path":"late.txt","text":"must not execute"}),
+        ),
+    ]);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    let response = service
+        .dispatch(request(
+            &client,
+            json!({"op":"chat","text":"synthetic approval clock",
+        "event":"clock","workspace":temp.path()}),
+        ))
+        .unwrap();
+    let id = response["pending"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap();
+    let session = service
+        .active(
+            client["source"].as_str().unwrap(),
+            client["session"].as_str().unwrap(),
+        )
+        .unwrap();
+    let elapsed = session
+        .lock()
+        .unwrap()
+        .task_clock
+        .as_ref()
+        .unwrap()
+        .elapsed_ms();
+    std::thread::sleep(std::time::Duration::from_millis(15));
+    assert_eq!(
+        session
+            .lock()
+            .unwrap()
+            .task_clock
+            .as_ref()
+            .unwrap()
+            .elapsed_ms(),
+        elapsed
+    );
+    let mut expired = crate::task_model::runtime::ActiveClock::start(
+        std::time::Instant::now() - std::time::Duration::from_millis(101),
+        0,
+        100,
+    );
+    expired.pause();
+    session.lock().unwrap().task_clock = Some(expired);
+    let error = service
+        .dispatch(request(
+            &client,
+            json!({"op":"approve","action":id,"allow":true}),
+        ))
+        .unwrap_err();
+    assert!(error.contains("budget exhausted"), "{error}");
+    assert!(!temp.path().join("late.txt").exists());
+}
+
+#[test]
+fn study_rejects_an_oversized_task_before_it_can_disappear_from_model_context() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut service = Service::new(temp.path().join("memory"), None);
+    service.study_adaptation = Some(false);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    let error = service
+        .dispatch(request(
+            &client,
+            json!({"op":"chat","text":"x".repeat(18001),
+        "event":"fixture","workspace":temp.path()}),
+        ))
+        .unwrap_err();
+    assert!(error.contains("exceed native input window"));
+    assert!(!service.root.join("visible-trace.json").exists());
+}
+
+#[test]
+fn study_hides_sealed_expectations_but_checks_them_and_suppresses_execution_forecasts() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut service = Service::new(temp.path().join("memory"), None);
+    service.study_adaptation = Some(false);
+    service.scripted(vec![
+        task_call("task_begin", json!({"title":"Synthetic isolation fixture","family":"verification","method":"fixture",
+            "criteria":[{"id":"answer","description":"Output meets the sealed requirement",
+                "check":{"kind":"json_equals","path":"answer.json","pointer":"/answer","expected":"sealed-canary"}}]})),
+        task_call("read", json!({"path":"missing.txt"})),
+        task_call("read", json!({"path":"missing.txt"})),
+        task_call("read", json!({"path":"missing.txt"})),
+        task_call("task_status", json!({})),
+        task_call("task_check", json!({"criterion":"answer"})),
+        task_call("task_finish", json!({})),
+        json!({"content":"Evidence inspected."}),
+    ]);
+    std::fs::write(temp.path().join("answer.json"), r#"{"answer":"wrong"}"#).unwrap();
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    let result = service.dispatch(request(&client,json!({"op":"chat","text":"Run the synthetic mechanism fixture", "event":"fixture", "workspace":temp.path()}))).unwrap();
+    assert_eq!(
+        result["task_status"]["tasks"][0]["outcome"]["verdict"],
+        "failure"
+    );
+    let trace: Value =
+        serde_json::from_slice(&std::fs::read(service.root.join("visible-trace.json")).unwrap())
+            .unwrap();
+    for request in trace
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["kind"] == "request")
+    {
+        for message in request["value"].as_array().unwrap() {
+            if message["role"] == "tool" {
+                let content = message["content"].as_str().unwrap();
+                assert!(!content.contains("sealed-canary"));
+                assert!(!content.contains("InspectFirst"));
+                assert!(!content.contains("\"inspection\""));
+                assert!(!content.contains("\"basis_count\""));
+                assert!(!content.contains("\"reviewed_basis_count\""));
+                if message["tool_name"] == "read" {
+                    assert!(!content.contains("\"probability_ppm\""));
+                    assert!(!content.contains("\"policy\""));
+                }
+            }
+        }
+    }
+    let store = Store::open(&service.root).unwrap();
+    let history = crate::task_model::History::read(&store).unwrap();
+    assert!(
+        serde_json::to_string(&history.entries)
+            .unwrap()
+            .contains("sealed-canary")
+    );
+    assert!(
+        crate::self_model::grouped::History::read(&store)
+            .unwrap()
+            .predictions
+            .values()
+            .any(|p| p.policy == crate::self_model::Policy::InspectFirst)
+    );
+}
+
+#[test]
 fn native_task_requires_frozen_criteria_and_checks_actual_output_after_approval() {
     let temp = tempfile::tempdir().unwrap();
     let service = Service::new(temp.path().join("memory"), None);

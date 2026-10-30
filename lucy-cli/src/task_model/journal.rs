@@ -57,6 +57,7 @@ pub(crate) fn validate_definition(definition: &Definition) -> Result<()> {
 
 impl History {
     pub fn read(store: &Store) -> Result<Self> {
+        let _span = profile::span("history_read");
         let mut history = Self::default();
         for record in store.all()?.into_iter().filter(|r| r.origin == ORIGIN) {
             let entry: Entry = serde_json::from_value(record.payload["entry"].clone())
@@ -68,6 +69,7 @@ impl History {
                 return Err("task record identity or privacy mismatch".into());
             }
         }
+        profile::count("history_entries_read", history.entries.len() as u64);
         history.audit()?;
         Ok(history)
     }
@@ -325,9 +327,11 @@ impl History {
     }
 
     pub fn audit(&self) -> Result<()> {
+        let _span = profile::span("history_audit");
         if self.entries.is_empty() {
             return Ok(());
         }
+        let nibli_span = profile::span("nibli_audit");
         let engine = NibliEngine::new();
         engine
             .assert_text(&format!("{SPEC}\n{}", self.facts()))
@@ -339,6 +343,8 @@ impl History {
         if !complete.iter().any(|s| s == "sl_invalid") {
             return Err("task evidence check incomplete".into());
         }
+        drop(nibli_span);
+        let _rust_span = profile::span("rust_audit");
         let invalid = match verdict {
             QueryResult::True => true,
             QueryResult::False => false,
@@ -629,7 +635,7 @@ pub(crate) fn append(
         "channel":"task_model","text":format!("Task evidence {}: receipt {}.",task,entry.sequence),"entry":entry}),
     };
     store.record(&record)?;
-    if !store.all()?.iter().any(|saved| saved == &record) {
+    if store.get(&record.origin, &entry.id)?.as_ref() != Some(&record) {
         return Err("task receipt readback failed".into());
     }
     Ok(entry)
@@ -779,6 +785,17 @@ pub fn complete_action(
 }
 
 pub fn finish(store: &Store, workspace: &Path, task: &str, interrupted: bool) -> Result<Entry> {
+    finish_with_clock(store, workspace, task, interrupted, None)
+}
+
+pub(crate) fn finish_with_clock(
+    store: &Store,
+    workspace: &Path,
+    task: &str,
+    interrupted: bool,
+    clock: Option<&runtime::ActiveClock>,
+) -> Result<Entry> {
+    let _span = profile::span("task_finish");
     let started = Instant::now();
     let mut history = History::read(store)?;
     let definition = history.task(task)?.clone();
@@ -791,7 +808,8 @@ pub fn finish(store: &Store, workspace: &Path, task: &str, interrupted: bool) ->
         .definition
         .budget
         .active_ms
-        .saturating_sub(history.usage(task).active_ms);
+        .saturating_sub(history.usage(task).active_ms)
+        .min(clock.map_or(u64::MAX, |c| c.remaining_ms()));
     let fresh = checks.values().all(|e| match &e.event {
         Event::Checked {
             criterion,
@@ -817,7 +835,8 @@ pub fn finish(store: &Store, workspace: &Path, task: &str, interrupted: bool) ->
     });
     let ids = checks.values().map(|e| e.id.clone()).collect();
     let usage = history.usage(task);
-    let elapsed = started.elapsed().as_millis() as u64;
+    let elapsed = (started.elapsed().as_millis() as u64)
+        .max(clock.map_or(0, |c| c.elapsed_ms().saturating_sub(usage.active_ms)));
     let (verdict, reason) = if interrupted || usage.pending_actions > 0 {
         (Verdict::Inconclusive, "interrupted_or_unresolved_execution")
     } else if usage.active_ms.saturating_add(elapsed) > definition.definition.budget.active_ms {

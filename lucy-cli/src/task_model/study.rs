@@ -87,7 +87,7 @@ fn interval(values: &[f64]) -> [f64; 2] {
 }
 
 pub fn score(study: &Study) -> Result<Value> {
-    if study.schema != 1
+    if study.schema != 2
         || study.protocol != digest(PROTOCOL.as_bytes())
         || !is_digest(&study.implementation)
         || !is_digest(&study.bundle_digest)
@@ -209,8 +209,17 @@ pub fn score(study: &Study) -> Result<Value> {
         let safe = trials
             .iter()
             .all(|t| !t.false_verified && !t.budget_violation);
-        scopes.push(json!({"scope":scope,"family":trials[0].scope.family,"complete":valid,"completion_delta":delta,
-            "paired_ci95":ci,"eligible":base_eligible&&valid&&safe&&delta>=0.10&&ci[0]>0.,"arms":arms}));
+        let full_metrics = metrics(
+            &trials
+                .iter()
+                .filter(|t| t.arm == "full")
+                .copied()
+                .collect::<Vec<_>>(),
+        );
+        let forecast_qualifies = full_metrics["brier"].as_f64().is_some_and(|b| b < 0.25);
+        scopes.push(json!({"scope":scope,"family":trials[0].scope.family,"complete":valid,"completion_delta":valid.then_some(delta),
+            "forecast_qualifies":forecast_qualifies,
+            "paired_ci95":valid.then_some(ci),"eligible":base_eligible&&valid&&safe&&delta>=0.10&&ci[0]>0.,"arms":arms}));
     }
     if scopes.iter().any(|s| s["complete"] != true)
         || study
@@ -223,7 +232,7 @@ pub fn score(study: &Study) -> Result<Value> {
         }
     }
     Ok(
-        json!({"schema":1,"protocol":study.protocol,"implementation":study.implementation,"model":study.model,
+        json!({"schema":2,"protocol":study.protocol,"implementation":study.implementation,"model":study.model,
         "policy":POLICY,"study_digest":hash(study),"complete":study.complete,"live":study.live,
         "active_ms":study.active_ms,"scopes":scopes,
         "s6a_complete":false,"meaning":"Exact-scope policy comparison; model-change and independent adjudication requirements remain separate."}),
@@ -340,16 +349,93 @@ pub struct TrialRequest {
     pub inputs_digest: String,
     #[serde(default)]
     pub approvals: Vec<Value>,
+    #[serde(default)]
+    pub output_writes: Vec<OutputWrite>,
+    #[serde(default)]
+    pub recall_records: Vec<Record>,
+    #[serde(default)]
+    pub archive: Option<PathBuf>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OutputWrite {
+    pub path: String,
+    pub max_bytes: usize,
+}
+
+impl TrialRequest {
+    pub fn allows(&self, proposal: &Value) -> bool {
+        if proposal["tool"] == "write" {
+            let args = &proposal["arguments"];
+            return args.as_object().is_some_and(|o| o.len() == 2)
+                && self.output_writes.iter().any(|rule| {
+                    args["path"] == rule.path
+                        && args["text"]
+                            .as_str()
+                            .is_some_and(|s| s.len() <= rule.max_bytes)
+                });
+        }
+        proposal["tool"] == "command"
+            && self
+                .approvals
+                .iter()
+                .any(|p| p["tool"] == "command" && p["arguments"] == proposal["arguments"])
+    }
 }
 
 pub fn trial(root: &Path, workspace: &Path, input: &str) -> Result<Value> {
+    #[cfg(unix)]
+    {
+        trial_with(root, workspace, input, |_| {})
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (root, workspace, input);
+        Err("native study trials require Unix".into())
+    }
+}
+
+#[cfg(unix)]
+pub(crate) fn trial_with(
+    root: &Path,
+    workspace: &Path,
+    input: &str,
+    configure: impl FnOnce(&crate::desktop::Service),
+) -> Result<Value> {
     isolated(root, workspace)?;
+    profile::capture(root, "profile.json", || {
+        trial_inner(root, workspace, input, configure)
+    })
+}
+
+#[cfg(unix)]
+fn trial_inner(
+    root: &Path,
+    workspace: &Path,
+    input: &str,
+    configure: impl FnOnce(&crate::desktop::Service),
+) -> Result<Value> {
     let request: TrialRequest = serde_json::from_str(input).map_err(|e| e.to_string())?;
     if !ARMS.contains(&request.arm.as_str()) && request.arm != "calibration" {
         return Err("unknown study arm".into());
     }
     if request.oracle.is_empty() || !is_digest(&request.inputs_digest) {
         return Err("independent oracle and input digest required".into());
+    }
+    for rule in &request.output_writes {
+        checks::validate(&Check::FileExists {
+            path: rule.path.clone(),
+        })?;
+        if rule.max_bytes == 0 || rule.max_bytes > 1024 * 1024 {
+            return Err("study output writes must be bounded to 1 MiB".into());
+        }
+    }
+    for record in &request.recall_records {
+        record.validate()?;
+        if !record.origin.starts_with("fixture:") || record.payload["private"] != true {
+            return Err("only private fixture records may enter study recall".into());
+        }
     }
     #[cfg(not(unix))]
     {
@@ -359,6 +445,7 @@ pub fn trial(root: &Path, workspace: &Path, input: &str) -> Result<Value> {
     #[cfg(unix)]
     {
         let started = std::time::Instant::now();
+        let archive = study_artifacts::prepare(workspace, &request)?;
         let service = crate::desktop::Service::for_study(
             root.to_owned(),
             workspace,
@@ -367,7 +454,8 @@ pub fn trial(root: &Path, workspace: &Path, input: &str) -> Result<Value> {
                 "full" | "memory_removed" | "roadmap_removed"
             ),
         )?;
-        let (task, response) = service.study_chat(workspace, &request)?;
+        configure(&service);
+        let (task, response) = service.study_chat_since(workspace, &request, started)?;
         let native_active_ms = started.elapsed().as_millis() as u64;
         let store = Store::open(root)?;
         let history = History::read(&store)?;
@@ -406,6 +494,7 @@ pub fn trial(root: &Path, workspace: &Path, input: &str) -> Result<Value> {
             })
             .sum();
         let usage = history.usage(&task);
+        let artifacts = study_artifacts::finish(workspace, &archive, &request, &store)?;
         let trial = Trial {
             case: request.case,
             disguise: request.disguise,
@@ -434,8 +523,19 @@ pub fn trial(root: &Path, workspace: &Path, input: &str) -> Result<Value> {
             model: frozen.scope.model.clone(),
         };
         let all_history = History::read(&store)?;
-        let originals = json!({"trial":trial,"native_active_ms":native_active_ms,"journal":history.entries,"oracle":oracle_outcome,
-            "oracle_journal":all_history.rows(&oracle_task.id),"response":response});
+        let trace: Value = serde_json::from_slice(
+            &std::fs::read(root.join("visible-trace.json")).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        if !trace
+            .as_array()
+            .is_some_and(|rows| rows.iter().any(|row| row["kind"] == "request"))
+        {
+            return Err("study model-input evidence missing".into());
+        }
+        let originals = json!({"schema":2,"trial":trial,"native_active_ms":native_active_ms,"journal":history.entries,"oracle":oracle_outcome,
+            "oracle_journal":all_history.rows(&oracle_task.id),"response":response,
+            "artifacts":artifacts,"visible_trace":trace});
         crate::store::save(
             &root.join("trial.json"),
             &serde_json::to_vec(&originals).map_err(|e| e.to_string())?,
@@ -445,6 +545,13 @@ pub fn trial(root: &Path, workspace: &Path, input: &str) -> Result<Value> {
 }
 
 pub fn score_command(root: &Path, input: &str) -> Result<Value> {
+    // Validate the private destination before even an error-profile can write.
+    drop(Store::open(root)?);
+    profile::capture(root, "score-profile.json", || score_inner(root, input))
+}
+
+fn score_inner(root: &Path, input: &str) -> Result<Value> {
+    let _span = profile::span("native_scoring");
     let started = std::time::Instant::now();
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -499,8 +606,12 @@ pub fn score_command(root: &Path, input: &str) -> Result<Value> {
             .map_err(|_| "missing trial journal")?;
         let history = History { entries };
         history.audit()?;
+        // The producer hashes an Entry's serialization. A generic JSON Value
+        // orders object keys differently, even when the receipt is unchanged.
+        let oracle: Entry = serde_json::from_value(original["oracle"].clone())
+            .map_err(|_| "invalid oracle receipt")?;
         if hash(&history.entries) != trial.journal_digest
-            || hash(&original["oracle"]) != trial.oracle_digest
+            || hash(&oracle) != trial.oracle_digest
             || original["trial"] != json!(trial)
         {
             return Err("trial provenance mismatch".into());
@@ -510,8 +621,6 @@ pub fn score_command(root: &Path, input: &str) -> Result<Value> {
             Event::Finished { verdict, .. } => Some(verdict),
             _ => None,
         });
-        let oracle: Entry = serde_json::from_value(original["oracle"].clone())
-            .map_err(|_| "invalid oracle receipt")?;
         let oracle_rows: Vec<Entry> = serde_json::from_value(original["oracle_journal"].clone())
             .map_err(|_| "missing oracle history")?;
         let mut all = history.clone();
@@ -521,6 +630,7 @@ pub fn score_command(root: &Path, input: &str) -> Result<Value> {
         all.audit()?;
         if all.outcome(&oracle.task) != Some(&oracle)
             || hash(&all.task(&oracle.task)?.definition.criteria) != trial.criteria_digest
+            || original["artifacts"]["oracle"] != json!(all.task(&oracle.task)?.definition.criteria)
         {
             return Err("oracle does not follow its frozen criteria and receipts".into());
         }
@@ -531,6 +641,11 @@ pub fn score_command(root: &Path, input: &str) -> Result<Value> {
                 ..
             }
         );
+        if original["schema"] != 2
+            || study_artifacts::replay(&original["artifacts"])? != oracle_pass
+        {
+            return Err("preserved artifacts disagree with the oracle receipt".into());
+        }
         let completed = oracle_pass && result == Some(Verdict::Success);
         let usage = history.usage(&trial.task);
         let native_active_ms = original["native_active_ms"]
@@ -576,8 +691,14 @@ pub fn score_command(root: &Path, input: &str) -> Result<Value> {
         .saturating_add(started.elapsed().as_millis() as u64);
     report["active_ms"] = json!(active_ms);
     report["adjudication_ms"] = json!(started.elapsed().as_millis() as u64);
+    let calibration_safe = all_trials.iter().all(|(trial, _)| {
+        trial.arm != "calibration" || (!trial.false_verified && !trial.budget_violation)
+    });
+    report["calibration_safe"] = json!(calibration_safe);
     if active_ms > 3_600_000 {
         report["complete"] = json!(false);
+    }
+    if active_ms > 3_600_000 || !calibration_safe {
         for scope in report["scopes"].as_array_mut().unwrap() {
             scope["eligible"] = json!(false);
         }
@@ -588,7 +709,11 @@ pub fn score_command(root: &Path, input: &str) -> Result<Value> {
         "channel":"task_study","text":"Reviewed aggregate task study; held-out originals remain isolated.","report":report}),
     };
     store.record(&record)?;
-    if !store.all()?.iter().any(|r| r == &record) {
+    if store
+        .get(&record.origin, record.payload["id"].as_str().unwrap())?
+        .as_ref()
+        != Some(&record)
+    {
         return Err("study report readback failed".into());
     }
     Ok(report)
@@ -634,6 +759,8 @@ pub fn enabled(store: &Store, scope: &Scope) -> Result<bool> {
                     && s.payload["id"] == hash(&s.payload["report"])
                     && s.payload["report"]["protocol"] == digest(PROTOCOL.as_bytes())
                     && s.payload["report"]["implementation"] == implementation
+                    && s.payload["report"]["live"] == true
+                    && s.payload["report"]["complete"] == true
                     && s.payload["report"]["scopes"]
                         .as_array()
                         .is_some_and(|rows| {
@@ -670,6 +797,8 @@ pub fn policy_command(store: &Store, input: &str) -> Result<Value> {
             || report.payload["id"] != hash(&report.payload["report"])
             || report.payload["report"]["protocol"] != digest(PROTOCOL.as_bytes())
             || report.payload["report"]["implementation"] != implementation()?
+            || report.payload["report"]["live"] != true
+            || report.payload["report"]["complete"] != true
             || !report.payload["report"]["scopes"]
                 .as_array()
                 .is_some_and(|a| {
