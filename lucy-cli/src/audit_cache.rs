@@ -7,8 +7,8 @@ use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock};
 
-// Activation requires the preregistered correctness AND performance gates.
-const DEFAULT_ENABLED: bool = false;
+// Both gates passed; see roadmap/S6a-audit-performance-evidence.json (a3).
+const DEFAULT_ENABLED: bool = true;
 const CAPACITY: usize = 64;
 const QUERY: &str = "sl_invalid(History).";
 type Key = [u8; 32];

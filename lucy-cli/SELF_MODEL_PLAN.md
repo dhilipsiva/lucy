@@ -10,6 +10,15 @@ implemented on `todo/S6a-grouping`, 2026-10-30. See
 [the separate mechanism preregistration](../roadmap/S6a-grouping.md).
 This preserves the S6a study protocol and does not complete its benefit gate.
 
+Repeated audit reuse was implemented directly on `main`, 2026-10-30, for task
+receipts and both forecast versions. All 60 synthetic paired runs passed the
+[separate audit-performance registration](../roadmap/S6a-audit-performance.md).
+At 20 prior task journals, median native time fell about 67% in both families;
+Nibli evaluation time fell 73% for verification and 70% for retrieval. Reuse is
+enabled by default, with `LUCY_AUDIT_CACHE=0` restoring full validation. See the
+[aggregate evidence, including failed runner attempts](../roadmap/S6a-audit-performance-evidence.json).
+This engineering result does not complete the independent benefit or model-change studies.
+
 ## Implemented scope
 
 The approved design is now an additive task journal, CLI and native assistant

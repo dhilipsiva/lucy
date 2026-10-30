@@ -222,14 +222,14 @@ fn resource_exceeded_and_unknown_results_cannot_produce_a_success_token() {
 
 #[test]
 fn process_restart_is_cold() {
-    for _ in 0..2 {
+    for enabled in ["0", "1", "0", "1"] {
         let output = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
                 "audit_cache::tests::process_cache_probe",
                 "--nocapture",
             ])
-            .env("LUCY_AUDIT_CACHE", "1")
+            .env("LUCY_AUDIT_CACHE", enabled)
             .env("LUCY_AUDIT_CACHE_PROBE", "1")
             .output()
             .unwrap();
@@ -250,6 +250,11 @@ fn process_cache_probe() {
         check(Domain::Task, SPEC, "").unwrap().remember();
         check(Domain::Task, SPEC, "").unwrap().remember();
     });
-    assert_eq!(report["counts"]["nibli_evaluations"], 1);
-    assert_eq!(report["counts"]["audit_cache_hits"], 1);
+    if std::env::var("LUCY_AUDIT_CACHE").as_deref() == Ok("0") {
+        assert_eq!(report["counts"]["nibli_evaluations"], 2);
+        assert!(report["counts"].get("audit_cache_hits").is_none());
+    } else {
+        assert_eq!(report["counts"]["nibli_evaluations"], 1);
+        assert_eq!(report["counts"]["audit_cache_hits"], 1);
+    }
 }

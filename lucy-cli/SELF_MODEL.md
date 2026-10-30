@@ -137,11 +137,12 @@ directly until the normal package update deploys this version.
 Validation: `nix develop --command just ci` and
 `nix develop --command cargo test --test static_check`.
 
-Audit reuse is an opt-in engineering candidate: `LUCY_AUDIT_CACHE=1` reuses
-completed successful Nibli checks within one process; `LUCY_AUDIT_CACHE=0`
-always runs the full check. The default remains full validation until the
+Audit reuse is enabled by default after the
 [registered correctness and performance gates](../roadmap/S6a-audit-performance.md)
-pass. The cache holds at most 64 fingerprints, bound to the domain, exact spec,
+passed ([measurements and retained failed attempts](../roadmap/S6a-audit-performance-evidence.json)).
+`LUCY_AUDIT_CACHE=1` explicitly enables reuse of completed successful Nibli checks
+within one process; `LUCY_AUDIT_CACHE=0` always runs the full check.
+The cache holds at most 64 fingerprints, bound to the domain, exact spec,
 generated facts, query and engine settings. Task evidence and both execution
 forecast versions use it. No records or engine instances are cached. Every call
 still reads its records and performs all Rust checks; artifact checks, receipt
