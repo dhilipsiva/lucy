@@ -1,10 +1,10 @@
 //! GitHub Git-data transport. No checkout, shell, or Git executable is involved.
 use super::*;
+use lucy_room_memory::transport::{self, LEGACY_BYTES, MANIFEST_BYTES, Manifest};
 use reqwest::blocking::{Client, Response};
 use reqwest::{Method, StatusCode};
 use std::io::Read;
 use std::time::Duration;
-const MAX_BYTES: u64 = 64 * 1024 * 1024;
 
 pub struct Github {
     client: Client,
@@ -78,12 +78,12 @@ impl Github {
         if let Some(body) = body {
             req = req.json(&body);
         }
-        if mutation {
+        if mutation && !cfg!(test) {
             std::thread::sleep(Duration::from_secs(1));
         }
         let response = req
             .send()
-            .map_err(|e| format!("GitHub request failed: {}", e.without_url()))?;
+            .map_err(|e| format!("GitHub request failed at {path}: {}", e.without_url()))?;
         if response.status() == StatusCode::TOO_MANY_REQUESTS
             || (response.status() == StatusCode::FORBIDDEN
                 && (response.headers().contains_key("Retry-After")
@@ -92,22 +92,31 @@ impl Github {
                         .get("X-RateLimit-Remaining")
                         .is_some_and(|v| v == "0")))
         {
-            let retry = response
-                .headers()
-                .get("Retry-After")
-                .or_else(|| response.headers().get("X-RateLimit-Reset"))
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("later");
-            return Err(format!("GitHub rate limit; retry after {retry}"));
+            let number = |name: &str| {
+                response
+                    .headers()
+                    .get(name)
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.parse::<u64>().ok())
+            };
+            let seconds = now().parse::<u64>().unwrap_or(0) / 1000;
+            let retry = number("Retry-After")
+                .or_else(|| number("X-RateLimit-Reset").map(|reset| reset.saturating_sub(seconds)))
+                .unwrap_or(60);
+            return Err(format!(
+                "GitHub rate limit; retry after {retry} (HTTP {} at {path})",
+                response.status().as_u16()
+            ));
         }
         Ok(response)
     }
     fn value(&self, method: Method, path: &str, body: Option<Value>) -> Result<Value> {
+        let bytes = body.as_ref().map_or(0, |v| v.to_string().len());
         let response = self.request(method, path, body, None, false)?;
         if !response.status().is_success() {
-            return Err(format!("GitHub status {}", response.status().as_u16()));
+            return Err(response_error(response, path, bytes));
         }
-        serde_json::from_str(&limited(response)?).map_err(err)
+        serde_json::from_str(&bounded(response, MANIFEST_BYTES)?).map_err(err)
     }
     fn ref_head(
         &self,
@@ -134,7 +143,7 @@ impl Github {
             return Ok((None, tag, false));
         }
         if !response.status().is_success() {
-            return Err(format!("GitHub ref status {}", response.status()));
+            return Err(response_error(response, "read memory ref", 0));
         }
         let v: Value = serde_json::from_str(&limited(response)?).map_err(err)?;
         if v["ref"] != format!("refs/heads/{branch}") {
@@ -147,6 +156,15 @@ impl Github {
         ))
     }
     pub fn contents(&self, peer: &Peer, path: &str, revision: &str) -> Result<String> {
+        self.contents_bounded(peer, path, revision, LEGACY_BYTES)
+    }
+    fn contents_bounded(
+        &self,
+        peer: &Peer,
+        path: &str,
+        revision: &str,
+        limit: usize,
+    ) -> Result<String> {
         // Query parameters are encoded by reqwest::Url, never interpolated as URL syntax.
         let mut url = reqwest::Url::parse(&format!(
             "{}/repos/{}/contents/",
@@ -161,19 +179,68 @@ impl Github {
         let path = &url.as_str()[self.base.len()..];
         let response = self.request(Method::GET, path, None, None, true)?;
         if !response.status().is_success() {
-            return Err(format!(
-                "GitHub contents status {} for {path}",
-                response.status()
-            ));
+            return Err(response_error(response, path, 0));
         }
-        limited(response)
+        bounded(response, limit)
+    }
+    fn manifest(&self, peer: &Peer, head: &str) -> Result<Manifest> {
+        Manifest::parse(
+            &self.contents_bounded(peer, "manifest.json", head, MANIFEST_BYTES)?,
+            &peer.repository,
+            &peer.scope,
+            peer.public,
+        )
+    }
+    fn archive(
+        &self,
+        root: &Path,
+        peer: &Peer,
+        head: &str,
+        manifest: &Manifest,
+        name: &str,
+        cache: bool,
+    ) -> Result<String> {
+        let mut assembler = manifest.assembler(name)?;
+        for part in &manifest.artifact(name)?.parts {
+            let path = root
+                .join("replication-v1")
+                .join("parts")
+                .join(&peer.scope)
+                .join(format!("{}.txt", part.sha256));
+            let cached = if cache && manifest.version == 2 {
+                fs::File::open(&path).ok().and_then(|file| {
+                    let mut text = String::new();
+                    file.take(part.bytes as u64 + 1)
+                        .read_to_string(&mut text)
+                        .ok()?;
+                    (text.len() == part.bytes && digest(text.as_bytes()) == part.sha256)
+                        .then_some(text)
+                })
+            } else {
+                None
+            };
+            let text = match cached {
+                Some(text) => text,
+                None => self.contents_bounded(peer, &part.path, head, part.bytes)?,
+            };
+            assembler.push(&text)?;
+            if manifest.version == 2 {
+                save(&path, text.as_bytes())?;
+            }
+        }
+        assembler.finish()
     }
     fn publish(
         &self,
         peer: &Peer,
         head: Option<&str>,
         log: &BTreeMap<String, Operation>,
+        previous_format: u64,
     ) -> Result<bool> {
+        validate(log, peer)?;
+        if !peer.upload {
+            return Err("upload refused for read-only peer".into());
+        }
         if self.token.is_none() {
             return Err("upload pending: no configured GitHub credential".into());
         }
@@ -190,18 +257,10 @@ impl Github {
         }
         let operations = encode(log);
         let snap = snapshot(log)?;
-        let manifest = json!({"version":1,"identity":peer.name,"repository":peer.repository,"ref":"lucy-memory","scope":peer.scope,"public":peer.public,"schema":"lucy-operations-v1","paths":{"operations":"operations.nibli","snapshot":"snapshot.nibli"},"hashes":{"operations.nibli":digest(operations.as_bytes()),"snapshot.nibli":digest(snap.as_bytes())},"keys":peer.keys});
-        let files = [
-            ("operations.nibli", operations),
-            ("snapshot.nibli", snap),
-            (
-                "manifest.json",
-                serde_json::to_string_pretty(&manifest).map_err(err)?,
-            ),
-        ];
+        let metadata = json!({"identity":peer.name,"repository":peer.repository,"ref":"lucy-memory","scope":peer.scope,"public":peer.public,"schema":"lucy-operations-v1","keys":peer.keys});
+        let bundle = transport::bundle(metadata, operations, snap, previous_format)?;
         let mut tree = Vec::new();
-        for (path, content) in files {
-            // Blobs support archives beyond the inline tree-content API limit.
+        for (path, content) in bundle.files {
             let blob = self.value(
                 Method::POST,
                 &format!("/repos/{}/git/blobs", peer.repository),
@@ -233,20 +292,47 @@ impl Github {
         match response.status() {
             StatusCode::CONFLICT | StatusCode::UNPROCESSABLE_ENTITY => Ok(false),
             status if status.is_success() => Ok(true),
-            status => Err(format!("GitHub ref update status {status}")),
+            _ => Err(response_error(response, "update memory ref", 0)),
         }
     }
 }
 fn limited(response: Response) -> Result<String> {
+    bounded(response, LEGACY_BYTES)
+}
+fn bounded(response: Response, limit: usize) -> Result<String> {
     let mut text = String::new();
     response
-        .take(MAX_BYTES + 1)
+        .take(limit as u64 + 1)
         .read_to_string(&mut text)
         .map_err(err)?;
-    if text.len() as u64 > MAX_BYTES {
-        return Err("peer object exceeds 64 MiB limit".into());
+    if text.len() > limit {
+        return Err(format!("peer object exceeds {limit} byte limit"));
     }
     Ok(text)
+}
+
+fn response_error(response: Response, stage: &str, bytes: usize) -> String {
+    let status = response.status().as_u16();
+    let mut body = String::new();
+    let _ = response.take(8192).read_to_string(&mut body);
+    let value: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+    // Never echo arbitrary remote strings: validation errors can contain submitted content.
+    let message = match value["message"]
+        .as_str()
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "your input was too large to process" | "your input was too large to process." => {
+            "input too large to process"
+        }
+        "validation failed" => "validation failed",
+        "bad credentials" => "bad credentials",
+        "not found" => "not found",
+        "resource not accessible by integration" => "resource not accessible by integration",
+        _ => "request rejected (response content omitted)",
+    };
+    format!("GitHub status {status} at {stage}; request bytes {bytes}; {message}")
 }
 
 pub fn sync_peer(root: &Path, peer: &Peer) -> Result<Value> {
@@ -291,6 +377,7 @@ fn sync_with(root: &Path, peer: &Peer, api: &Github) -> Result<Value> {
         if head.is_none() && !peer.upload {
             return legacy(root, api, peer);
         }
+        let mut format = state["format"].as_u64().unwrap_or(1);
         let remote = if let Some(head) = &head {
             if unchanged {
                 let path = root
@@ -298,20 +385,9 @@ fn sync_with(root: &Path, peer: &Peer, api: &Github) -> Result<Value> {
                     .join(format!("{}.remote.nibli", peer.scope));
                 decode(&fs::read_to_string(path).map_err(err)?)?
             } else {
-                let manifest: Value =
-                    serde_json::from_str(&api.contents(peer, "manifest.json", head)?)
-                        .map_err(err)?;
-                if manifest["version"] != 1
-                    || manifest["scope"] != peer.scope
-                    || manifest["public"] != peer.public
-                    || manifest["repository"] != peer.repository
-                {
-                    return Err("remote manifest identity or scope mismatch".into());
-                }
-                let text = api.contents(peer, "operations.nibli", head)?;
-                if manifest["hashes"]["operations.nibli"] != digest(text.as_bytes()) {
-                    return Err("remote log hash mismatch".into());
-                }
+                let manifest = api.manifest(peer, head)?;
+                format = manifest.version;
+                let text = api.archive(root, peer, head, &manifest, "operations", true)?;
                 let log = decode(&text)?;
                 validate(&log, peer)?;
                 log
@@ -325,33 +401,42 @@ fn sync_with(root: &Path, peer: &Peer, api: &Github) -> Result<Value> {
             &replica.root.join(format!("{}.remote.nibli", peer.scope)),
             encode(&remote).as_bytes(),
         )?;
-        save(&state_path,&serde_json::to_vec(&json!({"head":head,"etag":tag.or_else(||state["etag"].as_str().map(str::to_owned)),"checked_at":now()})).map_err(err)?)?;
+        save(&state_path,&serde_json::to_vec(&json!({"head":head,"etag":tag.or_else(||state["etag"].as_str().map(str::to_owned)),"checked_at":now(),"format":format})).map_err(err)?)?;
         drop(replica);
         if !peer.upload || remote == log {
+            // A prior ref update may have succeeded while its readback failed.
+            // Equality of operation logs alone is not a publication receipt.
+            if peer.upload
+                && let Some(head) = &head
+            {
+                let manifest = api.manifest(peer, head)?;
+                if api.archive(root, peer, head, &manifest, "snapshot", true)? != snapshot(&log)? {
+                    return Err(
+                        "remote snapshot does not match verified operations; outbox retained"
+                            .into(),
+                    );
+                }
+            }
             return Ok(
-                json!({"peer":peer.name,"status":"fresh","pending":false,"operations":log.len(),"head":head}),
+                json!({"peer":peer.name,"status":"fresh","pending":false,"operations":log.len(),"head":head,"format":format}),
             );
         }
-        if api.publish(peer, head.as_deref(), &log)? {
+        if api.publish(peer, head.as_deref(), &log, format)? {
             // Read the remote ref and immutable objects back before issuing a commit receipt.
             let (verified_head, tag, _) = api.ref_head(peer, "lucy-memory", None)?;
             let verified_head =
                 verified_head.ok_or("published branch not visible; outbox retained")?;
-            let manifest: Value =
-                serde_json::from_str(&api.contents(peer, "manifest.json", &verified_head)?)
-                    .map_err(err)?;
-            if manifest["scope"] != peer.scope
-                || manifest["public"] != peer.public
-                || manifest["repository"] != peer.repository
-            {
-                return Err("published manifest scope mismatch".into());
-            }
-            let text = api.contents(peer, "operations.nibli", &verified_head)?;
-            if manifest["hashes"]["operations.nibli"] != digest(text.as_bytes()) {
-                return Err("published log hash mismatch".into());
-            }
+            let manifest = api.manifest(peer, &verified_head)?;
+            let text = api.archive(root, peer, &verified_head, &manifest, "operations", false)?;
+            let remote_snapshot =
+                api.archive(root, peer, &verified_head, &manifest, "snapshot", false)?;
             let verified = decode(&text)?;
             validate(&verified, peer)?;
+            if remote_snapshot != snapshot(&verified)? {
+                return Err(
+                    "published snapshot does not match verified operations; outbox retained".into(),
+                );
+            }
             if !log
                 .iter()
                 .all(|(id, operation)| verified.get(id) == Some(operation))
@@ -366,11 +451,11 @@ fn sync_with(root: &Path, peer: &Peer, api: &Github) -> Result<Value> {
             )?;
             save(
                 &state_path,
-                &serde_json::to_vec(&json!({"head":verified_head,"etag":tag,"checked_at":now()}))
+                &serde_json::to_vec(&json!({"head":verified_head,"etag":tag,"checked_at":now(),"format":manifest.version}))
                     .map_err(err)?,
             )?;
             return Ok(
-                json!({"peer":peer.name,"status":"fresh","pending":merged!=verified,"uploaded":true,"operations":verified.len(),"head":verified_head}),
+                json!({"peer":peer.name,"status":"fresh","pending":merged!=verified,"uploaded":true,"operations":verified.len(),"head":verified_head,"format":manifest.version}),
             );
         }
     }

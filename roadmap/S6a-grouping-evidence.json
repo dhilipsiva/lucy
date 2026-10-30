@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "item": "S6a-grouping",
+  "observations": [
+    {
+      "recorded_date": "2026-10-30",
+      "implementation_commit": "95b39c2b5faae51c6b45212166ada40c284ff1d7",
+      "preregistration_commit": "f154d72d33405e270f52b164cbf7c35f9b14d8df",
+      "protocol_sha256": "6b9064726803c2fdf1006134c09b2365bbb0e4b597a0fa2c54844367aeb47086",
+      "checker_sha256": "ac8d272b941c6170f5de83aa0194bd42d947cf05350f34fd72f1ec7f4a0c983a",
+      "release_binary_sha256": "c3bc0706208beb38a524a8ae04eb08dd9a8853d49de366cbae851d6ca2622bf8",
+      "status": "Mechanism implemented; required source validation gates passed.",
+      "validation": [
+        {
+          "command": "nix develop --command just ci",
+          "result": "passed",
+          "rust_tests": 151,
+          "new_grouping_tests": 13,
+          "python_runner_tests": 4,
+          "includes": [
+            "formatting",
+            "strict Clippy",
+            "static checker",
+            "task isolation"
+          ]
+        },
+        {
+          "command": "nix develop .#desktop --command just ci-desktop",
+          "result": "passed",
+          "rust_tests": 151
+        },
+        {
+          "command": "nix develop --command just verify-pins",
+          "result": "passed",
+          "constitution_pins": 50,
+          "counterfactual_pins": 8
+        },
+        {
+          "command": "python3 scripts/verify-extraction.py",
+          "result": "passed",
+          "ledger_files": 9
+        },
+        {
+          "command": "nix develop --command cargo build --release --locked --bin lucy",
+          "result": "passed"
+        },
+        {
+          "command": "LUCY_HOME=./lucy ./target/release/lucy check",
+          "result": "passed",
+          "archives": "compiled",
+          "standing": true,
+          "statements": 10467,
+          "asserted": 10467,
+          "failures": 0,
+          "materialization": "default enabled"
+        }
+      ],
+      "compatibility_experiment": {
+        "state": "isolated temporary store, removed afterwards",
+        "result": "passed",
+        "older_installed_binary_reads_mixed_archive": true,
+        "legacy_status_unchanged_after_v2_writes_and_reviews": true,
+        "new_binary_previews_applies_and_revokes_review": true,
+        "reviewed_observation_count": 1,
+        "combined_success_failure_probability_ppm": 500000,
+        "live_archive_regrouped": false
+      },
+      "mechanism_coverage": [
+        "Dates, metadata and sessions do not split otherwise identical named-model groups.",
+        "Changes to all declared conditions, source, measurement and capability separate evidence.",
+        "Unavailable model identities remain session-scoped; native requests do not borrow the service model identity.",
+        "Approval waits retain the proposing model identity and existing permission controls.",
+        "Matching evidence survives restart, reindex, backup and restore.",
+        "Reviews require explicit acknowledgement of a current preview and readable source-bound evidence.",
+        "Missing support, conflicting boundaries, changed artifacts and stale previews cannot apply.",
+        "Duplicate reviewed outcomes count once; revocation changes future eligibility only.",
+        "Original records and historical forecast scores remain unchanged.",
+        "Rust and Nibli reject invalid graph cases; valid controls and native inspect-first recovery pass.",
+        "Pending and inconclusive outcomes are excluded, with a deterministic 32-outcome window."
+      ],
+      "development_failures": [
+        "The first grouped fixtures exposed unsupported predicate names in the pinned Nibli vocabulary; the checker was rewritten using existing predicates without changing the engine pin.",
+        "The first full CI attempt stopped on Clippy nonminimal_bool; the expression was corrected and both complete gates subsequently passed."
+      ],
+      "forecast_recording": {
+        "before_first_full_gate": true,
+        "first_outcome": "failure",
+        "before_retry": true,
+        "retry_outcome": "success"
+      },
+      "limitations": [
+        "Existing sandbox-dependent tests return early because the bwrap workspace sandbox cannot run here; a focused nocapture run confirmed this limitation.",
+        "Desktop code was compiled and tested; no interactive visual UI inspection was performed.",
+        "The archive check was restarted with the same criteria in an optimized build after the debug run remained CPU-bound; the superseded debug process was terminated.",
+        "Content digests establish reviewed source identity, not the truth of human comparability judgments.",
+        "Native grouping uses the existing broad execution-operation categories, not task correctness.",
+        "These are mechanism fixtures and an isolated compatibility experiment, not independent evidence of improved task performance."
+      ],
+      "deployment": "Source branch only; running service, selected model, permissions and NixOS unchanged.",
+      "adjudicators": [],
+      "adjudicator_models": [],
+      "independent_benefit_study_run": false,
+      "model_change_requirement_met": false,
+      "s6a_complete": false
+    }
+  ]
+}

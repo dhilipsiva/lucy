@@ -131,10 +131,12 @@ pub fn schemas() -> Value {
             vec!["operation"],
         ),
     ];
-    json!(definitions.into_iter().map(|(name,description,properties,required)|json!({
+    let mut schemas:Vec<Value>=definitions.into_iter().map(|(name,description,properties,required)|json!({
         "type":"function","function":{"name":name,"description":description,
         "parameters":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}
-    })).collect::<Vec<_>>())
+    })).collect();
+    schemas.extend(super::tasks::schemas());
+    json!(schemas)
 }
 pub fn needs_approval(name: &str, args: &Value) -> Result<bool> {
     if !schemas()
@@ -701,6 +703,16 @@ pub fn run(
     gui: bool,
     timeout: u64,
 ) -> Result<Value> {
+    run_ms(root, cancel, args, gui, timeout.saturating_mul(1000))
+}
+
+pub fn run_ms(
+    root: &Path,
+    cancel: &AtomicBool,
+    args: &[String],
+    gui: bool,
+    timeout_ms: u64,
+) -> Result<Value> {
     if args.is_empty() || cancel.load(Ordering::SeqCst) || (gui && !unlocked()) {
         return Err("cancelled, invalid command or desktop locked".into());
     }
@@ -722,7 +734,7 @@ pub fn run(
         match child.try_wait().map_err(err)? {
             Some(status) => break Ok(status.code().unwrap_or(-1)),
             None if cancel.load(Ordering::SeqCst)
-                || start.elapsed() > Duration::from_secs(timeout)
+                || start.elapsed() > Duration::from_millis(timeout_ms)
                 || output.metadata().is_ok_and(|m| m.len() > 1_000_000)
                 || (gui && !unlocked()) =>
             {

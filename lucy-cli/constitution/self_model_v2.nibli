@@ -1,0 +1,36 @@
+# Grouped evidence in a separate engine, using the pinned evidence vocabulary.
+# exist triples reify reviewed membership and the captured review snapshot.
+admits("sl_prediction").
+admits("sl_scope").
+admits("sl_observation").
+admits("sl_basis").
+admits("sl_precedes").
+admits("exist").
+derived_only("sl_known_observation").
+derived_only("sl_dep").
+derived_only("sl_path").
+derived_only("sl_violation").
+derived_only("sl_invalid").
+
+all $o, $p, $r: sl_observation($o, $p, $r) -> sl_known_observation($o).
+all $p, $o, $q, $g, $r: sl_prediction($p) & sl_observation($o, $q, $r) & sl_scope($p, $g) & sl_scope($q, $g) -> exist($p, Allowed, $o).
+all $u, $p, $o, $r, $m, $g: exist($u, ReviewUse, $p) & exist($u, UsesObservation, $o) & exist($u, UsesReview, $r) & exist($r, Review, History) & exist($r, ActiveFor, $p) & exist($m, ReviewMember, $r) & exist($m, MemberObservation, $o) & exist($m, MemberGroup, $g) & sl_scope($p, $g) -> exist($u, ValidReview, History).
+all $u, $p, $o: exist($u, ValidReview, History) & exist($u, ReviewUse, $p) & exist($u, UsesObservation, $o) -> exist($p, Allowed, $o).
+all $o, $p, $r: sl_observation($o, $p, $r) & ~sl_prediction($p) -> sl_violation($o, OrphanOutcome).
+all $o, $p, $r: sl_observation($o, $p, $r) & ~sl_precedes($p, $o) -> sl_violation($o, OutcomeBeforePrediction).
+all $a, $b, $p, $r, $s: sl_observation($a, $p, $r) & sl_observation($b, $p, $s) & ~($a = $b) -> sl_violation($p, DuplicateOutcome).
+all $p, $o: sl_basis($p, $o) & ~sl_prediction($p) -> sl_violation($p, OrphanBasis).
+all $p, $o: sl_basis($p, $o) & ~sl_known_observation($o) -> sl_violation($p, MissingEvidence).
+all $p, $o: sl_basis($p, $o) & ~exist($o, Conclusive, Observation) -> sl_violation($p, InconclusiveEvidence).
+all $p, $o: sl_basis($p, $o) & ~sl_precedes($o, $p) -> sl_violation($p, FutureEvidence).
+all $p, $o: sl_basis($p, $o) & ~exist($p, Allowed, $o) -> sl_violation($p, CrossGroupEvidence).
+all $u, $p, $o: exist($u, ReviewUse, $p) & exist($u, UsesObservation, $o) & ~sl_basis($p, $o) -> sl_violation($p, OrphanReviewUse).
+all $u, $p: exist($u, ReviewUse, $p) & ~exist($u, ValidReview, History) -> sl_violation($p, InvalidReview).
+all $m, $r, $o: exist($m, ReviewMember, $r) & exist($m, MemberObservation, $o) & ~sl_known_observation($o) -> sl_violation($r, MissingReviewedEvidence).
+all $m, $r, $o: exist($m, ReviewMember, $r) & exist($m, MemberObservation, $o) & ~sl_precedes($o, $r) -> sl_violation($r, FutureReviewedEvidence).
+all $m, $r, $o, $p, $v, $a, $b: exist($m, ReviewMember, $r) & exist($m, MemberObservation, $o) & sl_observation($o, $p, $v) & exist($r, Boundary, $a) & exist($p, Boundary, $b) & ~($a = $b) -> sl_violation($r, CrossScopeReview).
+all $p, $o, $q, $r: sl_basis($p, $o) & sl_observation($o, $q, $r) -> sl_dep($p, $q).
+all $p, $q: sl_dep($p, $q) -> sl_path($p, $q).
+all $p, $q, $r: sl_path($p, $q) & sl_dep($q, $r) -> sl_path($p, $r).
+all $p: sl_path($p, $p) -> sl_violation($p, EvidenceCycle).
+all $p, $kind: sl_violation($p, $kind) -> sl_invalid(History).

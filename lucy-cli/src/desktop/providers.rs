@@ -87,6 +87,47 @@ pub fn selected() -> Result<Option<Provider>> {
         _ => Ok(None),
     }
 }
+
+/// A cheap configuration fingerprint detects selection changes during a task.
+pub fn selection_key() -> Result<String> {
+    let selection = match selected()? {
+        Some(provider) => json!([provider.name, provider.model, provider.endpoint]),
+        None => json!(["ollama", model(), "http://127.0.0.1:11434"]),
+    };
+    Ok(crate::store::digest(selection.to_string().as_bytes()))
+}
+
+/// A requested name is not a weight revision. Resolve local content digests
+/// when available; remote or unavailable revisions stay explicit.
+pub fn identity() -> Result<String> {
+    identity_for(selected()?.as_ref())
+}
+
+pub(super) fn identity_for(selection: Option<&Provider>) -> Result<String> {
+    if let Some(provider) = selection {
+        return Ok(format!(
+            "{}:{}@revision-unknown:{}",
+            provider.name,
+            provider.model,
+            crate::store::digest(provider.endpoint.as_bytes())
+        ));
+    }
+    let name = model();
+    let catalog = models("ollama").ok();
+    let revision = catalog
+        .as_ref()
+        .and_then(|v| v["models"].as_array())
+        .and_then(|rows| {
+            rows.iter()
+                .find(|r| r["name"] == name || r["model"] == name)
+        })
+        .and_then(|r| r["digest"].as_str())
+        .filter(|s| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit()));
+    Ok(format!(
+        "ollama:{name}@{}",
+        revision.unwrap_or("revision-unknown")
+    ))
+}
 pub fn list() -> Result<Value> {
     let config = load()?;
     let providers: Vec<_> = config

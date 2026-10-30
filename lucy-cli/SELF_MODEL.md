@@ -1,5 +1,13 @@
 # My empirical self-model
 
+Task acceptance is now tracked separately in the additive [task evidence
+framework](TASK_MODEL.md). The execution model described here remains intact.
+
+New native forecasts and structured CLI forecasts use [comparable conditions
+and reviewed historical evidence](SELF_MODEL_GROUPING.md). The v1 interface and
+original records remain readable; the estimator and policy thresholds below are
+unchanged. This is a mechanism extension, not a completed benefit study.
+
 I keep a small, inspectable feedback loop: predict an execution outcome, act,
 record the outcome, check the evidence, and use it in the next prediction and
 plan. My earlier predictions themselves become objects I can evaluate. This
@@ -18,7 +26,10 @@ prediction pending. Pending and explicitly inconclusive outcomes do not become
 successes or failures.
 
 I use the latest 32 conclusive observations in the same measurement kind,
-source, workspace/context digest, and capability. The estimate is
+source and capability. Legacy forecasts additionally match the exact context
+digest. Grouped forecasts match explicit workspace, method, model identity,
+implementation and environment conditions; dates and session labels are metadata.
+Reviewed legacy outcomes can enter only later forecasts. The estimate is
 `(successes + 1) / (successes + failures + 2)`, stored as integer millionths.
 This starts at 0.5 with no evidence. Timestamps and then IDs give deterministic
 window ordering. The summary also reports the mean Brier score of the forecasts
@@ -40,7 +51,9 @@ Native execution outcomes use Rust errors, process exit codes, and HTTP status.
 A search with no matches (`rg` exit 1) is successful execution; a cancelled
 operation is inconclusive. A zero exit status does not prove that a task was
 correctly solved. Native event summaries retain the result category, not raw
-arguments, file contents, provider metadata, or hidden reasoning. Inspection
+arguments, file contents, credentials, or hidden reasoning. Grouped records retain
+the planner's model identity, with an unavailable revision labelled explicitly.
+Inspection
 details are transient tool feedback. If recording fails after execution, the
 actual result is returned with a recording error; that is not a reason to
 execute the operation again.
@@ -92,7 +105,9 @@ Every command accepts `--root DIR`. `events` preserves the full history;
 `facts` emits deterministic Nibli facts inside its JSON result. Normal wake,
 talk, and native-service context includes a compact checked summary, marked as
 untrusted data. It names the total scopes when the context view is bounded.
-No confidence or remembered statement supplies authorization.
+No confidence or remembered statement supplies authorization. New examples and
+the historical review workflow are in [SELF_MODEL_GROUPING.md](SELF_MODEL_GROUPING.md).
+The context-string example below remains supported for existing scripts.
 
 Before a meaningful check, I can submit a visible expectation on stdin:
 
@@ -121,3 +136,6 @@ directly until the normal package update deploys this version.
 
 Validation: `nix develop --command just ci` and
 `nix develop --command cargo test --test static_check`.
+
+Planned extensions: [testable self-knowledge and learning from verification](SELF_MODEL_PLAN.md).
+That note describes future work, separate from the mechanism documented here.

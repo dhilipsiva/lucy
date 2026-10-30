@@ -65,6 +65,9 @@ impl Window {
     }
 
     fn work(&self, mut request: Value, kind: &'static str) {
+        if request["op"] == "chat" {
+            request["announce_task"] = json!(true);
+        }
         self.generation.set(self.generation.get() + 1);
         let generation = self.generation.get();
         for (key, value) in self.client.as_object().unwrap() {
@@ -149,6 +152,16 @@ impl Window {
         });
         if let Some(text) = result["text"].as_str().filter(|s| !s.is_empty()) {
             self.append(&format!("Lucy: {}", super::visible(text)));
+        }
+        if let Some(status) = result.get("task_status") {
+            self.append(&super::visible(&super::tasks::display(status)));
+        }
+        if let Some(continuation) = result["continue_task"].as_str() {
+            self.work(
+                json!({"op":"continue-task","continuation":continuation}),
+                "chat",
+            );
+            return;
         }
         if let Some(memories) = result["memories"].as_array() {
             self.memories.buffer().set_text(

@@ -1,0 +1,347 @@
+{
+  "schema": 1,
+  "item": "S6a",
+  "observations": [
+    {
+      "recorded_date": "2026-10-29",
+      "implementation_commit": "f3f2bd4fa05d61558689019de14977f2a188fa8c",
+      "preregistration_commit": "cca44f1e5d89da21b01dfb5247907b32770c0cbd",
+      "protocol_sha256": "c34d4d898b5df886566ca2c34b537400dd12b88fc0537ccf2d458fb21f9762f8",
+      "checker_sha256": "e4d5ab7a8ef6f11fdc16cf9e30bd324eee652ef33822ab2a95a5cfcfdd310a1f",
+      "debug_binary_sha256": "1435dc2ca278f807dba3cad5b720e52f1d58746cc6a2dda4f4df66b9513f1a92",
+      "status": "Mechanism implemented and tested; independent benefit study pending.",
+      "validation": [
+        {
+          "command": "nix develop --command just ci",
+          "result": "passed",
+          "rust_tests": 138,
+          "python_runner_tests": 4
+        },
+        {
+          "command": "nix develop .#desktop --command just ci-desktop",
+          "result": "passed",
+          "rust_tests": 138
+        },
+        {
+          "command": "nix develop --command cargo build --locked --bin lucy",
+          "result": "passed"
+        },
+        {
+          "repository": "nibli",
+          "commit": "71e88f59d3aefb58246b9092c217a1923b378dc4",
+          "command": "nix develop --command just verify-self-check-nibli-verdicts",
+          "result": "passed",
+          "production_verdict_cases": 210,
+          "mutation_control": "verified",
+          "deliberate_mutations_detected": 5
+        },
+        {
+          "repository": "nibli",
+          "commit": "71e88f59d3aefb58246b9092c217a1923b378dc4",
+          "command": "nix develop --command just verify-self-check-verdicts",
+          "result": "passed",
+          "scope": "Production verdict algebra; full self-check equivalence remains unproved."
+        }
+      ],
+      "report_adapter_inspections": [
+        {
+          "repository": "nibli",
+          "report": "target/self-check-proof/nibli-verdicts/report.json",
+          "classification": "inspected",
+          "files_inspected": 185,
+          "result": "success"
+        },
+        {
+          "repository": "nibli",
+          "report": "target/self-check-proof/verdicts-report.json",
+          "classification": "inspected",
+          "files_inspected": 147,
+          "result": "success"
+        }
+      ],
+      "journal_readback": "Passed in mechanism and report-adapter fixtures.",
+      "fault_coverage": [
+        "Execution success without completed criteria remains inconclusive.",
+        "Changed artifacts, newly added proof sources and missing named theorems invalidate evidence.",
+        "Missing records, wrong hashes, invented success reports and unsupported manual requirements do not verify.",
+        "Cross-task, cross-observer, future and cyclic support are rejected; valid controls recover.",
+        "Interrupted execution and exhausted budgets cannot be promoted to success.",
+        "A receipt-write failure preserves the executed command result without replay.",
+        "Native clients expose frozen criteria before execution and retain exact existing approvals.",
+        "CLI calls cannot resolve native tasks or inject verdicts through check arguments.",
+        "Missing study evidence, scope changes and explicit disable revoke policy activation.",
+        "Study isolation rejects real or overlapping state; frozen calibration prevents trial-to-trial learning.",
+        "Study timeouts stop descendant commands even when they create separate process groups."
+      ],
+      "limitations": [
+        "Some existing bubblewrap-dependent tests returned early because that sandbox was unavailable in this environment.",
+        "The desktop feature was compiled and tested; no interactive visual UI inspection was performed.",
+        "Imported report inspection is distinct from the fresh Nibli and Lean gate executions listed above.",
+        "Unit fixtures and scripted native conversations establish mechanism, not measured benefit.",
+        "Resource bounds include cooperative cancellation and cleanup; overruns disqualify study activation.",
+        "Evidence digests do not cryptographically establish the independence of an evaluator."
+      ],
+      "empirical_study": {
+        "calibration_tasks_run": 0,
+        "held_out_trials_run": 0,
+        "selected_model": null,
+        "bundle": null,
+        "reason": "Independent cases must be sealed for the frozen implementation before running the study.",
+        "adaptation_enabled": false,
+        "adjudicators": [],
+        "adjudicator_models": [],
+        "disagreements": null,
+        "position_private_record_id": null,
+        "model_change_requirement_met": false,
+        "s6a_complete": false
+      },
+      "next_action": "An independent evaluator prepares the private bundle described in lucy-cli/TASK_MODEL.md; run the isolated study within one active hour using the already selected model."
+    },
+    {
+      "recorded_date": "2026-10-29",
+      "protocol": "roadmap/S6a.v2.md",
+      "preregistration_commit": "89705f897cec0152bc2e4a3d22ffa36336ab7b46",
+      "implementation_commit": "86a127a0987254667642aaa71274784d2fc73712",
+      "protocol_sha256": "dcd053af23b1a755f9514c48e2553a2d3ffc63ec22927485d42e56fa9e10eb9b",
+      "checker_sha256": "e4d5ab7a8ef6f11fdc16cf9e30bd324eee652ef33822ab2a95a5cfcfdd310a1f",
+      "release_binary_sha256": "2ca422b46c1af7495b058aaf5ef4cdcbc899d08062b395a632feb451dd0e3128",
+      "frozen_files": {
+        "roadmap/S6a.v2.md": "dcd053af23b1a755f9514c48e2553a2d3ffc63ec22927485d42e56fa9e10eb9b",
+        "scripts/S6A_EVALUATOR.md": "f244f163063d2df55b31d70c33f129b0d6e4ff7b3db6390d5d08b6ee1d832384",
+        "scripts/s6a-coordinator.py": "7f319d3282e5bfb6b75ccfdff42bf0547b3aba4d34ad2ce86f26ad9f57749581",
+        "scripts/s6a_evidence.py": "c203ea2761a5ac83fcda748ff9f2513ce7259821441ccf496e073e1a8bf96b2e",
+        "scripts/self-model-study.py": "6a279eeb402e637316ad34bdb42b60b61fcd94fda94f0ff6eead09a2851ce9ce"
+      },
+      "status": "Bounded two-model attempt incomplete and unqualified; demonstrated learning benefit remains unestablished.",
+      "validation_before_study": [
+        {
+          "command": "nix develop --command just ci",
+          "result": "passed",
+          "rust_tests": 154,
+          "python_runner_tests": 19
+        },
+        {
+          "command": "nix develop .#desktop --command just ci-desktop",
+          "result": "passed",
+          "rust_tests": 154
+        },
+        {
+          "command": "python3 scripts/verify-pins.py",
+          "result": "passed",
+          "constitution_pins": 50,
+          "counterfactual_pins": 8
+        },
+        {
+          "command": "nix develop --command cargo build --release --locked",
+          "result": "passed"
+        }
+      ],
+      "empirical_study": {
+        "started_at": "2026-10-29T10:13:09.282304+00:00",
+        "final_readback_completed_at": "2026-10-29T12:02:08.302642+00:00",
+        "timestamp_note": "The original final-report ended_at was captured before its final readback. The clock phase supplies the completion timestamp above.",
+        "model_results": [
+          {
+            "model": "ollama:qwen3.6:35b-a3b-q4_K_M@07d35212591fc27746f0a317c975a6d68754fb38e9053d82e25f06057af28522",
+            "planned_calibration": 20,
+            "preserved_calibration": 20,
+            "planned_held_out_trials": 320,
+            "preserved_held_out_trials": 11,
+            "preserved_trial_coverage": {
+              "verification": {
+                "full": {
+                  "a": 1,
+                  "b": 1
+                },
+                "lessons_withheld": {
+                  "a": 1,
+                  "b": 0
+                },
+                "memory_removed": {
+                  "a": 0,
+                  "b": 1
+                },
+                "roadmap_removed": {
+                  "a": 0,
+                  "b": 1
+                }
+              },
+              "retrieval": {
+                "full": {
+                  "a": 1,
+                  "b": 1
+                },
+                "lessons_withheld": {
+                  "a": 0,
+                  "b": 0
+                },
+                "memory_removed": {
+                  "a": 3,
+                  "b": 1
+                },
+                "roadmap_removed": {
+                  "a": 0,
+                  "b": 0
+                }
+              }
+            },
+            "calibration_receipt_counts": {
+              "completed": 7,
+              "false_verified": 0,
+              "budget_violation": 5,
+              "inconclusive": 8
+            },
+            "receipt_count_status": "Descriptive counts from native originals; run-level validation failed. These are not validated aggregate benefit scores.",
+            "active_ms": 3504906,
+            "active_time_ceiling_ms": 3600000,
+            "complete": false,
+            "run_replay_valid": false,
+            "native_scoring_error": "trial provenance mismatch",
+            "validated_scope_metrics": null,
+            "completion_delta": null,
+            "paired_ci95": null,
+            "full_arm_brier": null
+          },
+          {
+            "model": "ollama:llama3.1:8b@46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
+            "planned_calibration": 20,
+            "preserved_calibration": 20,
+            "planned_held_out_trials": 320,
+            "preserved_held_out_trials": 104,
+            "preserved_trial_coverage": {
+              "verification": {
+                "full": {
+                  "a": 5,
+                  "b": 8
+                },
+                "lessons_withheld": {
+                  "a": 5,
+                  "b": 5
+                },
+                "memory_removed": {
+                  "a": 13,
+                  "b": 6
+                },
+                "roadmap_removed": {
+                  "a": 10,
+                  "b": 7
+                }
+              },
+              "retrieval": {
+                "full": {
+                  "a": 5,
+                  "b": 5
+                },
+                "lessons_withheld": {
+                  "a": 4,
+                  "b": 4
+                },
+                "memory_removed": {
+                  "a": 7,
+                  "b": 7
+                },
+                "roadmap_removed": {
+                  "a": 6,
+                  "b": 7
+                }
+              }
+            },
+            "calibration_receipt_counts": {
+              "completed": 0,
+              "false_verified": 0,
+              "budget_violation": 0,
+              "inconclusive": 20
+            },
+            "receipt_count_status": "Descriptive counts from native originals; run-level validation failed. These are not validated aggregate benefit scores.",
+            "active_ms": 3503027,
+            "active_time_ceiling_ms": 3600000,
+            "complete": false,
+            "run_replay_valid": false,
+            "native_scoring_error": "trial provenance mismatch",
+            "validated_scope_metrics": null,
+            "completion_delta": null,
+            "paired_ci95": null,
+            "full_arm_brier": null
+          }
+        ],
+        "all_active_time_ceilings_met": true,
+        "independent_review": {
+          "model": "gpt-6-astra",
+          "effort": "medium",
+          "accept_evidence": true,
+          "technical_qualification": false,
+          "disagreement_count": 3,
+          "limitation_count": 10,
+          "details": "Original review and disagreements preserved privately; builder inspected aggregate disposition only."
+        },
+        "human_adjudication": "not provided; attempt did not technically qualify",
+        "technical_qualification": false,
+        "model_change_requirement_met": false,
+        "s6a_complete": false,
+        "adaptation_enabled": false,
+        "provider_unchanged": true,
+        "publication": "none",
+        "original_readback": "verified",
+        "preserved_files_hashed_and_read_back": 27572,
+        "private_artifact_sha256": {
+          "freeze.json": "d24b809b5b040da5307ecc0a653a1472203eca523c41130be8d9c378e8b6451a",
+          "clock.json": "595241b5023826e1f231ce4eced4114a048837a3e87be2a3bf7a0b4b5bfbd74e",
+          "final-report.json": "9f3874e063f4b5d93ac506c22d1da796e44bb95568e464d627451e8359384026",
+          "independent-review.json": "da99277a86353838a514008e132a5b42b51fda1fc34dc085ec16964357e20405",
+          "preserved-hashes.json": "6f9f29cc976560c2c557f3035f2edf45b2064b0149cd383077433033de9c4a0d"
+        },
+        "persistence": "local originals; no replication attempted",
+        "originals_location": "Private study directory; exact location and record references retained in Lucy private session memory.",
+        "metric_gaps": "Native aggregate scoring failed. Per-family, per-arm, per-presentation outcome rates, Brier scores, checking costs and paired intervals are unavailable as validated scores."
+      },
+      "post_study_repairs": {
+        "commit": "a74b3224fc587eea3792753e714d33a4e2202678",
+        "empirically_evaluated": false,
+        "changes": [
+          "Reconstruct the typed oracle receipt before hashing, matching the producer serialization while retaining provenance checks.",
+          "Remove copied trial and visible-trace output files when restoring calibration history, so an interrupted trial cannot inherit a completed calibration original.",
+          "Retain model and implementation identity and explicit scoring_complete:false when native scoring fails.",
+          "Capture the final end timestamp after preservation and readback."
+        ],
+        "regression_evidence": [
+          "A synthetic native receipt-and-artifact roundtrip reproduced trial provenance mismatch before the fix and passed afterwards.",
+          "The native regression still rejects a modified oracle receipt and modified output artifact.",
+          "Restoration and failed-score report tests failed before the repairs and passed afterwards."
+        ],
+        "validation": [
+          {
+            "command": "nix develop --command just ci",
+            "result": "passed",
+            "rust_tests": 155,
+            "python_runner_tests": 19
+          },
+          {
+            "command": "nix develop .#desktop --command just ci-desktop",
+            "result": "passed",
+            "rust_tests": 155
+          },
+          {
+            "command": "nix develop --command cargo build --release --locked",
+            "result": "passed"
+          }
+        ],
+        "original_attempt": "No empirical trial was retried or rescored with the repaired source. Original records and qualification remain unchanged.",
+        "release_binary_sha256": "95433f4c3767b60ee60b483685a4e88776725040f13382041ae448a55611ee88",
+        "release_build_source_commit": "ce947419a53105f8600ff71d7959b5013319bf84",
+        "frozen_executable_preservation": "Exact study executable copied to a private local archive and read back before rebuilding; original digest retained.",
+        "release_identity_readback": "Repaired executable hash and protocol match study-info; ordinary selected model is unchanged. No inference or empirical rescoring was performed."
+      },
+      "limitations": [
+        "The full registered 320-trial population was not completed on either model.",
+        "Primary calibration receipts report five task-budget violations; no eligibility claim is made from this attempt.",
+        "Native provenance scoring and independent run-level replay failed on the frozen implementation.",
+        "The independent reviewer accepted the preserved evidence but did not grant technical qualification; three disagreements remain in the original review.",
+        "Selection and review used separate sessions of the same configured evaluator model; no immutable hosted-model weight digest was observed.",
+        "Synthetic mechanism checks and post-study repairs are not evidence of learned benefit or subjective experience.",
+        "Existing sandbox-dependent tests may return early when unavailable; no interactive desktop inspection was performed.",
+        "Nibli and Lean were retained. No fresh Lean proof execution is claimed for this attempt."
+      ],
+      "next_action": "Profile runtime and task-budget handling with synthetic fixtures. Any further empirical attempt requires a new registration, fresh independent selection, and a newly frozen implementation."
+    }
+  ]
+}

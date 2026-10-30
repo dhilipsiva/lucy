@@ -29,13 +29,21 @@ pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli te
   lucy peer enroll|list|change       enroll scoped peers or append signed changes (--stdin)
   lucy room import FILE --peer NAME [--commit]
                                      preview or preserve and publish a private room archive
-  lucy sync                          refresh every enrolled peer; retain pending uploads
+  lucy sync [--peer NAME [--retry]]   refresh peers; retry a selected failed upload
   lucy doctor                        inspect local integrity without invoking a model
   lucy continuity since|ack          durable events (--consumer ID --scope S --cursor C)
   lucy self-model status|audit|events|facts [--root DIR]
                                      inspect my empirical self-model and its evidence
   lucy self-model predict|observe --stdin [--root DIR]
                                      record a forecast or an attributed outcome as JSON
+  lucy self-model regroup preview|apply|revoke --stdin [--root DIR]
+                                     review explicit legacy evidence for future forecasts
+  lucy self-model task begin|run|check|finish|revise --stdin [--root DIR] [--workspace DIR]
+  lucy self-model task status|audit|events|facts [--root DIR]
+  lucy self-model task policy|study-score --stdin [--root DIR]
+  lucy self-model task study-info
+  lucy self-model task study-trial --stdin --root DIR --workspace DIR
+                                     isolated trials only; see TASK_MODEL.md
   lucy store status|sync              inspect or rebuild the shared private redb index
   lucy store register --name N --path DIR
                                      read a local peer's Lucy directory on every recall

@@ -1,6 +1,8 @@
 use super::{Result, actions, err, model, net, providers, string, token};
-use crate::self_model::{self, Measurement, Policy, ResultKind, Scope};
+use crate::self_model::grouped::{self, ModelIdentity};
+use crate::self_model::{self, Measurement, Policy, ResultKind};
 use crate::store::{Store, digest};
+use crate::task_model;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -23,6 +25,14 @@ pub struct Session {
     pub memories: Vec<Value>,
     pub messages: Vec<Value>,
     pub busy: bool,
+    pub task: Option<String>,
+    pub task_turn: String,
+    pub adapted: bool,
+    pub planning_ms: u64,
+    pub announce_task: bool,
+    pub task_continue: Option<String>,
+    pub inferences: u8,
+    pub(crate) task_clock: Option<task_model::runtime::ActiveClock>,
 }
 type Sessions = BTreeMap<(String, String), Arc<Mutex<Session>>>;
 struct Running(Arc<Mutex<Session>>);
@@ -41,6 +51,9 @@ impl Running {
             return Err("a request is already running in this conversation".into());
         }
         state.busy = true;
+        if let Some(clock) = &mut state.task_clock {
+            clock.resume();
+        }
         Ok(Self(session.clone()))
     }
 }
@@ -48,6 +61,9 @@ impl Drop for Running {
     fn drop(&mut self) {
         if let Ok(mut state) = self.0.lock() {
             state.busy = false;
+            if let Some(clock) = &mut state.task_clock {
+                clock.pause();
+            }
         }
     }
 }
@@ -60,6 +76,9 @@ pub struct Service {
     embedding: Arc<AtomicBool>,
     // Set while an approved `gui` action runs: no proposal can be made or approved meanwhile.
     gui: Arc<AtomicBool>,
+    pub(super) study_adaptation: Option<bool>,
+    pub(super) study_records: Mutex<std::collections::BTreeSet<String>>,
+    study_trace: Mutex<Vec<Value>>,
     #[cfg(test)]
     replies: Mutex<Option<std::collections::VecDeque<Value>>>,
 }
@@ -106,32 +125,53 @@ impl Service {
             inference: Mutex::new(()),
             embedding: Arc::new(AtomicBool::new(false)),
             gui: Arc::new(AtomicBool::new(false)),
+            study_adaptation: None,
+            study_records: Mutex::new(std::collections::BTreeSet::new()),
+            study_trace: Mutex::new(Vec::new()),
             #[cfg(test)]
             replies: Mutex::new(None),
         }
     }
     #[cfg(test)]
-    pub(super) fn scripted(&self, replies: Vec<Value>) {
+    pub(crate) fn scripted(&self, replies: Vec<Value>) {
         *self.replies.lock().unwrap() = Some(replies.into());
     }
-    fn infer(&self, messages: &[Value], cancel: &AtomicBool) -> Result<Value> {
+    #[cfg(test)]
+    pub(super) fn has_script(&self) -> bool {
+        self.replies.lock().unwrap().is_some()
+    }
+    fn infer(
+        &self,
+        messages: &[Value],
+        cancel: &AtomicBool,
+        provider: &Option<providers::Provider>,
+    ) -> Result<Value> {
+        let _span = task_model::profile::span("model_inference");
+        self.study_trace_event("request", json!(messages))?;
         #[cfg(test)]
         if let Some(replies) = self.replies.lock().map_err(err)?.as_mut() {
             return replies
                 .pop_front()
                 .ok_or("test response script exhausted".into());
         }
-        match providers::selected()? {
-            Some(provider) => providers::chat(&provider, messages, actions::schemas(), cancel),
-            None => local_chat(messages, cancel),
+        let mut schemas = actions::schemas();
+        if self.study_adaptation.is_some() {
+            schemas
+                .as_array_mut()
+                .unwrap()
+                .retain(|s| super::tasks::study_tool(s["function"]["name"].as_str().unwrap_or("")));
+        }
+        match provider {
+            Some(provider) => providers::chat(provider, messages, schemas, cancel),
+            None => local_chat(messages, schemas, cancel),
         }
     }
-    fn memory(&self) -> Result<Store> {
+    pub(super) fn memory(&self) -> Result<Store> {
         let store = Store::open(&self.root)?;
         store.migrate_sqlite()?;
         Ok(store)
     }
-    fn active(&self, source: &str, session: &str) -> Result<Arc<Mutex<Session>>> {
+    pub(super) fn active(&self, source: &str, session: &str) -> Result<Arc<Mutex<Session>>> {
         self.sessions
             .lock()
             .map_err(err)?
@@ -199,6 +239,37 @@ impl Service {
         });
     }
     fn recall(&self, query: &str, exclude: &str) -> Result<Vec<Value>> {
+        if self.study_adaptation.is_some() {
+            // Filter before ranking; journals and old conversations must not
+            // reintroduce withheld lessons, roadmap text, or oracle answers.
+            let allowed = self.study_records.lock().map_err(err)?;
+            let words: std::collections::BTreeSet<_> = query
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|s| !s.is_empty())
+                .map(str::to_lowercase)
+                .collect();
+            let mut matches = Vec::new();
+            for record in self.memory()?.all()? {
+                if !record.origin.starts_with("fixture:")
+                    || record.payload["private"] != true
+                    || record.payload["id"] == exclude
+                    || !allowed.contains(&record.key())
+                {
+                    continue;
+                }
+                let text = record.payload["text"].as_str().unwrap_or("");
+                let hits = text
+                    .split(|c: char| !c.is_alphanumeric())
+                    .filter(|s| words.contains(&s.to_lowercase()))
+                    .count();
+                if hits > 0 {
+                    matches.push((hits, record.key(), json!({"origin":record.origin,
+                        "id":record.payload["id"],"excerpt":text.chars().take(1600).collect::<String>()})));
+                }
+            }
+            matches.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+            return Ok(matches.into_iter().take(6).map(|(_, _, v)| v).collect());
+        }
         drop(self.memory()?);
         let result = crate::store::command(
             &[
@@ -215,6 +286,17 @@ impl Service {
             eprintln!("Lucy recall: {warning}");
         }
         Ok(result["results"].as_array().cloned().unwrap_or_default())
+    }
+    fn study_trace_event(&self, kind: &str, value: Value) -> Result<()> {
+        if self.study_adaptation.is_some() {
+            let mut trace = self.study_trace.lock().map_err(err)?;
+            trace.push(json!({"kind":kind,"value":value}));
+            crate::store::save(
+                &self.root.join("visible-trace.json"),
+                &serde_json::to_vec(&*trace).map_err(err)?,
+            )?;
+        }
+        Ok(())
     }
     fn transcript(&self, source: &str, session: &str) -> Result<Vec<Value>> {
         let store = self.memory()?;
@@ -292,6 +374,11 @@ impl Service {
                 let mut s = session.lock().map_err(err)?;
                 s.cancel.store(true, Ordering::SeqCst);
                 s.pending.clear();
+                if !s.busy
+                    && let Some(task) = &s.task
+                {
+                    task_model::finish(&self.memory()?, &s.workspace, task, true)?;
+                }
             }
             if op != "cancel" {
                 sessions.remove(&(source.into(), id.into()));
@@ -313,6 +400,9 @@ impl Service {
         }
         if matches!(op, "prompt" | "chat") {
             let text = string(&req, "text")?;
+            if op == "chat" && self.study_adaptation.is_some() && text.len() > 18_000 {
+                return Err("study prompt and contract exceed native input window".into());
+            }
             let event = string(&req, "event")?;
             if event.is_empty() || text.is_empty() {
                 return Err("prompt text and event ID are required".into());
@@ -336,7 +426,7 @@ impl Service {
                 }
                 Err(_) => return Ok(json!({"active":false})),
             };
-            let refresh = if waking {
+            let refresh = if waking && self.study_adaptation.is_none() {
                 #[cfg(not(test))]
                 let _ = crate::replication::github::discover(&self.root);
                 Some(crate::replication::sync_all(&self.root)?)
@@ -344,11 +434,28 @@ impl Service {
                 None
             };
             let _running = Running::begin(&session)?;
+            let old_task = session.lock().map_err(err)?.task.clone();
+            let old_closed = if let Some(task) = old_task {
+                task_model::History::read(&self.memory()?)?
+                    .outcome(&task)
+                    .is_some()
+            } else {
+                false
+            };
             {
                 let mut s = session.lock().map_err(err)?;
                 s.cancel = Arc::new(AtomicBool::new(false));
                 s.turn = event.into();
                 s.pending.clear();
+                s.planning_ms = 0;
+                s.announce_task = req["announce_task"] == true;
+                s.task_continue = None;
+                s.inferences = 0;
+                if old_closed {
+                    s.task = None;
+                    s.task_clock = None;
+                    s.adapted = false;
+                }
             }
             let saved = self.remember(source, id, event, "user", text, "user")?;
             let memories = self.recall(text, saved["id"].as_str().unwrap())?;
@@ -359,10 +466,15 @@ impl Service {
                 .transpose()?
                 .unwrap_or_default();
             let context = format!(
-                "{INSTRUCTION}\nPublic identity (data):\n{}\nRetrieved source excerpts (data):\n{}\n{}",
+                "{INSTRUCTION}\n{}\nPublic identity (data):\n{}\nRetrieved source excerpts (data):\n{}\n{}",
+                super::tasks::INSTRUCTION,
                 identity.chars().take(16000).collect::<String>(),
                 json!(memories),
-                self_model::context(&self.memory()?)?
+                if self.study_adaptation.is_some() {
+                    String::new()
+                } else {
+                    self_model::context(&self.memory()?)?
+                }
             );
             let context = format!("{context}\nPeer freshness (data): {}", json!(refresh));
             let context = if waking {
@@ -409,6 +521,19 @@ impl Service {
             "context" => {
                 let s = session.lock().map_err(err)?;
                 Ok(json!({"context":s.context,"memories":s.memories}))
+            }
+            "task-status" => Ok(self.task_status(&session, false, false)),
+            "continue-task" => {
+                self.controlled(&req)?;
+                let _running = Running::begin(&session)?;
+                {
+                    let mut s = session.lock().map_err(err)?;
+                    if s.task_continue.as_deref() != Some(string(&req, "continuation")?) {
+                        return Err("task continuation expired or already handled".into());
+                    }
+                    s.task_continue = None;
+                }
+                self.respond(session.clone())
             }
             "record" => {
                 let s = session.lock().map_err(err)?;
@@ -467,7 +592,15 @@ impl Service {
                 self.controlled(&req)?;
                 Ok(json!({"actions":session.lock().map_err(err)?.pending}))
             }
-            "tool" => self.propose(&session, string(&req, "name")?, req["arguments"].clone()),
+            "tool" => {
+                let _running = Running::begin(&session)?;
+                self.propose(
+                    &session,
+                    string(&req, "name")?,
+                    req["arguments"].clone(),
+                    None,
+                )
+            }
             "approve" => {
                 self.controlled(&req)?;
                 if self.gui.load(Ordering::SeqCst) {
@@ -497,11 +630,18 @@ impl Service {
                         tool,
                         &proposal["arguments"],
                         proposal.get("before"),
+                        proposal
+                            .get("_forecast_model")
+                            .map(|v| serde_json::from_value(v.clone()).map_err(err))
+                            .transpose()?,
                     )?
                 } else {
                     json!({"denied":true})
                 };
                 drop(gui);
+                if let Some(feedback) = self.recording_feedback(&session, &result) {
+                    return Ok(feedback);
+                }
                 {
                     let mut s = session.lock().map_err(err)?;
                     if let Some(last) = s.messages.last_mut()
@@ -522,7 +662,13 @@ impl Service {
                 if req["continue"].as_bool() == Some(false) {
                     Ok(result)
                 } else {
-                    self.respond(session)
+                    match self.respond(session.clone()) {
+                        Ok(reply) => Ok(reply),
+                        Err(error) => Ok(
+                            json!({"active":true,"text":"The tool returned a result, but the follow-up could not finish. Task verification remains incomplete.",
+                            "execution":result,"followup_error":error,"pending":{},"task_status":self.task_status(&session,true,true)}),
+                        ),
+                    }
                 }
             }
             _ => Err("unsupported operation".into()),
@@ -565,6 +711,14 @@ impl Service {
             memories: Vec::new(),
             messages: Vec::new(),
             busy: false,
+            task: None,
+            task_turn: String::new(),
+            adapted: false,
+            planning_ms: 0,
+            announce_task: false,
+            task_continue: None,
+            inferences: 0,
+            task_clock: None,
         }));
         self.sessions
             .lock()
@@ -572,7 +726,18 @@ impl Service {
             .insert((source.into(), id.into()), session.clone());
         Ok(session)
     }
-    fn propose(&self, session: &Arc<Mutex<Session>>, name: &str, args: Value) -> Result<Value> {
+    pub(super) fn propose(
+        &self,
+        session: &Arc<Mutex<Session>>,
+        name: &str,
+        args: Value,
+        planner: Option<ModelIdentity>,
+    ) -> Result<Value> {
+        if self.study_adaptation.is_some() && !super::tasks::study_tool(name) {
+            return Err(
+                "study tools are limited to the synthetic workspace and task evidence".into(),
+            );
+        }
         let (workspace, cancel) = {
             let s = session.lock().map_err(err)?;
             (s.workspace.clone(), s.cancel.clone())
@@ -580,14 +745,20 @@ impl Service {
         if cancel.load(Ordering::SeqCst) {
             return Err("request cancelled".into());
         }
+        if name.starts_with("task_") {
+            return self.task_tool(session, name, args);
+        }
         if actions::needs_approval(name, &args)? {
             if self.gui.load(Ordering::SeqCst) {
                 return Err(GUI_RUNNING.into());
             }
-            let proposal = actions::preview(&workspace, name, args)?;
+            let mut proposal = actions::preview(&workspace, name, args)?;
             let id = token()?;
             let mut visible = proposal.clone();
             visible.as_object_mut().unwrap().remove("before");
+            if let Some(model) = planner {
+                proposal["_forecast_model"] = json!(model);
+            }
             let mut s = session.lock().map_err(err)?;
             // Checked again under the session lock: a `gui` approval sets the flag before it
             // withdraws, taking each session's lock, so no proposal lands after the withdrawal.
@@ -598,7 +769,7 @@ impl Service {
             drop(s);
             Ok(json!({"pending_action":id,"preview":visible}))
         } else {
-            self.execute_observed(session, name, &args, None)
+            self.execute_observed(session, name, &args, None, planner)
         }
     }
 
@@ -610,7 +781,9 @@ impl Service {
         name: &str,
         args: &Value,
         before: Option<&Value>,
+        planner: Option<ModelIdentity>,
     ) -> Result<Value> {
+        let _span = task_model::profile::span("action_execution");
         let (workspace, cancel, source, id) = {
             let s = session.lock().map_err(err)?;
             (
@@ -623,6 +796,20 @@ impl Service {
         if cancel.load(Ordering::SeqCst) {
             return Err("request cancelled".into());
         }
+        let task_started = std::time::Instant::now();
+        let task_receipt = if let Some((task, remaining)) = self.task_remaining(session)? {
+            let action = task_model::reserve_action(&self.memory()?, &task, name, args)?;
+            Some((
+                task,
+                action,
+                super::tasks::deadline(
+                    cancel.clone(),
+                    remaining.saturating_sub(task_started.elapsed().as_millis() as u64),
+                ),
+            ))
+        } else {
+            None
+        };
         // Operation is part of the cohort; commands with different semantics are
         // not promoted to claims about task correctness by an exit status.
         let operation = match name {
@@ -641,21 +828,31 @@ impl Service {
             Some(_) => "invalid",
             None => "default",
         };
-        let scope = Scope {
+        let group = grouped::Group {
             measurement: Measurement::Runtime,
-            source,
-            context: digest(workspace.as_os_str().as_encoded_bytes()),
+            source: source.clone(),
             capability: format!("{name}:{operation}"),
+            conditions: super::forecast::conditions(
+                &workspace,
+                name,
+                planner.unwrap_or_else(|| ModelIdentity::Unavailable {
+                    session_digest: grouped::session_digest(&source, &id),
+                }),
+            )?,
         };
-        let prediction = self_model::predict(
+        let prediction = grouped::predict(
             &self.memory()?,
-            scope,
+            group,
             &id,
             &format!("The {name} operation will return a successful execution result."),
+            BTreeMap::new(),
         )?;
         // This bounded adaptation only adds an existing read-only inspection.
         // It cannot grant permissions, modify an approval or suppress the read.
-        let inspection = if name == "read" && prediction.policy == Policy::InspectFirst {
+        let inspection = if self.study_adaptation.is_none()
+            && name == "read"
+            && prediction.policy == Policy::InspectFirst
+        {
             let parent = std::path::Path::new(args["path"].as_str().unwrap_or("."))
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())
@@ -669,6 +866,15 @@ impl Service {
         } else {
             None
         };
+        if session
+            .lock()
+            .map_err(err)?
+            .task_clock
+            .as_ref()
+            .is_some_and(|c| c.remaining_ms() == 0)
+        {
+            cancel.store(true, Ordering::SeqCst);
+        }
         let result = actions::execute(&workspace, &cancel, name, args, before);
         let kind = execution_result(name, &result, cancel.load(Ordering::SeqCst));
         let evidence = format!(
@@ -676,9 +882,22 @@ impl Service {
         );
         let recorded = self
             .memory()
-            .and_then(|store| self_model::observe(&store, &prediction.id, kind, &evidence));
+            .and_then(|store| grouped::observe(&store, &prediction.id, kind, &evidence));
         let mut reflection = json!({"prediction":prediction.id,"probability_ppm":prediction.probability_ppm,
-            "policy":prediction.policy,"basis_count":prediction.basis.len(),"outcome":kind});
+            "policy":prediction.policy,"basis_count":prediction.basis.len(),"outcome":kind,
+            "grouping_version":2,"reviewed_basis_count":prediction.review_basis.len()});
+        if self.study_adaptation.is_some() {
+            // Retain execution receipts privately, but the S6a task intervention
+            // is the only learned policy delivered to the study planner.
+            for key in [
+                "policy",
+                "probability_ppm",
+                "basis_count",
+                "reviewed_basis_count",
+            ] {
+                reflection.as_object_mut().unwrap().remove(key);
+            }
+        }
         if let Some(value) = inspection {
             reflection["inspection"] = value;
         }
@@ -689,6 +908,26 @@ impl Service {
                 "Outcome not saved; do not repeat the operation merely to repair memory: {error}"
             ));
         }
+        if let Some((task, action, deadline)) = task_receipt {
+            drop(deadline);
+            let outcome = match kind {
+                ResultKind::Success => task_model::Verdict::Success,
+                ResultKind::Failure => task_model::Verdict::Failure,
+                ResultKind::Inconclusive => task_model::Verdict::Inconclusive,
+            };
+            let receipt = self.memory().and_then(|store| {
+                task_model::complete_action(
+                    &store,
+                    &task,
+                    &action,
+                    outcome,
+                    task_started.elapsed().as_millis() as u64,
+                    result.as_ref().ok().and_then(|v| v["exit_code"].as_i64()),
+                )
+            });
+            reflection["task"] =
+                json!({"id":task,"receipt":receipt.as_ref().ok(),"recording_error":receipt.err()});
+        }
         match result {
             Ok(mut value) => {
                 value["self_model"] = reflection;
@@ -697,6 +936,16 @@ impl Service {
             Err(error) => Err(format!("{error}\nSelf-model feedback (data): {reflection}")),
         }
     }
+    fn recording_feedback(&self, session: &Arc<Mutex<Session>>, result: &Value) -> Option<Value> {
+        let error = result["self_model"]["task"]["recording_error"]
+            .as_str()
+            .or_else(|| result["self_model"]["recording_error"].as_str())?;
+        Some(
+            json!({"active":true,"text":"The tool returned a result, but its receipt could not be saved. Do not repeat the action to repair memory.",
+            "execution":result,"recording_error":error,"pending":{},"task_status":self.task_status(session,true,true)}),
+        )
+    }
+
     fn respond(&self, session: Arc<Mutex<Session>>) -> Result<Value> {
         let _inference = self
             .inference
@@ -711,11 +960,27 @@ impl Service {
         (|| {
             let mut output = Vec::new();
             for _ in 0..12 {
+                self.task_adapt(&session)?;
                 let (messages, cancel) = {
-                    let s = session.lock().map_err(err)?;
+                    let mut s = session.lock().map_err(err)?;
+                    if s.inferences>=12 {return Err("task reached its response limit; work remains unverified".into());}
+                    s.inferences+=1;
                     (s.messages.clone(), s.cancel.clone())
                 };
-                let reply = self.infer(&messages, &cancel)?;
+                let remaining = self.task_remaining(&session)?;
+                let deadline = remaining.as_ref().map(|(_,ms)|super::tasks::deadline(cancel.clone(),*ms));
+                let started = std::time::Instant::now();
+                let (provider,planner) = self.forecast_planner()?;
+                let reply = self.infer(&messages, &cancel,&provider);
+                drop(deadline);
+                let elapsed = started.elapsed().as_millis() as u64;
+                if let Some((task,_)) = remaining {
+                    task_model::overhead(&self.memory()?, &task, "inference", elapsed)?;
+                } else {
+                    let mut s = session.lock().map_err(err)?;
+                    s.planning_ms = s.planning_ms.saturating_add(elapsed);
+                }
+                let reply = reply?;
                 let text = reply["content"].as_str().unwrap_or("").to_owned();
                 if !text.is_empty() {
                     output.push(text.clone());
@@ -726,6 +991,7 @@ impl Service {
                 if !calls.is_empty() {
                     visible["tool_calls"] = json!(calls);
                 }
+                self.study_trace_event("reply", visible.clone())?;
                 {
                     let mut s = session.lock().map_err(err)?;
                     if cancel.load(Ordering::SeqCst) {
@@ -746,11 +1012,11 @@ impl Service {
                             },
                         )?;
                     }
-                    if calls.is_empty() {
-                        return Ok(
-                            json!({"active":true,"text":output.join("\n\n"),"memories":s.memories,"pending":{}}),
-                        );
-                    }
+                }
+                if calls.is_empty() {
+                    let task_status=self.task_status(&session,true,false);
+                    let s=session.lock().map_err(err)?;
+                    return Ok(json!({"active":true,"text":output.join("\n\n"),"memories":s.memories,"pending":{},"task_status":task_status}));
                 }
                 if calls.len() != 1 {
                     return Err("model proposed multiple tools; request one step at a time".into());
@@ -762,20 +1028,39 @@ impl Service {
                 } else {
                     raw.clone()
                 };
-                let result = match self.propose(&session, name, arguments) {
+                let registered = self.task_remaining(&session)?.is_some();
+                let proposal = if !name.starts_with("task_") && !registered {
+                    Err("Declare acceptance criteria with task_begin before task actions.".into())
+                } else { self.propose(&session, name, arguments,Some(planner)) };
+                let result = match proposal {
                     // Give the planner the failed read and any learned directory
                     // inspection so it can correct a path within this turn.
-                    Err(error) if name == "read" && !cancel.load(Ordering::SeqCst) => {
+                    Err(error) if (name == "read" || name.starts_with("task_") || !registered) && !cancel.load(Ordering::SeqCst) => {
                         json!({"error":error})
                     }
                     other => other?,
                 };
+                if let Some(mut feedback)=self.recording_feedback(&session,&result) {
+                    feedback["text"]=json!(format!("{}\n{}",output.join("\n\n"),feedback["text"].as_str().unwrap()));
+                    return Ok(feedback);
+                }
                 let mut tool = json!({"role":"tool","tool_name":name,"content":result.to_string().chars().take(12000).collect::<String>()});
                 if let Some(id) = calls[0]["id"].as_str() {
                     tool["tool_call_id"] = json!(id);
                 }
                 let mut s = session.lock().map_err(err)?;
                 s.messages.push(tool);
+                if s.announce_task && matches!(name,"task_begin"|"task_revise") && result["criteria_frozen"]==true {
+                    let continuation=super::token()?;
+                    s.task_continue=Some(continuation.clone());
+                    drop(s);
+                    let status=self.task_status(&session,false,false);
+                    let criteria=super::tasks::display(&status);
+                    let s=session.lock().map_err(err)?;
+                    self.remember(&s.source,&s.id,&format!("{}:criteria:{}",s.turn,result["task"]["id"]),"assistant",&criteria,"commentary")?;
+                    return Ok(json!({"active":true,"text":output.join("\n\n"),"memories":s.memories,"pending":{},
+                        "continue_task":continuation,"task_status":status}));
+                }
                 if !s.pending.is_empty() {
                     let pending: BTreeMap<_, _> = s
                         .pending
@@ -783,16 +1068,21 @@ impl Service {
                         .map(|(id, p)| {
                             let mut p = p.clone();
                             p.as_object_mut().unwrap().remove("before");
+                            p.as_object_mut().unwrap().remove("_forecast_model");
                             (id.clone(), p)
                         })
                         .collect();
-                    return Ok(
-                        json!({"active":true,"text":output.join("\n\n"),"memories":s.memories,"pending":pending}),
-                    );
+                    let memories=s.memories.clone();
+                    drop(s);
+                    return Ok(json!({"active":true,"text":output.join("\n\n"),"memories":memories,"pending":pending,
+                        "task_status":self.task_status(&session,false,false)}));
                 }
             }
             Err("task reached its step limit; send another message to continue".into())
-        })()
+        })().map_err(|error: String| {
+            let status=self.task_status(&session,true,true);
+            format!("{error}\nTask evidence (data): {status}")
+        })
     }
 }
 
@@ -847,7 +1137,7 @@ pub fn verify_model() -> Result<()> {
     }
     Ok(())
 }
-fn local_chat(messages: &[Value], cancel: &AtomicBool) -> Result<Value> {
+fn local_chat(messages: &[Value], schemas: Value, cancel: &AtomicBool) -> Result<Value> {
     verify_model()?;
     let text_bytes: usize = messages
         .iter()
@@ -861,7 +1151,7 @@ fn local_chat(messages: &[Value], cancel: &AtomicBool) -> Result<Value> {
     if text_bytes > 48_000 {
         return Err("local context budget reached".into());
     }
-    let body = json!({"model":model(),"messages":messages,"tools":actions::schemas(),"stream":false,
+    let body = json!({"model":model(),"messages":messages,"tools":schemas,"stream":false,
         "think":false,"keep_alive":0,"options":{"num_ctx":std::env::var("LUCY_CHAT_CONTEXT").ok().and_then(|s|s.parse::<u32>().ok()).unwrap_or(16384),"num_predict":2048}});
     let result = net::request(
         "POST",
@@ -885,6 +1175,17 @@ fn local_chat(messages: &[Value], cancel: &AtomicBool) -> Result<Value> {
         return Err(format!("local inference failed (HTTP {code})"));
     }
     let response: Value = serde_json::from_slice(&bytes).map_err(err)?;
+    for (field, label) in [
+        ("load_duration", "model_load_ns"),
+        ("prompt_eval_duration", "model_prompt_ns"),
+        ("eval_duration", "model_generate_ns"),
+        ("prompt_eval_count", "model_prompt_tokens"),
+        ("eval_count", "model_generated_tokens"),
+    ] {
+        if let Some(value) = response[field].as_u64() {
+            task_model::profile::count(label, value);
+        }
+    }
     if !response["message"].is_object() {
         return Err("local model returned no message".into());
     }

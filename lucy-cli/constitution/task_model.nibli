@@ -1,0 +1,28 @@
+# Task receipt consistency, using the pinned corpus's evidence vocabulary.
+# A separate engine holds this graph; execution self-model facts never mix in.
+# exist(entity, kind, owner) reifies event, criterion and requirement relations.
+admits("sl_prediction").
+admits("sl_scope").
+admits("exist").
+admits("sl_precedes").
+admits("sl_basis").
+admits("sl_observation").
+derived_only("sl_known_observation").
+derived_only("sl_dep").
+derived_only("sl_path").
+derived_only("sl_violation").
+derived_only("sl_invalid").
+
+all $e, $t, $r: sl_observation($e, $t, $r) -> sl_known_observation($e).
+all $e, $t: exist($e, TaskEvent, $t) & ~sl_prediction($t) -> sl_violation($e, Orphan).
+all $t, $e: sl_basis($t, $e) & ~sl_known_observation($e) -> sl_violation($t, MissingEvidence).
+all $t, $e: sl_basis($t, $e) & ~sl_precedes($e, $t) -> sl_violation($t, FutureEvidence).
+all $t, $e, $q, $r, $a, $b: sl_basis($t, $e) & sl_observation($e, $q, $r) & sl_scope($t, $a) & sl_scope($q, $b) & ~($a = $b) -> sl_violation($t, CrossScope).
+all $a, $b, $t, $r, $s: sl_observation($a, $t, $r) & sl_observation($b, $t, $s) & ~($a = $b) -> sl_violation($t, DuplicateOutcome).
+all $e, $t, $c: exist($e, CriterionCheck, $c) & exist($e, TaskEvent, $t) & ~exist($c, TaskCriterion, $t) -> sl_violation($e, WrongCriterion).
+all $f, $e, $t: exist($f, RequiredEvidence, $e) & exist($f, TaskEvent, $t) & ~exist($e, TaskEvent, $t) -> sl_violation($f, CrossTaskEvidence).
+all $t, $e, $q, $r: sl_basis($t, $e) & sl_observation($e, $q, $r) -> sl_dep($t, $q).
+all $a, $b: sl_dep($a, $b) -> sl_path($a, $b).
+all $a, $b, $c: sl_path($a, $b) & sl_dep($b, $c) -> sl_path($a, $c).
+all $a: sl_path($a, $a) -> sl_violation($a, Cycle).
+all $e, $r: sl_violation($e, $r) -> sl_invalid(History).

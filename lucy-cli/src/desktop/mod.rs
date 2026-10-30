@@ -3,8 +3,10 @@
 pub mod actions;
 pub(crate) mod adapters;
 pub(crate) mod core;
+mod forecast;
 mod net;
 pub mod providers;
+mod tasks;
 #[cfg(test)]
 mod tests;
 #[cfg(all(feature = "desktop-ui", target_os = "linux"))]
@@ -523,9 +525,21 @@ fn agent(workspace: &Path, task: Option<String>) -> Result<()> {
             request["text"] = json!(text);
             request["event"] = json!(token()?);
             request["workspace"] = json!(workspace);
+            request["announce_task"] = json!(true);
             let mut response = call(request)?;
             loop {
                 print!("{}", screen(response["text"].as_str(), None)?);
+                if let Some(status) = response.get("task_status") {
+                    println!("{}", visible(&tasks::display(status)));
+                }
+                if let Some(continuation) = response["continue_task"].as_str() {
+                    std::io::stdout().flush().map_err(err)?;
+                    let mut next = client.clone();
+                    next["op"] = json!("continue-task");
+                    next["continuation"] = json!(continuation);
+                    response = call(next)?;
+                    continue;
+                }
                 let Some((id, proposal)) = response["pending"]
                     .as_object()
                     .and_then(|p| p.iter().next())

@@ -188,6 +188,9 @@ commit, the adjudicators and their models.
   test suite, a retrieval hit for a probe, a tool failure, each resolved from the artefact,
   by the adjudicator where possible. *Done when:* two scopes beat the cold baseline across
   a model change. *After:* S0.
+  Execution-forecast grouping and reviewed historical reuse are implemented on
+  `todo/S6a-grouping`; see [the interface](lucy-cli/SELF_MODEL_GROUPING.md).
+  Independent benefit measurements and the model-change requirement remain open.
 - [ ] **[S2a] The screen as a sense.** Before an approved interface action, a recorded
   prediction of a measurable screen property; then the screenshot; then the score. Fifty
   trials on held-out actions the adjudicator chooses. *Done when:* the Brier score is under

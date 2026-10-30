@@ -8,6 +8,14 @@ fn moved_constitution_and_evidence_model_pass_the_engine_static_checker() {
             "empirical self-model",
             include_str!("../constitution/self_model.nibli"),
         ),
+        (
+            "task evidence",
+            include_str!("../constitution/task_model.nibli"),
+        ),
+        (
+            "grouped self-model",
+            include_str!("../constitution/self_model_v2.nibli"),
+        ),
     ] {
         let checker = session(text, InputIntent::Assertion).unwrap();
         assert!(
