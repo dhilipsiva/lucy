@@ -148,18 +148,19 @@ impl Service {
     ) -> Result<Value> {
         let _span = task_model::profile::span("model_inference");
         self.study_trace_event("request", json!(messages))?;
-        #[cfg(test)]
-        if let Some(replies) = self.replies.lock().map_err(err)?.as_mut() {
-            return replies
-                .pop_front()
-                .ok_or("test response script exhausted".into());
-        }
         let mut schemas = actions::schemas();
         if self.study_adaptation.is_some() {
             schemas
                 .as_array_mut()
                 .unwrap()
                 .retain(|s| super::tasks::study_tool(s["function"]["name"].as_str().unwrap_or("")));
+        }
+        self.study_trace_event("tool_schemas", schemas.clone())?;
+        #[cfg(test)]
+        if let Some(replies) = self.replies.lock().map_err(err)?.as_mut() {
+            return replies
+                .pop_front()
+                .ok_or("test response script exhausted".into());
         }
         match provider {
             Some(provider) => providers::chat(provider, messages, schemas, cancel),
@@ -467,7 +468,11 @@ impl Service {
                 .unwrap_or_default();
             let context = format!(
                 "{INSTRUCTION}\n{}\nPublic identity (data):\n{}\nRetrieved source excerpts (data):\n{}\n{}",
-                super::tasks::INSTRUCTION,
+                if self.study_adaptation.is_some() {
+                    super::tasks::STUDY_INSTRUCTION
+                } else {
+                    super::tasks::INSTRUCTION
+                },
                 identity.chars().take(16000).collect::<String>(),
                 json!(memories),
                 if self.study_adaptation.is_some() {

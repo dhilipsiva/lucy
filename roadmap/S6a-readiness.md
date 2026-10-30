@@ -4,7 +4,15 @@ This phase checks the experiment machinery. It cannot establish learning,
 generalization, or subjective experience. S6a remains incomplete. The original
 registrations and evidence are unchanged.
 
-Run from the development shell after building the release CLI:
+The frozen-task clarification is separately registered in
+[S6a-tool-protocol.md](S6a-tool-protocol.md). Isolated studies receive instructions
+for an already registered task and eight tools; task_begin and task_revise remain
+available only in ordinary conversations. Every inference captures its actual
+offered tool schemas. The new diagnostic requires this evidence; older originals
+keep their replay contract. Protocol observations are separate from task verdicts.
+
+Commit the implementation and build the release CLI, then run from the development
+shell with a clean source tree:
 
 ```text
 python3 scripts/s6a-readiness.py --binary target/release/lucy --directory /an/unused/private/directory
@@ -14,6 +22,13 @@ The runner builds the release unit-test executable before starting diagnostic
 clocks; `--scripted-binary PATH` can supply that already-built executable. The
 scripted responder exists only in the test executable. Production binaries have
 no switch for scripted model responses.
+
+The runner freezes the clean source revision, executables, registration, fixtures
+and model digests. It explicitly sets `LUCY_AUDIT_CACHE=1` only for diagnostic
+subprocesses. Version 2 public synthetic fixtures have fresh identifiers and
+values while retaining the same work and calibration pattern. Offered schemas
+must match across the scripted and both model runs. Do not edit the source during
+the run; final checks bind the artifacts and source revision to the freeze.
 
 The scripted pass has 20 calibration tasks and 320 trials, covering two task
 families, two presentations, and four arms. Its total ceiling is 30 minutes,

@@ -18,6 +18,7 @@ import urllib.request
 
 import s6a_evidence as evidence
 import s6a_readiness_fixtures as fixtures
+import s6a_tool_protocol as tool_protocol
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -43,6 +44,12 @@ def now():
 
 def save(path, value):
     coordinator.save(path, value)
+
+
+def source_state():
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT))
+    return commit, dirty
 
 
 def preserve(base, deadline):
@@ -123,7 +130,7 @@ def scripted_run(base, test_binary, seconds=1800, calibration=10, held_out=20):
     wrapper.write_text("#!/usr/bin/env python3\nimport sys\nsys.path.insert(0, " + repr(str(ROOT / "scripts")) + ")\n"
                        "from s6a_scripted_bridge import main\nraise SystemExit(main())\n")
     wrapper.chmod(0o700)
-    env = dict(os.environ, LUCY_READINESS_TEST_BINARY=str(test_binary), LUCY_READINESS_BRIDGE_ROOT=str(base))
+    env = dict(os.environ, LUCY_AUDIT_CACHE="1", LUCY_READINESS_TEST_BINARY=str(test_binary), LUCY_READINESS_BRIDGE_ROOT=str(base))
     run = runner.Runner(wrapper, base / "scripted", seconds, started, reserve_seconds=min(180, seconds/4),
                         diagnostic=True, base_env=env)
     bundle = fixtures.bundle(run.info, calibration, held_out)
@@ -142,8 +149,10 @@ def scripted_run(base, test_binary, seconds=1800, calibration=10, held_out=20):
         run.report(bundle, complete, "synthetic engineering diagnostic")
         result.update(replay(run, deadline - 20))
         result["controls"] = check_controls(run, deadline - 20)
+        result["tool_protocol"] = tool_protocol.check_run(run, deadline - 20)
         result["mechanics_ready"] = (complete and result["replay"]["complete_originals"]
-            and result["score_replay"]["valid"] and all(result["controls"].values()))
+            and result["score_replay"]["valid"] and all(result["controls"].values())
+            and result["tool_protocol"]["valid"])
     except (OSError, RuntimeError, ValueError, TimeoutError, KeyError, TypeError) as error:
         save(run.base / "readiness-finalization-error.json", dict(type=type(error).__name__, detail=str(error)))
         result["finalization"] = "incomplete; private diagnostics preserved"
@@ -171,7 +180,7 @@ def model_run(base, binary, model, frozen, seconds=900):
             catalog = json.load(response)["models"]
         if not any(row["name"] == model and row["digest"].removeprefix("sha256:") == PINS[model] for row in catalog):
             raise ValueError("pinned local model unavailable; no download or substitution")
-        env = dict(os.environ, LUCY_CHAT_MODEL=model, LUCY_CHAT_DIGEST=PINS[model])
+        env = dict(os.environ, LUCY_AUDIT_CACHE="1", LUCY_CHAT_MODEL=model, LUCY_CHAT_DIGEST=PINS[model])
         run = runner.Runner(binary, base, seconds, started, reserve_seconds=120, diagnostic=True, base_env=env)
         bundle = fixtures.bundle(run.info, calibration=0, held_out=2)
         if run.info["model"] != f"ollama:{model}@{PINS[model]}":
@@ -208,7 +217,9 @@ def model_run(base, binary, model, frozen, seconds=900):
             # These eight smoke tasks never constitute the registered matrix.
             run.report(bundle, False, "synthetic model capability and timing only")
             result.update(replay(run, deadline - 20))
+            result["tool_protocol"] = tool_protocol.check_run(run, deadline - 20)
             result["model_ready"] = (len(run.trials) == 8 and result["score_replay"]["valid"]
+                and result["tool_protocol"]["valid"]
                 and not any(t["false_verified"] or t["budget_violation"] for t in run.trials)
                 and all(any(t["completed"] and t["scope"]["family"] == family for t in run.trials)
                         for family in ("verification", "retrieval")))
@@ -269,6 +280,11 @@ def render_report(result):
         lines.append(f"- {name}: {original.get('originals_verified','unavailable')} originals replayed; "
             f"original replay valid={original.get('valid','unavailable')}; score replay valid={scoring.get('valid','unavailable')}; "
             f"persistence={persistence.get('status','unavailable')} ({persistence.get('files','unavailable')} files).")
+        protocol = row.get("tool_protocol", {})
+        if protocol:
+            lines.append(f"- {name}: offered-schema evidence valid={protocol['valid']} across "
+                f"{protocol['originals']} originals and {protocol['requests']} requests. "
+                "Measured-trial protocol observations: " + ", ".join(f"{k}={v}" for k, v in protocol['trials'].items()) + ".")
     if not scripted.get("mechanics_ready", False):
         lines.append("- The complete scripted matrix has not passed its readiness gate. Missing comparisons remain unavailable.")
     for model, row in result.get("models", {}).items():
@@ -284,6 +300,8 @@ def render_report(result):
                 f"{audit.get('total_us',0)/1000000:.3f} s | {audit.get('calls','unavailable')} |")
     lines += ["", f"Provider unchanged: {result.get('provider_unchanged','unavailable')}. "
         f"Frozen implementation unchanged during the run: {result.get('frozen_implementation_unchanged','unavailable')}.", "",
+        "Protocol observations describe visible calls and native evidence, not inferred model intent. "
+        "Deliberately inconclusive calibration observations are counted separately in readiness.json.", "",
         "Originals remain local. No replication or publication was attempted. See each run's preserved-hashes.json "
         "for readback evidence. Future empirical work requires a fresh registration; do not treat these diagnostics as held-out results.", ""]
     return "\n".join(lines)
@@ -303,13 +321,17 @@ def main():
     base.mkdir(parents=True, mode=0o700)
     provider = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home()/".config"))) / "lucy/providers.json"
     before = coordinator.file_hash(provider) if provider.exists() else None
+    source_commit, source_dirty = source_state()
+    if source_dirty:
+        raise ValueError("commit the implementation before freezing readiness")
     result = dict(schema=1, kind="engineering_diagnostic", started_at=now(), s6a_complete=False,
         adaptation_enabled=False, publication="none", replication="none", models={})
-    freeze = dict(source_commit=subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip(),
-        source_dirty=bool(subprocess.check_output(["git","status","--porcelain"],cwd=ROOT)),
+    freeze = dict(source_commit=source_commit, source_dirty=source_dirty,
+        diagnostic_registration="roadmap/S6a-tool-protocol.md", fixture_version=2, audit_cache="1",
         binary_sha256=coordinator.file_hash(binary), test_binary_sha256=coordinator.file_hash(test_binary),
         files={str(path.relative_to(ROOT)):coordinator.file_hash(path) for path in
-            [*sorted((ROOT/"scripts").glob("*s6a*py")), ROOT/"scripts/self-model-study.py", ROOT/"roadmap/S6a.v2.md", ROOT/"lucy/constitution.nibli"]},
+            [*sorted((ROOT/"scripts").glob("*s6a*py")), ROOT/"scripts/self-model-study.py", ROOT/"roadmap/S6a.v2.md",
+             ROOT/"roadmap/S6a-tool-protocol.md", ROOT/"lucy/constitution.nibli"]},
         models=PINS)
     save(base / "freeze.json", freeze)
     try:
@@ -333,12 +355,16 @@ def main():
         result.update(provider_unchanged=before==after, ended_at=now())
         try:
             coordinator.check_pins(freeze, binary, time.monotonic()+10)
-            result["frozen_implementation_unchanged"] = coordinator.file_hash(test_binary) == freeze["test_binary_sha256"]
-        except (OSError, ValueError, TimeoutError):
+            result["frozen_implementation_unchanged"] = (coordinator.file_hash(test_binary) == freeze["test_binary_sha256"]
+                and source_state() == (freeze["source_commit"], False))
+        except (OSError, ValueError, TimeoutError, subprocess.SubprocessError):
             result["frozen_implementation_unchanged"] = False
+        protocols = [row.get("tool_protocol", {}) for row in [result.get("scripted", {}), *result["models"].values()]]
+        result["offered_schemas_consistent"] = (len(protocols) == 3 and all(p.get("valid") for p in protocols)
+            and len({p["schema_sha256"] for p in protocols}) == 1)
         result["ready_for_registration_design"] = (result.get("scripted",{}).get("mechanics_ready",False)
             and len(result["models"])==2 and all(r["model_ready"] for r in result["models"].values())
-            and before==after and result["frozen_implementation_unchanged"])
+            and before==after and result["frozen_implementation_unchanged"] and result["offered_schemas_consistent"])
         readable = render_report(result)
         (base / "README.md").write_text(readable)
         if (base / "README.md").read_text() != readable:

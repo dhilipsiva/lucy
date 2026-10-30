@@ -34,6 +34,56 @@ fn task_declaration() -> Value {
     )
 }
 
+// Freeze through the native journal before dispatch, as study_chat_since does.
+// These unit fixtures do not change process-wide isolation environment variables.
+fn frozen_study(service: &Service, workspace: &std::path::Path, expected: Value) -> Value {
+    use crate::task_model::{self as task, Observer};
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    service
+        .dispatch(request(
+            &client,
+            json!({"op":"begin-archive","workspace":workspace}),
+        ))
+        .unwrap();
+    let definition = serde_json::from_value(json!({
+        "source":client["source"],"session":client["session"],"title":"Frozen synthetic task",
+        "family":"verification","method":"fixture","model":service.task_model_identity().unwrap(),
+        "environment":service.task_environment().unwrap(),"budget":{"steps":12,"active_ms":120000},
+        "criteria":[{"id":"answer","description":"Output meets the sealed requirement",
+            "check":{"kind":"json_equals","path":"answer.json","pointer":"/answer","expected":expected}}]
+    })).unwrap();
+    let frozen = task::begin(
+        &Store::open(&service.root).unwrap(),
+        workspace,
+        definition,
+        Observer::Native,
+    )
+    .unwrap();
+    let active = service
+        .active(
+            client["source"].as_str().unwrap(),
+            client["session"].as_str().unwrap(),
+        )
+        .unwrap();
+    {
+        let mut session = active.lock().unwrap();
+        session.task = Some(frozen.id.clone());
+        session.task_turn = "study".into();
+        session.task_clock = Some(task::runtime::ActiveClock::start(Instant::now(), 0, 120000));
+    }
+    let mut display = json!(frozen);
+    display["lessons"] = json!([]);
+    display["definition"]["criteria"][0]["check"]
+        .as_object_mut()
+        .unwrap()
+        .remove("expected");
+    request(
+        &client,
+        json!({"op":"chat","event":"study","workspace":workspace,
+        "text":format!("Complete the synthetic task.\nFrozen task contract (data): {display}")}),
+    )
+}
+
 #[test]
 fn study_recall_filters_before_ranking_and_drops_nested_journals() {
     let temp = tempfile::tempdir().unwrap();
@@ -87,9 +137,10 @@ fn study_rejects_live_host_tools_before_execution() {
         let temp = tempfile::tempdir().unwrap();
         let mut service = Service::new(temp.path().join("memory"), None);
         service.study_adaptation = Some(false);
-        service.scripted(vec![task_declaration(), task_call(tool, json!({}))]);
-        let client = service.dispatch(json!({"op":"open"})).unwrap();
-        let error = service.dispatch(request(&client,json!({"op":"chat","text":"Synthetic dispatch boundary fixture","event":"fixture","workspace":temp.path()}))).unwrap_err();
+        service.scripted(vec![task_call(tool, json!({}))]);
+        let error = service
+            .dispatch(frozen_study(&service, temp.path(), json!(42)))
+            .unwrap_err();
         assert!(error.contains("limited to the synthetic workspace"));
         assert!(
             crate::self_model::grouped::History::read(&Store::open(&service.root).unwrap())
@@ -189,9 +240,6 @@ fn study_hides_sealed_expectations_but_checks_them_and_suppresses_execution_fore
     let mut service = Service::new(temp.path().join("memory"), None);
     service.study_adaptation = Some(false);
     service.scripted(vec![
-        task_call("task_begin", json!({"title":"Synthetic isolation fixture","family":"verification","method":"fixture",
-            "criteria":[{"id":"answer","description":"Output meets the sealed requirement",
-                "check":{"kind":"json_equals","path":"answer.json","pointer":"/answer","expected":"sealed-canary"}}]})),
         task_call("read", json!({"path":"missing.txt"})),
         task_call("read", json!({"path":"missing.txt"})),
         task_call("read", json!({"path":"missing.txt"})),
@@ -201,8 +249,9 @@ fn study_hides_sealed_expectations_but_checks_them_and_suppresses_execution_fore
         json!({"content":"Evidence inspected."}),
     ]);
     std::fs::write(temp.path().join("answer.json"), r#"{"answer":"wrong"}"#).unwrap();
-    let client = service.dispatch(json!({"op":"open"})).unwrap();
-    let result = service.dispatch(request(&client,json!({"op":"chat","text":"Run the synthetic mechanism fixture", "event":"fixture", "workspace":temp.path()}))).unwrap();
+    let result = service
+        .dispatch(frozen_study(&service, temp.path(), json!("sealed-canary")))
+        .unwrap();
     assert_eq!(
         result["task_status"]["tasks"][0]["outcome"]["verdict"],
         "failure"
@@ -210,6 +259,7 @@ fn study_hides_sealed_expectations_but_checks_them_and_suppresses_execution_fore
     let trace: Value =
         serde_json::from_slice(&std::fs::read(service.root.join("visible-trace.json")).unwrap())
             .unwrap();
+    assert!(!trace.to_string().contains("sealed-canary"));
     for request in trace
         .as_array()
         .unwrap()
@@ -245,6 +295,197 @@ fn study_hides_sealed_expectations_but_checks_them_and_suppresses_execution_fore
             .values()
             .any(|p| p.policy == crate::self_model::Policy::InspectFirst)
     );
+}
+
+#[test]
+fn study_protocol_offers_only_frozen_task_tools_and_checks_approved_work() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut service = Service::new(temp.path().join("memory"), None);
+    service.study_adaptation = Some(false);
+    service.scripted(vec![
+        // Providers may supply either an object or a JSON-encoded object.
+        task_call(
+            "write",
+            json!(json!({"path":"answer.json","text":"{\"answer\":42}"}).to_string()),
+        ),
+        task_call("task_check", json!({"criterion":"answer"})),
+        task_call("task_finish", json!({})),
+        json!({"content":"Evidence checked."}),
+    ]);
+    let client = frozen_study(&service, temp.path(), json!(42));
+    let pending = service.dispatch(client.clone()).unwrap();
+    assert!(!temp.path().join("answer.json").exists());
+    let action = pending["pending"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap();
+    let result = service
+        .dispatch(request(
+            &client,
+            json!({"op":"approve","action":action,"allow":true}),
+        ))
+        .unwrap();
+    assert_eq!(
+        result["task_status"]["tasks"][0]["outcome"]["verdict"],
+        "success"
+    );
+    let trace: Vec<Value> =
+        serde_json::from_slice(&std::fs::read(service.root.join("visible-trace.json")).unwrap())
+            .unwrap();
+    assert_eq!(trace.len(), 12);
+    let names = [
+        "read",
+        "list",
+        "search",
+        "write",
+        "command",
+        "task_check",
+        "task_finish",
+        "task_status",
+    ];
+    let schemas: Vec<_> = actions::schemas()
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|schema| names.contains(&schema["function"]["name"].as_str().unwrap()))
+        .cloned()
+        .collect();
+    assert_eq!(schemas.len(), names.len());
+    for events in trace.chunks_exact(3) {
+        assert_eq!(events[0]["kind"], "request");
+        let instruction = events[0]["value"][0]["content"].as_str().unwrap();
+        assert!(instruction.contains(super::tasks::STUDY_INSTRUCTION));
+        assert!(!instruction.contains(super::tasks::INSTRUCTION));
+        assert_eq!(events[1], json!({"kind":"tool_schemas","value":schemas}));
+        assert_eq!(events[2]["kind"], "reply");
+    }
+    for name in names {
+        assert!(super::tasks::study_tool(name));
+    }
+    for name in ["task_begin", "task_revise"] {
+        assert!(!super::tasks::study_tool(name));
+        assert!(
+            actions::schemas()
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|s| s["function"]["name"] == name)
+        );
+    }
+}
+
+#[test]
+fn study_contract_changes_and_invalid_replies_stay_unverified_without_new_retries() {
+    let mut batch = task_call(
+        "write",
+        json!({"path":"answer.json","text":"{\"answer\":42}"}),
+    );
+    batch["tool_calls"]
+        .as_array_mut()
+        .unwrap()
+        .push(task_call("task_finish", json!({}))["tool_calls"][0].clone());
+    for (reply, expected_requests, error) in [
+        (task_declaration(), 2, false),
+        (
+            task_call("task_revise", json!({"previous":"anything"})),
+            2,
+            false,
+        ),
+        (
+            task_call(
+                "task_check",
+                json!({"criterion":"answer","verdict":"success"}),
+            ),
+            2,
+            false,
+        ),
+        (task_call("write", json!("{broken json")), 1, true),
+        (
+            task_call(
+                "write",
+                json!({"path":"answer.json","content":"wrong field"}),
+            ),
+            1,
+            true,
+        ),
+        (batch, 1, true),
+        (json!({"content":"Everything passed."}), 1, false),
+    ] {
+        let temp = tempfile::tempdir().unwrap();
+        let mut service = Service::new(temp.path().join("memory"), None);
+        service.study_adaptation = Some(false);
+        service.scripted(vec![
+            reply.clone(),
+            json!({"content":"Work remains unverified."}),
+        ]);
+        let result = service.dispatch(frozen_study(&service, temp.path(), json!(42)));
+        assert_eq!(result.is_err(), error, "{reply}: {result:?}");
+        assert!(!temp.path().join("answer.json").exists());
+        let history =
+            crate::task_model::History::read(&Store::open(&service.root).unwrap()).unwrap();
+        assert_eq!(
+            history
+                .entries
+                .values()
+                .filter(|entry| matches!(entry.event, crate::task_model::Event::Begin { .. }))
+                .count(),
+            1
+        );
+        assert!(history.entries.values().all(|entry| !matches!(
+            entry.event,
+            crate::task_model::Event::ActionStarted { .. }
+                | crate::task_model::Event::Finished {
+                    verdict: crate::task_model::Verdict::Success,
+                    ..
+                }
+        )));
+        let trace: Vec<Value> = serde_json::from_slice(
+            &std::fs::read(service.root.join("visible-trace.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            trace.iter().filter(|e| e["kind"] == "request").count(),
+            expected_requests
+        );
+    }
+}
+
+#[test]
+fn study_write_needs_approval_and_required_checks_even_after_completion_prose() {
+    for allow in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let mut service = Service::new(temp.path().join("memory"), None);
+        service.study_adaptation = Some(false);
+        service.scripted(vec![
+            task_call(
+                "write",
+                json!({"path":"answer.json","text":"{\"answer\":42}"}),
+            ),
+            json!({"content":"The task is complete."}),
+        ]);
+        let client = frozen_study(&service, temp.path(), json!(42));
+        let pending = service.dispatch(client.clone()).unwrap();
+        assert!(!temp.path().join("answer.json").exists());
+        let action = pending["pending"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .next()
+            .unwrap();
+        let result = service
+            .dispatch(request(
+                &client,
+                json!({"op":"approve","action":action,"allow":allow}),
+            ))
+            .unwrap();
+        assert_eq!(temp.path().join("answer.json").exists(), allow);
+        assert_eq!(
+            result["task_status"]["tasks"][0]["outcome"]["verdict"],
+            "inconclusive"
+        );
+    }
 }
 
 #[test]

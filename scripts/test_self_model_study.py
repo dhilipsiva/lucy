@@ -10,6 +10,7 @@ import json
 import copy
 from unittest.mock import patch
 import s6a_evidence
+import s6a_tool_protocol as tool_protocol
 
 spec = importlib.util.spec_from_file_location("self_model_study", Path(__file__).with_name("self-model-study.py"))
 study = importlib.util.module_from_spec(spec)
@@ -120,6 +121,118 @@ class AuditBenchmarkTests(unittest.TestCase):
             changed = copy.deepcopy(candidate)
             mutate(changed)
             self.assertNotEqual(audit_benchmark.semantic(baseline), audit_benchmark.semantic(changed))
+
+
+class ToolProtocolTests(unittest.TestCase):
+    def trace(self, replies=None):
+        schemas = [dict(type="function", function=dict(name=name, description="Static synthetic schema",
+                   parameters=dict(type="object", properties=properties, required=required, additionalProperties=False)))
+                   for name, (properties, required) in tool_protocol.FIELDS.items()]
+        contract = dict(lessons=[], definition=dict(criteria=[dict(id="answer", check=dict(
+            kind="json_equals", path="answer.json", pointer="/answer"))]))
+        messages = [dict(role="system", content="The native adapter has already registered this task.\n"
+                         "Retrieved source excerpts (data):\n[]"),
+                    dict(role="user", content="Synthetic.\nFrozen task contract (data): " + json.dumps(contract))]
+        return [event for reply in (replies or [dict(content="Unresolved synthetic task.")]) for event in (
+            dict(kind="request", value=copy.deepcopy(messages)), dict(kind="tool_schemas", value=copy.deepcopy(schemas)),
+            dict(kind="reply", value=reply))]
+
+    def original(self, trace=None):
+        def row(sequence, **event):
+            return dict(task="native", sequence=sequence, event=event)
+        return dict(visible_trace=trace or self.trace(), trial=dict(task="native", arm="lessons_withheld", inconclusive=True),
+            journal={"0":row(0, kind="begin", task=dict(definition=dict(criteria=[dict(id="answer")]))),
+                     "1":row(1, kind="action_started", action="write", operation="write"),
+                     "2":row(2, kind="action_completed", action="write", outcome="success")})
+
+    def test_schema_evidence_is_required_only_by_the_new_diagnostic(self):
+        trace = self.trace()
+        request = dict(arm="lessons_withheld", recall_records=[], prompt="Synthetic.")
+        legacy = [event for event in trace if event["kind"] != "tool_schemas"]
+        self.assertEqual(s6a_evidence.context_check(legacy, request), 1)
+        self.assertEqual(s6a_evidence.context_check(trace, request), 1)
+        self.assertEqual(tool_protocol.inspect_trace(trace)["requests"], 1)
+        with self.assertRaisesRegex(ValueError, "lacks offered tool schemas"):
+            tool_protocol.inspect_trace(legacy)
+        for fault in ("begin", "duplicate", "arguments", "instructions", "changed", "orphan"):
+            bad = copy.deepcopy(trace)
+            if fault == "begin": bad[1]["value"][0]["function"]["name"] = "task_begin"
+            elif fault == "duplicate": bad.insert(2, copy.deepcopy(bad[1]))
+            elif fault == "arguments": bad[1]["value"][3]["function"]["parameters"]["additionalProperties"] = True
+            elif fault == "instructions": bad[0]["value"][0]["content"] += "For work requiring tools, first call task_begin"
+            elif fault == "changed":
+                bad += copy.deepcopy(trace)
+                bad[4]["value"][0]["function"]["description"] = "A different schema"
+            else: bad.pop(0)
+            with self.assertRaises(ValueError, msg=fault):
+                tool_protocol.inspect_trace(bad)
+
+    def test_protocol_failures_are_observations_and_do_not_supply_verdicts(self):
+        def call(name, arguments):
+            return dict(function=dict(name=name, arguments=arguments))
+        trace = self.trace([dict(tool_calls=[call("task_begin", {})]),
+            dict(tool_calls=[call("write", "broken JSON")]),
+            dict(tool_calls=[call("task_check", dict(criterion="answer")), call("task_finish", {})]),
+            dict(content="I claim success.")])
+        original = self.original(trace)
+        observations = tool_protocol.inspect_original(original)["observations"]
+        self.assertEqual(observations, dict(contract_change_calls=1, unavailable_tool_calls=1, invalid_argument_calls=1,
+            multiple_tool_replies=1, premature_prose_endings=1, writes_missing_required_checks=1))
+        original["journal"]["3"] = dict(task="native", sequence=3, event=dict(kind="checked", criterion="answer"))
+        original["trial"]["inconclusive"] = False  # A checked failure also has a legitimate final prose response.
+        checked = tool_protocol.inspect_original(original)["observations"]
+        self.assertEqual(checked["premature_prose_endings"], 0)
+        self.assertEqual(checked["writes_missing_required_checks"], 0)
+        original["journal"]["3"]["sequence"] = 0  # Checks from before the write do not count.
+        self.assertEqual(tool_protocol.inspect_original(original)["observations"]["writes_missing_required_checks"], 1)
+        for value in ({"path":"a","text":"b"}, '{"path":"a","text":"b"}'):
+            self.assertTrue(tool_protocol.valid_arguments("write", value))
+        for value in ({"path":"a","content":"b"}, {"path":True,"text":"b"}, [], None):
+            self.assertFalse(tool_protocol.valid_arguments("write", value))
+
+    def test_run_checks_embedded_calibration_and_binds_trial_trace(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            run = object.__new__(study.Runner)
+            original = self.original()
+            original["trial"]["arm"] = "calibration"
+            study.save(base / "calibration-0.json", original)
+            original = self.original()
+            (base / "trial-0").mkdir()
+            study.save(base / "trial-0/trial.json", original)
+            study.save(base / "trial-0/visible-trace.json", original["visible_trace"])
+            run.calibration_originals = [str(base / "calibration-0.json")]
+            run.originals = [str(base / "trial-0/trial.json")]
+            result = tool_protocol.check_run(run, time.monotonic()+10)
+            self.assertTrue(result["valid"])
+            self.assertEqual(result["originals"], 2)
+            self.assertEqual(result["calibration"]["premature_prose_endings"], 1)
+            self.assertEqual(result["trials"]["premature_prose_endings"], 1)
+            study.save(base / "trial-0/visible-trace.json", [])
+            self.assertFalse(tool_protocol.check_run(run, time.monotonic()+10)["valid"])
+            with self.assertRaises(TimeoutError):
+                tool_protocol.check_run(run, time.monotonic()-1)
+
+    def test_fresh_fixture_answers_and_scripted_calibration_are_consistent(self):
+        for family in ("verification", "retrieval"):
+            case = readiness.fixtures.case(family, "diagnostic", 7)
+            self.assertTrue(case["id"].startswith("synthetic-protocol-v2-"))
+            self.assertEqual(case["definition"]["method"], "synthetic-readiness-v2")
+            self.assertEqual(case["oracle"][0]["check"]["expected"], 1047)
+            case["oracle"][0]["check"]["expected"] = 888  # Responder consumes the oracle, not its own formula.
+            request = dict(case=case["id"], arm="full", definition=case["definition"], oracle=case["oracle"])
+            replies = readiness.fixtures.replies(request)
+            output = json.loads(replies[0]["tool_calls"][0]["function"]["arguments"]["text"])
+            self.assertEqual(output["answer"], 888)
+            for index in range(10):
+                case = readiness.fixtures.case(family, "calibration", index)
+                replies = readiness.fixtures.replies(dict(case=case["id"], arm="calibration", definition=case["definition"], oracle=case["oracle"]))
+                if index < 2:
+                    output = json.loads(replies[0]["tool_calls"][0]["function"]["arguments"]["text"])
+                    self.assertEqual(output["answer"], -1)
+                else:
+                    self.assertEqual(len(replies), 1)
+                    self.assertNotIn("tool_calls", replies[0])
 
 
 class RunnerTests(unittest.TestCase):
