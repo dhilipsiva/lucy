@@ -137,5 +137,38 @@ directly until the normal package update deploys this version.
 Validation: `nix develop --command just ci` and
 `nix develop --command cargo test --test static_check`.
 
+Audit reuse is an opt-in engineering candidate: `LUCY_AUDIT_CACHE=1` reuses
+completed successful Nibli checks within one process; `LUCY_AUDIT_CACHE=0`
+always runs the full check. The default remains full validation until the
+[registered correctness and performance gates](../roadmap/S6a-audit-performance.md)
+pass. The cache holds at most 64 fingerprints, bound to the domain, exact spec,
+generated facts, query and engine settings. Task evidence and both execution
+forecast versions use it. No records or engine instances are cached. Every call
+still reads its records and performs all Rust checks; artifact checks, receipt
+readback, permissions and budgets keep their existing paths. Restart clears it.
+
+Diagnostic profiles include `audit_cache_hits`, `audit_cache_misses`,
+`audit_cache_bypasses`, `audit_cache_evictions`, `nibli_evaluations` and the
+`nibli_audit` timing span (actual evaluations only). Absent counters mean zero.
+These nested timings are diagnostics, never additional budget charges.
+
+Build an optimized unit-test executable with
+`nix develop --command cargo test --release -p lucy-cli --lib --no-run` and use
+the executable path printed by Cargo:
+
+```sh
+python3 scripts/benchmark-audits.py --test-binary PATH --directory NEW_PRIVATE_DIRECTORY
+```
+
+The benchmark uses only the test executable's existing scripted responder.
+Its 0/10/20 history sizes count all task journals: each prior scripted task also
+creates an independent oracle task, so 10 means five native plus five oracle
+tasks. It freezes and verifies the restored seed before every fresh process,
+runs five alternating pairs per family/size, independently replays artifacts,
+compares normalized receipt content and model actions, and preserves partial
+attempts under one 30-minute process-tree deadline. `evidence.json` contains
+safe measurements and hashes; other files are private originals. A missing pair,
+replay error, changed outcome or exceeded budget cannot pass the gate.
+
 Planned extensions: [testable self-knowledge and learning from verification](SELF_MODEL_PLAN.md).
 That note describes future work, separate from the mechanism documented here.

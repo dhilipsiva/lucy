@@ -2,9 +2,8 @@
 //! Its evidence graph is checked independently in Rust and Nibli. No record is
 //! an instruction, an authorization, or evidence of consciousness.
 
+use crate::audit_cache::{self, Domain};
 use crate::store::{Record, Store, digest};
-use nibli_engine::NibliEngine;
-use nibli_types::logic::QueryResult;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -269,22 +268,8 @@ impl History {
     }
 
     pub fn audit(&self) -> Result<()> {
-        let engine = NibliEngine::new();
-        engine
-            .assert_text(&format!("{SPEC}\n{}", self.facts()))
-            .map_err(|e| e.to_string())?;
-        let result = engine
-            .query_holds("sl_invalid(History).")
-            .map_err(|e| e.to_string())?;
-        let (complete, refused) = engine.materialization_report().map_err(|e| e.to_string())?;
-        if !complete.iter().any(|r| r == "sl_invalid") {
-            return Err(format!("self-model evidence check incomplete: {refused:?}"));
-        }
-        let invalid = match result {
-            QueryResult::True => true,
-            QueryResult::False => false,
-            other => return Err(format!("self-model evidence check inconclusive: {other:?}")),
-        };
+        let checked = audit_cache::check(Domain::Legacy, SPEC, &self.facts())?;
+        let invalid = checked.invalid;
         if invalid != self.graph_invalid() {
             return Err("Rust/Nibli self-model evidence checks disagree".into());
         }
@@ -320,6 +305,7 @@ impl History {
                 return Err("invalid self-model observation schema".into());
             }
         }
+        checked.remember();
         Ok(())
     }
 

@@ -20,6 +20,100 @@ coord_spec.loader.exec_module(coordinator)
 readiness_spec = importlib.util.spec_from_file_location("s6a_readiness", Path(__file__).with_name("s6a-readiness.py"))
 readiness = importlib.util.module_from_spec(readiness_spec)
 readiness_spec.loader.exec_module(readiness)
+audit_spec = importlib.util.spec_from_file_location("audit_benchmark", Path(__file__).with_name("benchmark-audits.py"))
+audit_benchmark = importlib.util.module_from_spec(audit_spec)
+audit_spec.loader.exec_module(audit_benchmark)
+
+
+class AuditBenchmarkTests(unittest.TestCase):
+    def test_timeout_preserves_partial_originals_and_cannot_pass(self):
+        class InterruptedRunner:
+            def __init__(self, binary, directory, seconds, started, **kwargs):
+                self.base = directory
+                self.base.mkdir(mode=0o700)
+                self.base_env = kwargs["base_env"]
+                self.info = dict(implementation="fixture", protocol="fixture", model="scripted")
+            def one(self, *args):
+                (self.base / "interrupted.partial").write_text("preserved fixture")
+                raise TimeoutError("fixture deadline")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            binary = root / "test-binary"
+            binary.write_text("fixture only")
+            with patch.object(audit_benchmark.runner, "Runner", InterruptedRunner):
+                report = audit_benchmark.run_worker(binary, root / "attempt", time.monotonic())
+            self.assertFalse(report["passed"])
+            self.assertFalse(report["complete"])
+            self.assertEqual(report["stop_reason"], "TimeoutError")
+            self.assertEqual(report["samples"], [])
+            self.assertEqual(report["in_progress"]["mode"], "0")
+            hashes = json.loads((root / "attempt/preserved-hashes.json").read_bytes())
+            self.assertIn("interrupted.partial", hashes)
+            self.assertTrue(report["preservation"]["verified"])
+
+    def test_serialized_receipt_tampering_is_detected_before_comparison(self):
+        original = dict(journal=dict(entry="original"), oracle=dict(verdict="success"), trial={})
+        original["trial"].update(journal_digest=s6a_evidence.digest(original["journal"]),
+                                 oracle_digest=s6a_evidence.digest(original["oracle"]))
+        audit_benchmark.check_receipt_hashes(original)
+        original["journal"]["entry"] = "modified"
+        with self.assertRaisesRegex(ValueError, "receipt hash"):
+            audit_benchmark.check_receipt_hashes(original)
+
+    def samples(self):
+        return [dict(family=f, prior_tasks=h, pair=p, mode=m, healthy=True,
+                     native_wall_ms=100 if m == "0" else 70, nibli_us=100 if m == "0" else 40,
+                     nibli_evaluations=10, hits=1, misses=1, evictions=0, semantic_sha256="same")
+                for f in audit_benchmark.FAMILIES for h in audit_benchmark.HISTORIES
+                for p in range(5) for m in ("0", "1")]
+
+    def test_all_cells_pairs_and_thresholds_are_required(self):
+        samples = self.samples()
+        self.assertTrue(audit_benchmark.evaluate(samples, True)["passed"])
+        self.assertFalse(audit_benchmark.evaluate(samples, False)["passed"])
+        self.assertFalse(audit_benchmark.evaluate(samples[:-1], True)["passed"])
+        for field, value in (("healthy", False), ("semantic_sha256", "changed"),
+                             ("native_wall_ms", 90), ("nibli_us", 60)):
+            changed = copy.deepcopy(samples)
+            for row in changed:
+                if row["family"] == "retrieval" and row["prior_tasks"] == 20 and row["mode"] == "1":
+                    row[field] = value
+            self.assertFalse(audit_benchmark.evaluate(changed, True)["passed"], field)
+        for row in samples:
+            if row["prior_tasks"] == 0 and row["mode"] == "1":
+                row["native_wall_ms"] = 111
+        self.assertFalse(audit_benchmark.evaluate(samples, True)["passed"])
+
+    def test_normalization_keeps_evidence_forecasts_policies_actions_and_budgets(self):
+        def original(suffix, clock):
+            native, oracle = "native" + suffix, "oracle" + suffix
+            def row(task, sequence, event):
+                return dict(id=task + str(sequence), task=task, sequence=sequence, at_ms=clock,
+                            previous=None if sequence == 0 else task + str(sequence-1), event=event)
+            start = row(native, 0, dict(kind="begin", task=dict(id=native, definition=dict(session="session"+suffix,
+                budget=dict(active_ms=120000)), probability_ppm=500000, lessons=[dict(policy="policy-v1", basis=["seed-entry"])])))
+            action = row(native, 1, dict(kind="action_started", action="action"+suffix, operation="write", request_digest="request"))
+            finish = row(native, 2, dict(kind="finished", verdict="success", checks=[native+"1"], active_ms=clock,
+                                        evidence=dict(files={"answer.json":"sha256"})))
+            oracle_row = row(oracle, 0, dict(kind="begin", task=dict(definition=dict(session="oracle-session"+suffix))))
+            return dict(trial=dict(task=native, journal_digest="hash"+suffix, oracle_digest="hash"+suffix,
+                        probability_ppm=500000, active_ms=clock, budget=dict(active_ms=120000), completed=True),
+                        journal={r["id"]:r for r in (start, action, finish)}, oracle=oracle_row, oracle_journal=[oracle_row],
+                        artifacts=dict(directory="private"+suffix, outputs={"answer.json":"sha256"}),
+                        visible_trace=[dict(kind="reply", value=dict(tool_calls=["write", "task_finish"]))])
+        baseline, candidate = original("a", 100), original("b", 200)
+        self.assertEqual(audit_benchmark.semantic(baseline), audit_benchmark.semantic(candidate))
+        for mutate in (
+            lambda v: v["trial"].update(probability_ppm=600000),
+            lambda v: v["trial"]["budget"].update(active_ms=240000),
+            lambda v: v["journal"]["nativeb0"]["event"]["task"]["lessons"][0].update(basis=[]),
+            lambda v: v["journal"]["nativeb0"]["event"]["task"]["lessons"][0].update(policy="other"),
+            lambda v: v["journal"]["nativeb2"]["event"]["evidence"]["files"].update({"answer.json":"changed"}),
+            lambda v: v["visible_trace"][0]["value"].update(tool_calls=["task_finish", "write"]),
+        ):
+            changed = copy.deepcopy(candidate)
+            mutate(changed)
+            self.assertNotEqual(audit_benchmark.semantic(baseline), audit_benchmark.semantic(changed))
 
 
 class RunnerTests(unittest.TestCase):

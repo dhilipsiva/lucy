@@ -20,6 +20,32 @@ fn forecast(store: &Store) -> Prediction {
 }
 
 #[test]
+fn cached_legacy_audit_still_checks_rust_only_fields() {
+    crate::audit_cache::with_test_cache(true, || {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::open(temp.path()).unwrap();
+        let p = forecast(&store);
+        let mut history = History::read(&store).unwrap();
+        let cold = history.summary().unwrap();
+        assert_eq!(cold, history.summary().unwrap());
+        let full = crate::audit_cache::with_test_cache(false, || history.summary().unwrap());
+        assert_eq!(cold, full);
+        let facts = history.facts();
+        history
+            .predictions
+            .get_mut(&p.id)
+            .unwrap()
+            .expectation
+            .clear();
+        assert_eq!(facts, history.facts());
+        let report = crate::audit_cache::tests::measured(|| {
+            assert!(history.audit().unwrap_err().contains("schema"));
+        });
+        assert_eq!(report["counts"]["audit_cache_hits"], 1);
+    });
+}
+
+#[test]
 fn cold_start_feedback_and_recovery_are_evidence_driven() {
     let temp = tempfile::tempdir().unwrap();
     let store = Store::open(temp.path()).unwrap();

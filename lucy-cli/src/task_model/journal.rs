@@ -1,7 +1,6 @@
 use super::*;
+use crate::audit_cache::{self, Domain};
 use crate::store::{Record, Store, digest};
-use nibli_engine::NibliEngine;
-use nibli_types::logic::QueryResult;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -331,25 +330,9 @@ impl History {
         if self.entries.is_empty() {
             return Ok(());
         }
-        let nibli_span = profile::span("nibli_audit");
-        let engine = NibliEngine::new();
-        engine
-            .assert_text(&format!("{SPEC}\n{}", self.facts()))
-            .map_err(|e| e.to_string())?;
-        let verdict = engine
-            .query_holds("sl_invalid(History).")
-            .map_err(|e| e.to_string())?;
-        let (complete, _) = engine.materialization_report().map_err(|e| e.to_string())?;
-        if !complete.iter().any(|s| s == "sl_invalid") {
-            return Err("task evidence check incomplete".into());
-        }
-        drop(nibli_span);
+        let checked = audit_cache::check(Domain::Task, SPEC, &self.facts())?;
         let _rust_span = profile::span("rust_audit");
-        let invalid = match verdict {
-            QueryResult::True => true,
-            QueryResult::False => false,
-            _ => return Err("task evidence check inconclusive".into()),
-        };
+        let invalid = checked.invalid;
         if invalid != self.graph_invalid() {
             return Err("Rust/Nibli task evidence checks disagree".into());
         }
@@ -360,6 +343,7 @@ impl History {
         for id in ids {
             self.audit_task(id)?;
         }
+        checked.remember();
         Ok(())
     }
 

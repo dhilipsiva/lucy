@@ -3,9 +3,8 @@ use super::{
     History as LegacyHistory, Measurement, Observation, ResultKind, constant, estimate, nonempty,
     now,
 };
+use crate::audit_cache::{self, Domain};
 use crate::store::{Record, Store, digest};
-use nibli_engine::NibliEngine;
-use nibli_types::logic::QueryResult;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -430,22 +429,8 @@ impl History {
                 return Err("invalid v2 observation".into());
             }
         }
-        let engine = NibliEngine::new();
-        engine
-            .assert_text(&format!("{SPEC}\n{}", self.facts()))
-            .map_err(|e| e.to_string())?;
-        let verdict = engine
-            .query_holds("sl_invalid(History).")
-            .map_err(|e| e.to_string())?;
-        let (complete, _) = engine.materialization_report().map_err(|e| e.to_string())?;
-        if !complete.iter().any(|s| s == "sl_invalid") {
-            return Err("v2 evidence check incomplete".into());
-        }
-        let invalid = match verdict {
-            QueryResult::True => true,
-            QueryResult::False => false,
-            _ => return Err("v2 evidence check inconclusive".into()),
-        };
+        let checked = audit_cache::check(Domain::Grouped, SPEC, &self.facts())?;
+        let invalid = checked.invalid;
         if invalid != self.graph_invalid() {
             return Err("Rust/Nibli v2 evidence checks disagree".into());
         }
@@ -459,6 +444,7 @@ impl History {
                 return Err("v2 estimate does not follow its evidence".into());
             }
         }
+        checked.remember();
         Ok(())
     }
     pub fn summary(&self) -> Result<Value> {

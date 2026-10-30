@@ -1,4 +1,43 @@
 use super::*;
+use nibli_engine::NibliEngine;
+use nibli_types::logic::QueryResult;
+
+#[test]
+fn cached_grouped_audits_keep_revocation_and_graph_controls() {
+    crate::audit_cache::with_test_cache(true, || {
+        both_checkers_reject_bad_graphs_and_valid_state_recovers();
+        reviewed_graph_rejects_missing_wrong_and_revoked_memberships();
+        review_preview_apply_revoke_preserves_originals_and_old_forecasts();
+        artifact_changes_require_a_new_preview_and_review_metadata_cannot_authorize();
+    });
+}
+
+#[test]
+fn cached_grouped_audit_still_checks_estimates_after_a_hit() {
+    crate::audit_cache::with_test_cache(true, || {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::open(temp.path()).unwrap();
+        let p = forecast(&store);
+        let mut history = History::read(&store).unwrap();
+        let cold = history.summary().unwrap();
+        assert_eq!(cold, history.summary().unwrap());
+        let full = crate::audit_cache::with_test_cache(false, || history.summary().unwrap());
+        assert_eq!(cold, full);
+        let facts = history.facts();
+        history
+            .predictions
+            .get_mut(&p.id)
+            .unwrap()
+            .forecast
+            .probability_ppm += 1;
+        assert_eq!(facts, history.facts());
+        let report = crate::audit_cache::tests::measured(|| {
+            assert!(history.audit().unwrap_err().contains("estimate"));
+        });
+        assert_eq!(report["counts"]["audit_cache_hits"], 2); // legacy and v2
+        assert!(report["counts"].get("nibli_evaluations").is_none());
+    });
+}
 
 fn group() -> Group {
     Group {

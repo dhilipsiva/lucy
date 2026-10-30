@@ -29,6 +29,7 @@
 
 pub mod address;
 pub mod ask;
+mod audit_cache;
 pub mod capsule;
 pub mod cli;
 pub mod continuity;

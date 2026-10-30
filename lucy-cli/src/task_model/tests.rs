@@ -33,6 +33,73 @@ fn outcome(entry: &Entry) -> Verdict {
 }
 
 #[test]
+fn cached_task_audits_keep_graph_artifact_and_readback_controls() {
+    crate::audit_cache::with_test_cache(true, || {
+        graph_faults_are_rejected_by_rust_and_nibli_and_controls_remain_valid();
+        stale_positive_and_negative_file_evidence_is_inconclusive_and_revision_recovers();
+        native_study_scoring_reopens_serialized_receipts_and_rejects_tampering();
+    });
+}
+
+#[test]
+fn cache_hit_still_checks_rust_and_every_read_sees_added_changed_or_deleted_records() {
+    crate::audit_cache::with_test_cache(true, || {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::open(&temp.path().join("original")).unwrap();
+        let task = begin(&store, temp.path(), definition(file()), Observer::Cli).unwrap();
+        check(&store, temp.path(), &task.id, "output").unwrap();
+        let history = History::read(&store).unwrap();
+        let mut bad = history.clone();
+        let entry = bad
+            .entries
+            .values_mut()
+            .find(|e| matches!(e.event, Event::Begin { .. }))
+            .unwrap();
+        if let Event::Begin { task } = &mut entry.event {
+            task.definition.title = "tampered".into();
+        }
+        assert_eq!(bad.facts(), history.facts());
+        let report = crate::audit_cache::tests::measured(|| {
+            assert!(bad.audit().unwrap_err().contains("chain"));
+        });
+        assert_eq!(report["counts"]["audit_cache_hits"], 1);
+        assert!(report["counts"].get("nibli_evaluations").is_none());
+        // Rebuild stores from the originals to simulate changed/removed indexed
+        // records without bypassing the store's immutable-write contract.
+        let originals = store.all().unwrap();
+        for fault in ["edit", "delete", "malformed"] {
+            let changed = Store::open(&temp.path().join(fault)).unwrap();
+            for mut record in originals.clone() {
+                if record.payload["entry"]["event"]["kind"] == "begin" {
+                    if fault == "delete" {
+                        continue;
+                    }
+                    if fault == "edit" {
+                        record.payload["entry"]["event"]["task"]["definition"]["title"] =
+                            json!("tampered");
+                    }
+                    if fault == "malformed" {
+                        record.payload["entry"] = json!(null);
+                    }
+                }
+                changed.record(&record).unwrap();
+            }
+            assert!(History::read(&changed).is_err(), "{fault}");
+        }
+        let before = history.entries.len();
+        finish(&store, temp.path(), &task.id, false).unwrap();
+        assert!(History::read(&store).unwrap().entries.len() > before);
+        store
+            .record(&Record {
+                origin: ORIGIN.into(),
+            payload: json!({"id":"malformed-extra", "private":true, "entry":null, "text":"Malformed test record."}),
+            })
+            .unwrap();
+        assert!(History::read(&store).is_err());
+    });
+}
+
+#[test]
 fn study_preflight_cannot_retrieve_an_unassigned_calibration_source() {
     let temp = tempfile::tempdir().unwrap();
     let store = Store::open(&temp.path().join("memory")).unwrap();
