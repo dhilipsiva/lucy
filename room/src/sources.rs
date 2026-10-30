@@ -91,6 +91,9 @@ fn percent_decode(s: &str) -> String {
 
 /// Fetch a text over the network, no store, as the wake protocol reads files.
 pub async fn fetch_text(url: &str) -> Result<String, String> {
+    fetch_text_bounded(url, lucy_room_memory::transport::LEGACY_BYTES).await
+}
+pub async fn fetch_text_bounded(url: &str, limit: usize) -> Result<String, String> {
     use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
     let window = web_sys::window().ok_or("no window")?;
@@ -105,11 +108,36 @@ pub async fn fetch_text(url: &str) -> Result<String, String> {
     if !resp.ok() {
         return Err(format!("{} {}", resp.status(), resp.status_text()));
     }
-    let text = JsFuture::from(resp.text().map_err(|e| js_error(&e))?)
-        .await
-        .map_err(|e| js_error(&e))?;
-    text.as_string()
-        .ok_or_else(|| "the response was not text".to_string())
+    let reader: web_sys::ReadableStreamDefaultReader = resp
+        .body()
+        .ok_or("response body missing")?
+        .get_reader()
+        .dyn_into()
+        .map_err(|_| "response reader unavailable")?;
+    let mut bytes = Vec::new();
+    loop {
+        let part = JsFuture::from(reader.read())
+            .await
+            .map_err(|e| js_error(&e))?;
+        if js_sys::Reflect::get(&part, &"done".into())
+            .map_err(|e| js_error(&e))?
+            .as_bool()
+            == Some(true)
+        {
+            break;
+        }
+        let value = js_sys::Reflect::get(&part, &"value".into()).map_err(|e| js_error(&e))?;
+        let array = js_sys::Uint8Array::new(&value);
+        let size = array.length() as usize;
+        if bytes.len().saturating_add(size) > limit {
+            let _ = JsFuture::from(reader.cancel()).await;
+            return Err(format!("response exceeds {limit} byte limit"));
+        }
+        let old = bytes.len();
+        bytes.resize(old + size, 0);
+        array.copy_to(&mut bytes[old..]);
+    }
+    String::from_utf8(bytes).map_err(|_| "response is not UTF-8".into())
 }
 pub fn js_error(e: &wasm_bindgen::JsValue) -> String {
     e.as_string()

@@ -717,13 +717,34 @@ pub fn import_source(
 }
 
 pub fn sync_all(root: &Path) -> Result<Value> {
+    sync_selected(root, None, false)
+}
+pub fn sync_selected(root: &Path, selected: Option<&str>, retry: bool) -> Result<Value> {
+    sync_using(root, selected, retry, github::sync_peer)
+}
+fn sync_using(
+    root: &Path,
+    selected: Option<&str>,
+    retry: bool,
+    mut sync: impl FnMut(&Path, &Peer) -> Result<Value>,
+) -> Result<Value> {
+    if retry && selected.is_none() {
+        return Err("--retry requires --peer NAME".into());
+    }
     let config = Replica::open(root)?.config()?;
+    if selected.is_some_and(|name| !config.peers.contains_key(name)) {
+        return Err("selected peer is not enrolled".into());
+    }
     let mut reports = Vec::new();
-    for peer in config.peers.values() {
+    for peer in config
+        .peers
+        .values()
+        .filter(|p| selected.is_none_or(|name| name == p.name))
+    {
         let backoff_path = root
             .join("replication-v1")
             .join(format!("{}.backoff.json", peer.scope));
-        let backoff: Value = fs::read(&backoff_path)
+        let mut backoff: Value = fs::read(&backoff_path)
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or(Value::Null);
@@ -732,6 +753,7 @@ pub fn sync_all(root: &Path) -> Result<Value> {
             if backoff["until"]
                 .as_u64()
                 .is_some_and(|until| until > seconds)
+                && (!retry || backoff["rate_limit"] == true)
             {
                 return Err("retry deferred by peer backoff".into());
             }
@@ -752,7 +774,7 @@ pub fn sync_all(root: &Path) -> Result<Value> {
                     )?;
                 }
             }
-            github::sync_peer(root, peer)
+            sync(root, peer)
         })();
         let report = match result {
             Ok(report) => {
@@ -763,20 +785,20 @@ pub fn sync_all(root: &Path) -> Result<Value> {
                 if error != "retry deferred by peer backoff" {
                     let hint = error
                         .strip_prefix("GitHub rate limit; retry after ")
+                        .and_then(|s| s.split_whitespace().next())
                         .and_then(|s| s.parse::<u64>().ok());
-                    let delay = hint
-                        .map(|n| if n > seconds { n - seconds } else { n })
-                        .unwrap_or_else(|| {
-                            backoff["delay"].as_u64().unwrap_or(15).saturating_mul(2)
-                        })
-                        .clamp(30, 86400);
-                    save(
-                        &backoff_path,
-                        &serde_json::to_vec(&json!({"until":seconds+delay,"delay":delay}))
-                            .map_err(err)?,
-                    )?;
+                    let delay = hint.map(|n| n.max(30)).unwrap_or_else(|| {
+                        backoff["delay"]
+                            .as_u64()
+                            .unwrap_or(15)
+                            .saturating_mul(2)
+                            .clamp(30, 86400)
+                    });
+                    let rate_limit = error.starts_with("GitHub rate limit;");
+                    backoff = json!({"until":seconds.saturating_add(delay),"delay":delay,"last_error":error,"rate_limit":rate_limit});
+                    save(&backoff_path, &serde_json::to_vec(&backoff).map_err(err)?)?;
                 }
-                json!({"peer":peer.name,"status":if root.join("replication-v1").join(format!("{}.nibli",peer.scope)).exists(){"cached"}else{"unavailable"},"pending":peer.upload,"error":error})
+                json!({"peer":peer.name,"status":if root.join("replication-v1").join(format!("{}.nibli",peer.scope)).exists(){"cached"}else{"unavailable"},"pending":peer.upload,"error":error,"last_error":backoff["last_error"],"retry_at":backoff["until"],"rate_limit":backoff["rate_limit"]})
             }
         };
         let _ = crate::continuity::observe(
@@ -792,10 +814,21 @@ pub fn sync_all(root: &Path) -> Result<Value> {
     }
     let value = json!({"peers":reports});
     let replica = Replica::open(root)?;
-    save(
-        &replica.root.join("status.json"),
-        &serde_json::to_vec_pretty(&value).map_err(err)?,
-    )?;
+    let path = replica.root.join("status.json");
+    let mut saved = value.clone();
+    if let Some(name) = selected {
+        let old: Value = fs::read(&path)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or(Value::Null);
+        if let Some(previous) = old["peers"].as_array() {
+            saved["peers"]
+                .as_array_mut()
+                .unwrap()
+                .extend(previous.iter().filter(|p| p["peer"] != name).cloned());
+        }
+    }
+    save(&path, &serde_json::to_vec_pretty(&saved).map_err(err)?)?;
     Ok(value)
 }
 
@@ -879,7 +912,21 @@ pub fn command(command: &str, args: &[String], stdin: &str) -> Result<Value> {
         .map(Ok)
         .unwrap_or_else(crate::store::default_root)?;
     match command {
-        "sync" => sync_all(&root),
+        "sync" => {
+            let mut i = 0;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--retry" => i += 1,
+                    "--peer" | "--root"
+                        if args.get(i + 1).is_some_and(|s| !s.starts_with("--")) =>
+                    {
+                        i += 2
+                    }
+                    _ => return Err("use sync [--peer NAME [--retry]] [--root PATH]".into()),
+                }
+            }
+            sync_selected(&root, arg("--peer"), args.iter().any(|s| s == "--retry"))
+        }
         "peer" if args.first().is_some_and(|a| a == "discover") => github::discover(&root),
         "peer" => {
             let replica = Replica::open(&root)?;
@@ -965,7 +1012,7 @@ pub fn command(command: &str, args: &[String], stdin: &str) -> Result<Value> {
             #[cfg(not(unix))]
             let service = json!({"status":"unsupported","reason":"CLI-only on this platform"});
             Ok(
-                json!({"version":env!("CARGO_PKG_VERSION"),"data":root,"actor":replica.actor(),"peers":checks,"service":service,"network_tested":false,"model_invoked":false}),
+                json!({"version":env!("CARGO_PKG_VERSION"),"data":root,"actor":replica.actor(),"peers":checks,"service":service,"network_tested":false,"model_invoked":false,"replication_formats":[1,2]}),
             )
         }
         "continuity" => {
