@@ -3,6 +3,7 @@
 pub mod actions;
 pub(crate) mod adapters;
 pub(crate) mod core;
+mod forecast;
 mod net;
 pub mod providers;
 mod tasks;

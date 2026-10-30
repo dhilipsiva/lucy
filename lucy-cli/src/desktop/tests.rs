@@ -116,7 +116,7 @@ fn model_completion_prose_and_unregistered_tools_cannot_manufacture_verified_suc
     );
     let store = Store::open(&service.root).unwrap();
     assert!(
-        crate::self_model::History::read(&store)
+        crate::self_model::grouped::History::read(&store)
             .unwrap()
             .observations
             .is_empty()
@@ -166,7 +166,7 @@ fn native_clients_display_criteria_before_continuing_without_an_extra_approval()
     let contract=service.dispatch(request(&client,json!({"op":"chat","text":"Read the note","event":"announce","workspace":temp.path(),"announce_task":true}))).unwrap();
     assert!(contract["continue_task"].is_string());
     assert!(
-        crate::self_model::History::read(&Store::open(&service.root).unwrap())
+        crate::self_model::grouped::History::read(&Store::open(&service.root).unwrap())
             .unwrap()
             .observations
             .is_empty()
@@ -379,7 +379,7 @@ fn agent_reads_then_returns_visible_response_without_provider_internals() {
             .count(),
         2
     );
-    let history = crate::self_model::History::read(&Store::open(&root).unwrap()).unwrap();
+    let history = crate::self_model::grouped::History::read(&Store::open(&root).unwrap()).unwrap();
     assert_eq!(history.predictions.len(), 1);
     assert_eq!(history.observations.len(), 1);
     assert!(!json!(records).to_string().contains("provider internals"));
@@ -408,7 +408,7 @@ fn agent_write_needs_the_exact_ui_approval_and_can_only_run_once() {
     assert_eq!(preview["diff"]["after"], "approved content");
     assert!(!temp.path().join("out.txt").exists());
     assert!(
-        crate::self_model::History::read(&Store::open(&service.root).unwrap())
+        crate::self_model::grouped::History::read(&Store::open(&service.root).unwrap())
             .unwrap()
             .predictions
             .is_empty()
@@ -427,13 +427,21 @@ fn agent_write_needs_the_exact_ui_approval_and_can_only_run_once() {
         "approved content"
     );
     assert!(service.dispatch(approval).is_err());
-    let history = crate::self_model::History::read(&Store::open(&service.root).unwrap()).unwrap();
+    let history =
+        crate::self_model::grouped::History::read(&Store::open(&service.root).unwrap()).unwrap();
     assert_eq!(history.predictions.len(), 1);
     assert_eq!(history.observations.len(), 1);
 }
 
 #[test]
 fn learned_read_policy_survives_restart_and_changes_inspection() {
+    use crate::self_model::grouped::ModelIdentity;
+    let planner = || {
+        Some(ModelIdentity::Known {
+            name: "fixture-planner".into(),
+            revision: Some("v1".into()),
+        })
+    };
     let temp = tempfile::tempdir().unwrap();
     let workspace = temp.path().join("workspace");
     std::fs::create_dir(&workspace).unwrap();
@@ -449,8 +457,12 @@ fn learned_read_policy_survives_restart_and_changes_inspection() {
     );
     for _ in 0..2 {
         let error = service
-            .dispatch(json!({"op":"tool","source":"codex","session":"first",
-            "name":"read","arguments":{"path":"missing.txt"}}))
+            .propose(
+                &service.active("codex", "first").unwrap(),
+                "read",
+                json!({"path":"missing.txt"}),
+                planner(),
+            )
             .unwrap_err();
         assert!(!error.contains("actual.txt"));
     }
@@ -459,23 +471,27 @@ fn learned_read_policy_survives_restart_and_changes_inspection() {
     let wake = prompt(&service, &workspace, "codex", "second", "Lucy, continue.");
     assert!(wake["context"].as_str().unwrap().contains("inspect_first"));
     let read = |path: &str| {
-        json!({"op":"tool","source":"codex","session":"second",
-        "name":"read","arguments":{"path":path}})
+        service.propose(
+            &service.active("codex", "second").unwrap(),
+            "read",
+            json!({"path":path}),
+            planner(),
+        )
     };
-    let error = service.dispatch(read("missing.txt")).unwrap_err();
+    let error = read("missing.txt").unwrap_err();
     // The same failed request now carries an actual directory observation.
     assert!(error.contains("actual.txt"));
     assert!(error.contains("inspect_first"));
     for _ in 0..3 {
-        let read = service.dispatch(read("actual.txt")).unwrap();
+        let read = read("actual.txt").unwrap();
         assert_eq!(read["text"], "available evidence");
         assert!(read["self_model"]["inspection"].is_object());
     }
     // Success is contrary evidence; the policy does not get stuck in caution.
-    let read = service.dispatch(read("actual.txt")).unwrap();
+    let read = read("actual.txt").unwrap();
     assert_eq!(read["self_model"]["policy"], "direct");
     assert!(read["self_model"].get("inspection").is_none());
-    let history = crate::self_model::History::read(&Store::open(&root).unwrap()).unwrap();
+    let history = crate::self_model::grouped::History::read(&Store::open(&root).unwrap()).unwrap();
     history.audit().unwrap();
     assert!(
         history
@@ -518,10 +534,94 @@ fn failed_reads_return_evidence_to_the_planner_within_the_turn() {
         reply["text"],
         "That path is missing; I need a corrected path."
     );
-    let history = crate::self_model::History::read(&Store::open(&root).unwrap()).unwrap();
+    let history = crate::self_model::grouped::History::read(&Store::open(&root).unwrap()).unwrap();
     assert_eq!(
         history.observations.values().next().unwrap().result,
         crate::self_model::ResultKind::Failure
+    );
+}
+
+#[test]
+fn native_approval_retains_the_proposing_model_and_hides_internal_metadata() {
+    use crate::self_model::grouped::{History, ModelIdentity};
+    let temp = tempfile::tempdir().unwrap();
+    let service = Service::new(temp.path().join("memory"), None);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    let source = client["source"].as_str().unwrap();
+    let id = client["session"].as_str().unwrap();
+    prompt(&service, temp.path(), source, id, "Lucy, write a note.");
+    let session = service.active(source, id).unwrap();
+    let first = ModelIdentity::Known {
+        name: "first-planner".into(),
+        revision: Some("first-weights".into()),
+    };
+    let second = ModelIdentity::Known {
+        name: "second-planner".into(),
+        revision: Some("second-weights".into()),
+    };
+    let pending = service
+        .propose(
+            &session,
+            "write",
+            json!({"path":"note.txt","text":"note"}),
+            Some(first.clone()),
+        )
+        .unwrap();
+    assert!(pending["preview"].get("_forecast_model").is_none());
+    service
+        .propose(&session, "list", json!({"path":"."}), Some(second.clone()))
+        .unwrap();
+    service.dispatch(request(&client,json!({"op":"approve","action":pending["pending_action"],"allow":true,"continue":false}))).unwrap();
+    let history = History::read(&Store::open(&service.root).unwrap()).unwrap();
+    history.audit().unwrap();
+    assert_eq!(
+        history
+            .predictions
+            .values()
+            .find(|p| p.scope.capability == "write:default")
+            .unwrap()
+            .conditions
+            .model_identity,
+        first
+    );
+    assert_eq!(
+        history
+            .predictions
+            .values()
+            .find(|p| p.scope.capability == "list:default")
+            .unwrap()
+            .conditions
+            .model_identity,
+        second
+    );
+    assert!(
+        !serde_json::to_string(&history.predictions)
+            .unwrap()
+            .contains(temp.path().to_str().unwrap())
+    );
+}
+
+#[test]
+fn external_native_requests_do_not_inherit_the_services_model_or_other_sessions() {
+    use crate::self_model::grouped::{History, ModelIdentity};
+    let temp = tempfile::tempdir().unwrap();
+    let service = Service::new(temp.path().join("memory"), None);
+    for session in ["one", "two"] {
+        prompt(&service, temp.path(), "codex", session, "Lucy, inspect.");
+        let result=service.dispatch(json!({"op":"tool","source":"codex","session":session,"name":"list","arguments":{"path":"."}})).unwrap();
+        assert_eq!(result["self_model"]["probability_ppm"], 500_000);
+    }
+    let history = History::read(&Store::open(&service.root).unwrap()).unwrap();
+    assert!(history.predictions.values().all(|p| matches!(
+        p.conditions.model_identity,
+        ModelIdentity::Unavailable { .. }
+    )));
+    assert_eq!(
+        history.summary().unwrap()["scopes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
     );
 }
 

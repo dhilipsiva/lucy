@@ -4,6 +4,12 @@ Recorded: 2026-10-28.
 Status: task-evidence framework implemented on `todo/S6a`, 2026-10-29.
 Independent benefit measurements and the model-change experiment remain pending.
 
+Comparable execution-forecast grouping and reviewed historical reuse are
+implemented on `todo/S6a-grouping`, 2026-10-30. See
+[the interface and compatibility rules](SELF_MODEL_GROUPING.md) and
+[the separate mechanism preregistration](../roadmap/S6a-grouping.md).
+This preserves the S6a study protocol and does not complete its benefit gate.
+
 ## Implemented scope
 
 The approved design is now an additive task journal, CLI and native assistant

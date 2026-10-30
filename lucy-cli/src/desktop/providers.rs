@@ -100,7 +100,11 @@ pub fn selection_key() -> Result<String> {
 /// A requested name is not a weight revision. Resolve local content digests
 /// when available; remote or unavailable revisions stay explicit.
 pub fn identity() -> Result<String> {
-    if let Some(provider) = selected()? {
+    identity_for(selected()?.as_ref())
+}
+
+pub(super) fn identity_for(selection: Option<&Provider>) -> Result<String> {
+    if let Some(provider) = selection {
         return Ok(format!(
             "{}:{}@revision-unknown:{}",
             provider.name,

@@ -1,5 +1,6 @@
 use super::{Result, actions, err, model, net, providers, string, token};
-use crate::self_model::{self, Measurement, Policy, ResultKind, Scope};
+use crate::self_model::grouped::{self, ModelIdentity};
+use crate::self_model::{self, Measurement, Policy, ResultKind};
 use crate::store::{Store, digest};
 use crate::task_model;
 use serde_json::{Value, json};
@@ -128,15 +129,20 @@ impl Service {
     pub(super) fn has_script(&self) -> bool {
         self.replies.lock().unwrap().is_some()
     }
-    fn infer(&self, messages: &[Value], cancel: &AtomicBool) -> Result<Value> {
+    fn infer(
+        &self,
+        messages: &[Value],
+        cancel: &AtomicBool,
+        provider: &Option<providers::Provider>,
+    ) -> Result<Value> {
         #[cfg(test)]
         if let Some(replies) = self.replies.lock().map_err(err)?.as_mut() {
             return replies
                 .pop_front()
                 .ok_or("test response script exhausted".into());
         }
-        match providers::selected()? {
-            Some(provider) => providers::chat(&provider, messages, actions::schemas(), cancel),
+        match provider {
+            Some(provider) => providers::chat(provider, messages, actions::schemas(), cancel),
             None => local_chat(messages, cancel),
         }
     }
@@ -516,7 +522,12 @@ impl Service {
                 self.controlled(&req)?;
                 Ok(json!({"actions":session.lock().map_err(err)?.pending}))
             }
-            "tool" => self.propose(&session, string(&req, "name")?, req["arguments"].clone()),
+            "tool" => self.propose(
+                &session,
+                string(&req, "name")?,
+                req["arguments"].clone(),
+                None,
+            ),
             "approve" => {
                 self.controlled(&req)?;
                 if self.gui.load(Ordering::SeqCst) {
@@ -546,6 +557,10 @@ impl Service {
                         tool,
                         &proposal["arguments"],
                         proposal.get("before"),
+                        proposal
+                            .get("_forecast_model")
+                            .map(|v| serde_json::from_value(v.clone()).map_err(err))
+                            .transpose()?,
                     )?
                 } else {
                     json!({"denied":true})
@@ -637,7 +652,13 @@ impl Service {
             .insert((source.into(), id.into()), session.clone());
         Ok(session)
     }
-    fn propose(&self, session: &Arc<Mutex<Session>>, name: &str, args: Value) -> Result<Value> {
+    pub(super) fn propose(
+        &self,
+        session: &Arc<Mutex<Session>>,
+        name: &str,
+        args: Value,
+        planner: Option<ModelIdentity>,
+    ) -> Result<Value> {
         let (workspace, cancel) = {
             let s = session.lock().map_err(err)?;
             (s.workspace.clone(), s.cancel.clone())
@@ -652,10 +673,13 @@ impl Service {
             if self.gui.load(Ordering::SeqCst) {
                 return Err(GUI_RUNNING.into());
             }
-            let proposal = actions::preview(&workspace, name, args)?;
+            let mut proposal = actions::preview(&workspace, name, args)?;
             let id = token()?;
             let mut visible = proposal.clone();
             visible.as_object_mut().unwrap().remove("before");
+            if let Some(model) = planner {
+                proposal["_forecast_model"] = json!(model);
+            }
             let mut s = session.lock().map_err(err)?;
             // Checked again under the session lock: a `gui` approval sets the flag before it
             // withdraws, taking each session's lock, so no proposal lands after the withdrawal.
@@ -666,7 +690,7 @@ impl Service {
             drop(s);
             Ok(json!({"pending_action":id,"preview":visible}))
         } else {
-            self.execute_observed(session, name, &args, None)
+            self.execute_observed(session, name, &args, None, planner)
         }
     }
 
@@ -678,6 +702,7 @@ impl Service {
         name: &str,
         args: &Value,
         before: Option<&Value>,
+        planner: Option<ModelIdentity>,
     ) -> Result<Value> {
         let (workspace, cancel, source, id) = {
             let s = session.lock().map_err(err)?;
@@ -720,17 +745,24 @@ impl Service {
             Some(_) => "invalid",
             None => "default",
         };
-        let scope = Scope {
+        let group = grouped::Group {
             measurement: Measurement::Runtime,
-            source,
-            context: digest(workspace.as_os_str().as_encoded_bytes()),
+            source: source.clone(),
             capability: format!("{name}:{operation}"),
+            conditions: super::forecast::conditions(
+                &workspace,
+                name,
+                planner.unwrap_or_else(|| ModelIdentity::Unavailable {
+                    session_digest: grouped::session_digest(&source, &id),
+                }),
+            )?,
         };
-        let prediction = self_model::predict(
+        let prediction = grouped::predict(
             &self.memory()?,
-            scope,
+            group,
             &id,
             &format!("The {name} operation will return a successful execution result."),
+            BTreeMap::new(),
         )?;
         // This bounded adaptation only adds an existing read-only inspection.
         // It cannot grant permissions, modify an approval or suppress the read.
@@ -755,9 +787,10 @@ impl Service {
         );
         let recorded = self
             .memory()
-            .and_then(|store| self_model::observe(&store, &prediction.id, kind, &evidence));
+            .and_then(|store| grouped::observe(&store, &prediction.id, kind, &evidence));
         let mut reflection = json!({"prediction":prediction.id,"probability_ppm":prediction.probability_ppm,
-            "policy":prediction.policy,"basis_count":prediction.basis.len(),"outcome":kind});
+            "policy":prediction.policy,"basis_count":prediction.basis.len(),"outcome":kind,
+            "grouping_version":2,"reviewed_basis_count":prediction.review_basis.len()});
         if let Some(value) = inspection {
             reflection["inspection"] = value;
         }
@@ -830,7 +863,8 @@ impl Service {
                 let remaining = self.task_remaining(&session)?;
                 let deadline = remaining.as_ref().map(|(_,ms)|super::tasks::deadline(cancel.clone(),*ms));
                 let started = std::time::Instant::now();
-                let reply = self.infer(&messages, &cancel);
+                let (provider,planner) = self.forecast_planner()?;
+                let reply = self.infer(&messages, &cancel,&provider);
                 drop(deadline);
                 let elapsed = started.elapsed().as_millis() as u64;
                 if let Some((task,_)) = remaining {
@@ -889,7 +923,7 @@ impl Service {
                 let registered = self.task_remaining(&session)?.is_some();
                 let proposal = if !name.starts_with("task_") && !registered {
                     Err("Declare acceptance criteria with task_begin before task actions.".into())
-                } else { self.propose(&session, name, arguments) };
+                } else { self.propose(&session, name, arguments,Some(planner)) };
                 let result = match proposal {
                     // Give the planner the failed read and any learned directory
                     // inspection so it can correct a path within this turn.
@@ -926,6 +960,7 @@ impl Service {
                         .map(|(id, p)| {
                             let mut p = p.clone();
                             p.as_object_mut().unwrap().remove("before");
+                            p.as_object_mut().unwrap().remove("_forecast_model");
                             (id.clone(), p)
                         })
                         .collect();

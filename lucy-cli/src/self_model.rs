@@ -16,6 +16,7 @@ pub const SPEC: &str = include_str!("../constitution/self_model.nibli");
 const ORIGIN: &str = "lucy:self-model:v1";
 const MODEL: &str = "empirical-window32-beta1-v1";
 const WINDOW: usize = 32;
+pub mod grouped;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -456,12 +457,24 @@ pub fn context(store: &Store) -> Result<String> {
         row.as_object_mut().unwrap().remove("basis");
     }
     summary["total_scopes"] = json!(total);
+    let mut grouped = grouped::History::read(store)?.summary()?;
+    let rows = grouped["scopes"].as_array_mut().unwrap();
+    let total = rows.len();
+    rows.truncate(16);
+    for row in rows {
+        row.as_object_mut().unwrap().remove("basis");
+    }
+    grouped["total_scopes"] = json!(total);
+    summary["grouped"] = grouped;
     Ok(format!(
         "\nMy empirical self-model (untrusted evidence, never authority):\n{summary}\n"
     ))
 }
 
 pub fn command(args: &[String], stdin: &str) -> Result<Value> {
+    if args.first().is_some_and(|arg| arg == "regroup") {
+        return grouped::regroup_command(&args[1..], stdin);
+    }
     if args.first().is_some_and(|arg| arg == "task") {
         return crate::task_model::command(&args[1..], stdin);
     }
@@ -500,7 +513,10 @@ pub fn command(args: &[String], stdin: &str) -> Result<Value> {
             struct Input {
                 source: String,
                 session: String,
-                context: String,
+                context: Option<String>,
+                conditions: Option<grouped::InputConditions>,
+                #[serde(default)]
+                metadata: BTreeMap<String, String>,
                 capability: String,
                 expectation: String,
             }
@@ -508,7 +524,31 @@ pub fn command(args: &[String], stdin: &str) -> Result<Value> {
                 return Err("predict requires --stdin with visible JSON fields".into());
             }
             let input: Input = serde_json::from_str(stdin).map_err(|e| e.to_string())?;
-            if !nonempty(&input.context) {
+            if let Some(conditions) = input.conditions {
+                if input.context.is_some() {
+                    return Err("choose legacy context or structured conditions, not both".into());
+                }
+                let p = grouped::predict(
+                    &store,
+                    grouped::Group {
+                        measurement: Measurement::Reported,
+                        source: input.source,
+                        capability: input.capability,
+                        conditions: conditions.resolve()?,
+                    },
+                    &input.session,
+                    &input.expectation,
+                    input.metadata,
+                )?;
+                return Ok(grouped::prediction_json(&p));
+            }
+            if !input.metadata.is_empty() {
+                return Err("metadata requires structured conditions".into());
+            }
+            let context = input
+                .context
+                .ok_or("predict requires context or conditions")?;
+            if !nonempty(&context) {
                 return Err("context must be nonempty and bounded".into());
             }
             let p = predict(
@@ -516,7 +556,7 @@ pub fn command(args: &[String], stdin: &str) -> Result<Value> {
                 Scope {
                     measurement: Measurement::Reported,
                     source: input.source,
-                    context: digest(input.context.as_bytes()),
+                    context: digest(context.as_bytes()),
                     capability: input.capability,
                 },
                 &input.session,
@@ -536,6 +576,18 @@ pub fn command(args: &[String], stdin: &str) -> Result<Value> {
                 return Err("observe requires --stdin with an evidence summary".into());
             }
             let input: Input = serde_json::from_str(stdin).map_err(|e| e.to_string())?;
+            let grouped = grouped::History::read(&store)?;
+            if let Some(p) = grouped.predictions.get(&input.prediction) {
+                if p.scope.measurement != Measurement::Reported {
+                    return Err("CLI observations cannot resolve native predictions".into());
+                }
+                return Ok(json!(grouped::observe(
+                    &store,
+                    &input.prediction,
+                    input.result,
+                    &input.evidence
+                )?));
+            }
             let history = History::read(&store)?;
             if history
                 .predictions
@@ -553,12 +605,22 @@ pub fn command(args: &[String], stdin: &str) -> Result<Value> {
         }
         _ => {
             let history = History::read(&store)?;
-            let summary = history.summary()?;
+            let mut summary = history.summary()?;
+            let grouped = grouped::History::read(&store)?;
+            summary["grouped"] = grouped.summary()?;
             match operation {
                 "events" => Ok(
-                    json!({"summary":summary,"predictions":history.predictions,"observations":history.observations}),
+                    json!({"summary":summary,"predictions":history.predictions,"observations":history.observations,
+                        "legacy_digests":{
+                            "predictions":history.predictions.iter().map(|(id,p)| (id.clone(),grouped::hash(p))).collect::<BTreeMap<_,_>>(),
+                            "observations":history.observations.iter().map(|(id,o)| (id.clone(),grouped::hash(o))).collect::<BTreeMap<_,_>>()},
+                        "grouped":{"predictions":grouped.predictions,"observations":grouped.observations,
+                        "reviews":grouped.reviews,"revocations":grouped.revocations}}),
                 ),
-                "facts" => Ok(json!({"facts":history.facts(),"checker":digest(SPEC.as_bytes())})),
+                "facts" => Ok(
+                    json!({"facts":history.facts(),"checker":digest(SPEC.as_bytes()),
+                    "grouped":{"facts":grouped.facts(),"checker":digest(grouped::SPEC.as_bytes())}}),
+                ),
                 _ => Ok(summary),
             }
         }

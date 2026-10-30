@@ -36,6 +36,8 @@ pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli te
                                      inspect my empirical self-model and its evidence
   lucy self-model predict|observe --stdin [--root DIR]
                                      record a forecast or an attributed outcome as JSON
+  lucy self-model regroup preview|apply|revoke --stdin [--root DIR]
+                                     review explicit legacy evidence for future forecasts
   lucy self-model task begin|run|check|finish|revise --stdin [--root DIR] [--workspace DIR]
   lucy self-model task status|audit|events|facts [--root DIR]
   lucy self-model task policy|study-score --stdin [--root DIR]
