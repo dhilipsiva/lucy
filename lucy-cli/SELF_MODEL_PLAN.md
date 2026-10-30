@@ -19,6 +19,20 @@ enabled by default, with `LUCY_AUDIT_CACHE=0` restoring full validation. See the
 [aggregate evidence, including failed runner attempts](../roadmap/S6a-audit-performance-evidence.json).
 This engineering result does not complete the independent benefit or model-change studies.
 
+Frozen-task protocol clarification was implemented directly on `main`, 2026-10-30,
+under the [separate registration](../roadmap/S6a-tool-protocol.md). Study sessions
+use the already frozen contract and cannot begin or revise it; actual offered
+schemas are traced, and existing approvals, checks and rejection behavior remain.
+The bounded readiness attempt preserved 123/320 scripted trials plus all 20
+calibration tasks, but exhausted both trial time and the native scoring allowance.
+Qwen passed its smoke gate with seven verified successes from eight trials;
+Llama had eight inconclusive trials and did not pass. All preserved outcomes had
+zero false verification and budget violations. See the
+[readiness results](../roadmap/S6a-readiness.md#frozen-task-protocol-repeat--2026-10-30)
+and [aggregate evidence](../roadmap/S6a-tool-protocol-evidence.json).
+Engineering readiness, independent benefit and the model-change study remain open;
+no policy was activated or running service deployed.
+
 ## Implemented scope
 
 The approved design is now an additive task journal, CLI and native assistant

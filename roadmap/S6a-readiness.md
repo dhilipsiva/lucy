@@ -142,7 +142,7 @@ the freeze SHA-256 is
 The readable report formatter was added after the frozen run; it does not alter
 those originals or their results.
 
-## Next useful work
+## Next useful work recorded after the first run
 
 1. Reduce repeated whole-history Nibli revalidation while preserving the same
    Rust/Nibli invariants, tamper detection, and Lean checks. Measure any proposed
@@ -153,3 +153,72 @@ those originals or their results.
 3. Repeat bounded engineering readiness after those changes. Only then design a
    fresh registration with independently selected cases and a feasible budget.
    The current observations do not demonstrate learning from experience.
+
+## Frozen-task protocol repeat — 2026-10-30
+
+The [separate registration](S6a-tool-protocol.md) was committed before the
+implementation. One bounded attempt ran on frozen source
+`2814b6529395803ec238c327dc2cb0825e2f3206`, from **16:33:25 to 17:09:26 UTC**.
+It used fresh version 2 public synthetic fixtures, the existing model digests,
+rebuilt release executables and `LUCY_AUDIT_CACHE=1`. **Overall readiness did not
+pass; S6a remains incomplete.** No attempts were replaced or budgets extended.
+
+| Diagnostic | Preserved trials | Verified successes | Elapsed | Result |
+| --- | ---: | ---: | --- | --- |
+| Scripted matrix | 123/320, plus all 20 calibration tasks | 107; 16 expected missing-source failures | 28m33.923s | Matrix and finalization incomplete |
+| Qwen 3.6 35B A3B | 8/8 | 7; one inconclusive | 6m04.904s | Smoke gate passed |
+| Llama 3.1 8B | 8/8 | 0; eight inconclusive | 1m22.172s | Smoke gate failed |
+
+The scripted pass stopped new trial work at its registered cutoff and preserved
+one interrupted workspace without a completed original. Its native scorer then
+used the entire 90-second scoring allowance. Score replay rejected the incomplete
+report with `scorer scope population mismatch`; the final intervention-control
+and offered-schema aggregation did not run. All 143 accepted calibration/trial
+originals had already passed individual artifact replay during their trials.
+This does not substitute for the incomplete final scoring gate. Paired comparisons
+and confidence intervals remain unavailable.
+
+Both model runs passed native scoring, independent replay and offered-schema
+checks. They received the same eight schemas, with digest
+`526af551945f1f1913c80835f5e187cb66b3988420371308e6d11a82513fef54`.
+The overall schema-consistency gate remains unestablished because the scripted
+phase did not finish that check; no mismatch between the model runs was observed.
+Neither model attempted begin/revise, malformed native argument shapes or a multi-tool
+batch in this run. Qwen's inconclusive retrieval task left required checks missing
+after a write when its follow-up could not finish. Seven Llama tasks described
+tool calls as ordinary text without executing them; one used native tools but
+finished with required evidence missing. These are observed workflow outcomes,
+not a matched causal comparison, independent learning evidence, or proof of an
+inability to solve the underlying questions.
+
+No preserved trial or calibration task had false verification or a budget
+violation. Readback verified **25,157 scripted files, 1,304 Qwen files and 1,130
+Llama files**. The source, executable pins and host provider settings stayed
+unchanged during the run. All originals remain private; there was no deployment,
+policy activation, model substitution or replication.
+
+Validation passed: **187 Rust tests** in each of the full CI and desktop runs,
+**31 Python tests**, **50 constitution and eight counterfactual pins**, **nine
+extraction files**, both release builds and the explicit-home public source check
+with **10,605 assertions**, standing true and no failures. The test-only bridge is
+intentionally ignored by ordinary Cargo tests and was exercised by the scripted
+run. Existing sandbox-dependent tests retain their host availability guards; no
+new interactive desktop validation or separate Lean proof execution was performed.
+
+The [append-only aggregate evidence](S6a-tool-protocol-evidence.json) records the
+frozen inputs, validation hashes, outcomes and limitations. The top-level readiness
+report SHA-256 is
+`4e39ac52a4a844013fea9cb2ff7002af1046a88826824fc725bd2b3b9d9a08ba`;
+the freeze SHA-256 is
+`868168aceaa06b6fc1e0fec7fec847978cbd4b4fae020c18ca317084e7cb74e3`.
+The private directory is retained in the session record.
+
+## Remaining readiness work
+
+The full matrix and its scorer still need a feasible execution cost with 20
+native calibration tasks (40 task journals including their oracles). Llama also
+needs to execute and complete the native workflow reliably. Any new optimization
+or recovery mechanism requires its own registration and fresh diagnostics; this
+attempt does not authorize changed thresholds or retrospective qualification.
+Independent case selection and the empirical S6a/model-change studies remain later
+work, after engineering readiness passes.

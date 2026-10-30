@@ -1,0 +1,393 @@
+{
+  "adaptation_enabled": false,
+  "adjudication": {
+    "independent_empirical_adjudication": false,
+    "independent_replay": "deterministic Python artifact and score replay",
+    "model_evaluator": null,
+    "native": "Rust task scorer and pinned Nibli checks"
+  },
+  "attempts": [
+    {
+      "audit_cache": "1",
+      "binary_sha256": "534331d5e03185e083e5eb05a015a78e953a569ccd556aca4127b43b17cf3a7d",
+      "ceilings_ms": {
+        "per_model": 900000,
+        "per_task": 120000,
+        "scripted": 1800000
+      },
+      "clean_source_at_freeze": true,
+      "ended_at": "2026-10-30T17:09:26.753457+00:00",
+      "files": {
+        "lucy/constitution.nibli": "c350e8feaa313fcaef0ac579de28609070a1a174dd0961b0695aa665afba4720",
+        "roadmap/S6a-tool-protocol.md": "8f4a0bb5c7b5ea2fa9cdeeb13e14360317297e7508f6f5fcc8841ff3d07ccada",
+        "roadmap/S6a.v2.md": "dcd053af23b1a755f9514c48e2553a2d3ffc63ec22927485d42e56fa9e10eb9b",
+        "scripts/s6a-coordinator.py": "dc47c8240d46a42a64df947b6e29a8e1c94e92824aa75390f48b3c4d707fcd5e",
+        "scripts/s6a-readiness.py": "0cff8d183271067d7360dc87e1f4c453b3e40708f82fd0230a185d0b0bfaae4d",
+        "scripts/s6a_evidence.py": "c203ea2761a5ac83fcda748ff9f2513ce7259821441ccf496e073e1a8bf96b2e",
+        "scripts/s6a_readiness_fixtures.py": "746a439cc3384bd7ea854e64e181b0b817a4cfdb696e7595fb35affb0bb6c9f7",
+        "scripts/s6a_scripted_bridge.py": "3ec99ffc2c820bf3e6385e07de1f019b36e34fd36e07c08998a08313d7d9f738",
+        "scripts/s6a_tool_protocol.py": "e63b43ff68d989a37a21e571c564257344d0208b6fc16094d4e878157fb441b7",
+        "scripts/self-model-study.py": "d8901884fdfcd5393f4809f0bafd7021ffb29fbb7d17af4bd7ef3889deab183c"
+      },
+      "fixture_version": 2,
+      "freeze_sha256": "868168aceaa06b6fc1e0fec7fec847978cbd4b4fae020c18ca317084e7cb74e3",
+      "frozen_implementation_unchanged": true,
+      "id": "a1",
+      "implementation_commit": "2814b6529395803ec238c327dc2cb0825e2f3206",
+      "model_runs": {
+        "llama3.1:8b": {
+          "active_ms": 82172,
+          "adaptation_enabled": false,
+          "confidence_intervals": null,
+          "individual_replay_originals": 8,
+          "model": "llama3.1:8b",
+          "model_ready": false,
+          "native_scoring_complete": true,
+          "outcomes": {
+            "budget_violations": 0,
+            "checked_failures": 0,
+            "false_verified": 0,
+            "inconclusive": 8,
+            "trials": 8,
+            "verified_successes": 0
+          },
+          "paired_comparisons": null,
+          "partial_workspaces": 0,
+          "persistence": {
+            "files": 1130,
+            "replication": "none",
+            "status": "verified locally"
+          },
+          "planned_trials": 8,
+          "preserved_manifest_sha256": "eae62de87ff655b94e788d77a5cb2e9b10abbf0afe3001d60064a5b81fe5ee7e",
+          "readiness_sha256": "fbba206df82490c3970cab8bcbc751632e4986928a2fb6a2e18fb9e97edfbb7e",
+          "replay": {
+            "complete_originals": false,
+            "originals_verified": 8,
+            "valid": true
+          },
+          "report_sha256": "b4d0e59419a52dd33c0e53dc857f4476739878307e7e3403d705e299bedfe7f5",
+          "score_replay": {
+            "calibration_safe": true,
+            "complete": false,
+            "scopes": 2,
+            "technical_qualification": false,
+            "valid": true
+          },
+          "task_outcomes_by_family_arm": {
+            "retrieval/lessons_withheld": {
+              "budget_violations": 0,
+              "checked_failures": 0,
+              "false_verified": 0,
+              "inconclusive": 4,
+              "trials": 4,
+              "verified_successes": 0
+            },
+            "verification/lessons_withheld": {
+              "budget_violations": 0,
+              "checked_failures": 0,
+              "false_verified": 0,
+              "inconclusive": 4,
+              "trials": 4,
+              "verified_successes": 0
+            }
+          },
+          "tool_protocol": {
+            "calibration": {
+              "contract_change_calls": 0,
+              "invalid_argument_calls": 0,
+              "multiple_tool_replies": 0,
+              "premature_prose_endings": 0,
+              "unavailable_tool_calls": 0,
+              "writes_missing_required_checks": 0
+            },
+            "error_count": 0,
+            "originals": 8,
+            "requests": 12,
+            "schema_sha256": "526af551945f1f1913c80835f5e187cb66b3988420371308e6d11a82513fef54",
+            "trials": {
+              "contract_change_calls": 0,
+              "invalid_argument_calls": 0,
+              "multiple_tool_replies": 0,
+              "premature_prose_endings": 8,
+              "unavailable_tool_calls": 0,
+              "writes_missing_required_checks": 1
+            },
+            "valid": true
+          },
+          "trials": 8,
+          "trials_without_native_tool_calls": 7
+        },
+        "qwen3.6:35b-a3b-q4_K_M": {
+          "active_ms": 364904,
+          "adaptation_enabled": false,
+          "confidence_intervals": null,
+          "individual_replay_originals": 8,
+          "model": "qwen3.6:35b-a3b-q4_K_M",
+          "model_ready": true,
+          "native_scoring_complete": true,
+          "outcomes": {
+            "budget_violations": 0,
+            "checked_failures": 0,
+            "false_verified": 0,
+            "inconclusive": 1,
+            "trials": 8,
+            "verified_successes": 7
+          },
+          "paired_comparisons": null,
+          "partial_workspaces": 0,
+          "persistence": {
+            "files": 1304,
+            "replication": "none",
+            "status": "verified locally"
+          },
+          "planned_trials": 8,
+          "preserved_manifest_sha256": "4259ad0fe239bb26c4aee4c8b27bc144a314cad61e2c8f95e9d16fa8870c32ca",
+          "readiness_sha256": "3e4a7e37fcd708ae88eb896f7edb5471d46b8d0ef9d18461a929ca84be8c5991",
+          "replay": {
+            "complete_originals": false,
+            "originals_verified": 8,
+            "valid": true
+          },
+          "report_sha256": "44effebe8b94fbdc49efb2210e4345613bd52299fa167910e1140c16da068a64",
+          "score_replay": {
+            "calibration_safe": true,
+            "complete": false,
+            "scopes": 2,
+            "technical_qualification": false,
+            "valid": true
+          },
+          "task_outcomes_by_family_arm": {
+            "retrieval/lessons_withheld": {
+              "budget_violations": 0,
+              "checked_failures": 0,
+              "false_verified": 0,
+              "inconclusive": 1,
+              "trials": 4,
+              "verified_successes": 3
+            },
+            "verification/lessons_withheld": {
+              "budget_violations": 0,
+              "checked_failures": 0,
+              "false_verified": 0,
+              "inconclusive": 0,
+              "trials": 4,
+              "verified_successes": 4
+            }
+          },
+          "tool_protocol": {
+            "calibration": {
+              "contract_change_calls": 0,
+              "invalid_argument_calls": 0,
+              "multiple_tool_replies": 0,
+              "premature_prose_endings": 0,
+              "unavailable_tool_calls": 0,
+              "writes_missing_required_checks": 0
+            },
+            "error_count": 0,
+            "originals": 8,
+            "requests": 55,
+            "schema_sha256": "526af551945f1f1913c80835f5e187cb66b3988420371308e6d11a82513fef54",
+            "trials": {
+              "contract_change_calls": 0,
+              "invalid_argument_calls": 0,
+              "multiple_tool_replies": 0,
+              "premature_prose_endings": 0,
+              "unavailable_tool_calls": 0,
+              "writes_missing_required_checks": 1
+            },
+            "valid": true
+          },
+          "trials": 8,
+          "trials_without_native_tool_calls": 0
+        }
+      },
+      "models": {
+        "llama3.1:8b": "46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
+        "qwen3.6:35b-a3b-q4_K_M": "07d35212591fc27746f0a317c975a6d68754fb38e9053d82e25f06057af28522"
+      },
+      "offered_schemas_consistent": false,
+      "provider_unchanged": true,
+      "readable_report_sha256": "6a00dfa6bf20f5b3ae2663c3630cabd8869eb5eded24bd9a4f43df18e90336e4",
+      "readiness_sha256": "4e39ac52a4a844013fea9cb2ff7002af1046a88826824fc725bd2b3b9d9a08ba",
+      "ready_for_registration_design": false,
+      "scripted": {
+        "active_ms": 1713923,
+        "calibration": 20,
+        "calibration_outcomes": {
+          "budget_violations": 0,
+          "checked_failures": 4,
+          "false_verified": 0,
+          "inconclusive": 16,
+          "trials": 20,
+          "verified_successes": 0
+        },
+        "confidence_intervals": null,
+        "finalization": "incomplete; private diagnostics preserved",
+        "individual_replay_originals": 143,
+        "mechanics_ready": false,
+        "native_scoring_complete": false,
+        "native_scoring_ms": 90001.82715800474,
+        "outcomes": {
+          "budget_violations": 0,
+          "checked_failures": 16,
+          "false_verified": 0,
+          "inconclusive": 0,
+          "trials": 123,
+          "verified_successes": 107
+        },
+        "paired_comparisons": null,
+        "partial_workspaces": 1,
+        "persistence": {
+          "files": 25157,
+          "replication": "none",
+          "status": "verified locally"
+        },
+        "planned_calibration": 20,
+        "planned_trials": 320,
+        "preserved_manifest_sha256": "b90ed9e6f1aee8fdfd6015f6a7823f3299c42dd5e841624812ed54afb07c3a8d",
+        "readiness-error.json": {
+          "detail": "study runtime ceiling reached",
+          "type": "TimeoutError"
+        },
+        "readiness-finalization-error.json": {
+          "detail": "scorer scope population mismatch",
+          "type": "ValueError"
+        },
+        "readiness_sha256": "88ee1d36a1ec5ea9f544d6656337cf2d3535119de5ba7b694ee841b58769d55e",
+        "report_sha256": "f8f7e0b3961a7fbe8ea673d3a91c22609cab3658a6a296781da27c63f8a70faa",
+        "task_outcomes_by_family_arm": {
+          "retrieval/full": {
+            "budget_violations": 0,
+            "checked_failures": 0,
+            "false_verified": 0,
+            "inconclusive": 0,
+            "trials": 15,
+            "verified_successes": 15
+          },
+          "retrieval/lessons_withheld": {
+            "budget_violations": 0,
+            "checked_failures": 0,
+            "false_verified": 0,
+            "inconclusive": 0,
+            "trials": 9,
+            "verified_successes": 9
+          },
+          "retrieval/memory_removed": {
+            "budget_violations": 0,
+            "checked_failures": 16,
+            "false_verified": 0,
+            "inconclusive": 0,
+            "trials": 16,
+            "verified_successes": 0
+          },
+          "retrieval/roadmap_removed": {
+            "budget_violations": 0,
+            "checked_failures": 0,
+            "false_verified": 0,
+            "inconclusive": 0,
+            "trials": 17,
+            "verified_successes": 17
+          },
+          "verification/full": {
+            "budget_violations": 0,
+            "checked_failures": 0,
+            "false_verified": 0,
+            "inconclusive": 0,
+            "trials": 15,
+            "verified_successes": 15
+          },
+          "verification/lessons_withheld": {
+            "budget_violations": 0,
+            "checked_failures": 0,
+            "false_verified": 0,
+            "inconclusive": 0,
+            "trials": 14,
+            "verified_successes": 14
+          },
+          "verification/memory_removed": {
+            "budget_violations": 0,
+            "checked_failures": 0,
+            "false_verified": 0,
+            "inconclusive": 0,
+            "trials": 19,
+            "verified_successes": 19
+          },
+          "verification/roadmap_removed": {
+            "budget_violations": 0,
+            "checked_failures": 0,
+            "false_verified": 0,
+            "inconclusive": 0,
+            "trials": 18,
+            "verified_successes": 18
+          }
+        },
+        "tool_protocol": null,
+        "trials": 123
+      },
+      "started_at": "2026-10-30T16:33:25.711207+00:00",
+      "test_binary_sha256": "b3de60acb2125160504f2451f3cd640c3c29dd40c75501f9925f7d536e29cac4"
+    }
+  ],
+  "base_commit": "85f3463c8bae5d3ea9ee8bf44728c4737ce40577",
+  "date": "2026-10-30",
+  "deployment": "none",
+  "implementation_complete": true,
+  "item": "S6a-tool-protocol",
+  "kind": "engineering_diagnostic",
+  "observations": [
+    "One registered attempt, with no replacement trials, model substitution or widened ceilings.",
+    "Scripted native scoring consumed its 90-second finalization allowance. Score replay rejected its incomplete report with scorer scope population mismatch; control and schema aggregation were consequently unavailable in that phase.",
+    "Every accepted original passed individual artifact replay during its trial; no late rescore or replay is counted toward the registered readiness gate.",
+    "Both model runs passed native scoring, independent replay and schema checks, with the same schema digest. The all-run schema gate is false because the scripted finalization did not supply its schema check, not because a model schema mismatch was observed.",
+    "Qwen had seven verified successes and one inconclusive retrieval task whose follow-up could not finish after a write, leaving required checks missing.",
+    "Seven Llama tasks returned tool-shaped JSON as ordinary text without executing native calls. One used native tools but finished with required evidence missing. None verified successfully.",
+    "Neither model attempted task_begin/task_revise, malformed native arguments or a multi-tool batch in this run. These fresh synthetic observations are not a matched causal comparison or learning-benefit evidence.",
+    "The premature_prose_endings counter means a final prose response with an inconclusive native verdict, including a final report after task_finish returned inconclusive; it is not an inference about model intent.",
+    "All originals remain private. Public evidence contains aggregates and hashes only.",
+    "Native argument observations check JSON representation and schema field/type requirements. Operational errors such as invalid paths or criterion identifiers remain in the task evidence; zero malformed argument observations does not claim every proposed operation was correct."
+  ],
+  "publication": "aggregate source documentation only",
+  "registration": "roadmap/S6a-tool-protocol.md",
+  "registration_commit": "06ad47f55ff2484140bd86a440ca27633b805783",
+  "replication": "none",
+  "s6a_complete": false,
+  "schema": 1,
+  "validation": {
+    "binaries": {
+      "lucy": "534331d5e03185e083e5eb05a015a78e953a569ccd556aca4127b43b17cf3a7d",
+      "lucy_cli-c5de239dad4a0991": "b3de60acb2125160504f2451f3cd640c3c29dd40c75501f9925f7d536e29cac4"
+    },
+    "constitution_pins": 50,
+    "counterfactual_pins": 8,
+    "development_notes": [
+      "Initial focused tests exposed a fixture environment mismatch; fixtures now use the native task environment, and all focused tests passed.",
+      "Full CI was repeated after clarifying the post-finish final response; both runs passed.",
+      "The study bridge remains intentionally ignored by ordinary Cargo tests and is exercised by the diagnostic.",
+      "Existing sandbox-dependent tests retain their host availability guards; no new interactive desktop validation or separately executed Lean proof."
+    ],
+    "extraction_files": 9,
+    "logs": {
+      "build.log": "ae9628e1cff4d6a758854138a6800bbad8681236f483e2bac62ad2f6101068a6",
+      "ci-final.log": "03c7bcf4012c90e18108e1336a9fca1acdef503e7449718658583bbcbcc13c1e",
+      "ci.log": "b02d91410f4c0b37003044f4547408331fd7a1ac846e88424a864edefe876085",
+      "desktop.log": "2da2f3da3bcb1acb4a32bcae713ad1d1c364ed6c257d28141562ea84532f0c04",
+      "extraction.log": "917b30b9562ce3c319f536e524b5236f92fefbb82ece7ce8d4c00cf8c666b840",
+      "pins.log": "470846afb29488b4b6b0272d8e8aca88f01b5bb3927cbfd394a0668e148d91ab",
+      "source-check.json": "b154b65be08df00731afa585f239c6432f6f145cfb903a2513308d0d4c217886",
+      "source-check.log": "e1343cdca3fbc454c8d101808e0155560fb04558bb81aac63bfafc303406487f",
+      "test-build.log": "e4c99471e4fb541b8b0555d3284c6e6cb11f3e7d20809c609e6092c146919122"
+    },
+    "passed": true,
+    "python_tests": 31,
+    "rust_tests": {
+      "ci-final": 187,
+      "desktop": 187
+    },
+    "source_assertions": 10605,
+    "source_commit": "2814b6529395803ec238c327dc2cb0825e2f3206",
+    "source_failures": [],
+    "source_standing": true
+  },
+  "validation_sha256": "e4477812699e1bd780dccfc4fcf4a0dc276e7e3514bf2ac22858fc703b89664c"
+}
