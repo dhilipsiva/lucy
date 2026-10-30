@@ -51,14 +51,20 @@ class AuditBenchmarkTests(unittest.TestCase):
             self.assertIn("interrupted.partial", hashes)
             self.assertTrue(report["preservation"]["verified"])
 
-    def test_serialized_receipt_tampering_is_detected_before_comparison(self):
-        original = dict(journal=dict(entry="original"), oracle=dict(verdict="success"), trial={})
-        original["trial"].update(journal_digest=s6a_evidence.digest(original["journal"]),
-                                 oracle_digest=s6a_evidence.digest(original["oracle"]))
-        audit_benchmark.check_receipt_hashes(original)
-        original["journal"]["entry"] = "modified"
-        with self.assertRaisesRegex(ValueError, "receipt hash"):
-            audit_benchmark.check_receipt_hashes(original)
+    def test_replay_uses_typed_native_scorer_with_ineligible_diagnostic_input(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            run = object.__new__(study.Runner)
+            run.base, run.started = Path(temporary), time.monotonic()
+            run.info = dict(protocol="fixture", implementation="fixture", model="scripted")
+            run.environment = lambda target: {}
+            def call(args, request, env, label):
+                self.assertEqual(args[:3], ["self-model", "task", "study-score"])
+                self.assertFalse(request["study"]["live"])
+                self.assertFalse(request["study"]["complete"])
+                self.assertEqual(request["originals"], [str(run.base / "data/trial.json")])
+                return dict(live=False, scopes=[dict(eligible=False)])
+            run.call = call
+            audit_benchmark.replay_native(run, dict(active_ms=5), run.base / "data", "fixture", {})
 
     def samples(self):
         return [dict(family=f, prior_tasks=h, pair=p, mode=m, healthy=True,

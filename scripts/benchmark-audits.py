@@ -94,10 +94,22 @@ def semantic(original):
                 artifacts=normalize(archive), model_responses=normalize(actions))
 
 
-def check_receipt_hashes(original):
-    for field, value in (("journal_digest", original["journal"]), ("oracle_digest", original["oracle"])):
-        if original["trial"][field] != evidence.digest(value):
-            raise ValueError("serialized receipt hash mismatch")
+def replay_native(run, trial, data, label, case):
+    # Entry hashes use Rust struct field order. Reuse the existing typed native
+    # scorer rather than interpreting those hashes as canonical JSON hashes.
+    target = run.base / ("score-" + label)
+    target.mkdir(mode=0o700)
+    study = dict(schema=2, protocol=run.info["protocol"], implementation=run.info["implementation"],
+                 model=run.info["model"], evaluator="audit-performance-diagnostic", evaluator_model="scripted",
+                 bundle_digest=evidence.digest(case), live=False, complete=False,
+                 active_ms=max(trial["active_ms"], round((time.monotonic() - run.started) * 1000)),
+                 calibration={}, trials=[trial])
+    request = dict(study=study, originals=[str(data / "trial.json")], calibration_originals=[])
+    save(target / "score-input.json", request)
+    result = run.call(["self-model", "task", "study-score", "--root", str(target), "--stdin"],
+                      request, run.environment(target), "score-" + label)
+    if result["live"] or any(s["eligible"] for s in result["scopes"]):
+        raise ValueError("diagnostic replay attempted activation")
 
 
 def evaluate(samples, complete):
@@ -201,25 +213,29 @@ def run_worker(binary, directory, started):
                             checkpoint()
                             trial = run.one(case, "a", "full", data, label)
                             original = json.loads((data / "trial.json").read_bytes())
-                            check_receipt_hashes(original)
                             profile = json.loads((data / "profile.json").read_bytes())
-                            normalized = semantic(original)
-                            save(data / "semantic.json", normalized)
                             counts = profile["counts"]
                             sample = dict(family=family, prior_tasks=history, pair=pair, mode=mode,
                                 native_wall_ms=next(t["ms"] for t in run.timings if t["label"] == label and t["stage"] == "native_trial"),
                                 native_active_ms=original["native_active_ms"], nibli_us=profile["stages"]["nibli_audit"]["total_us"],
                                 nibli_evaluations=counts["nibli_evaluations"], hits=counts.get("audit_cache_hits", 0),
                                 misses=counts.get("audit_cache_misses", 0), evictions=counts.get("audit_cache_evictions", 0),
-                                semantic_sha256=evidence.digest(normalized), originals_sha256=file_hash(data / "trial.json", deadline),
-                                healthy=profile["complete"] and trial["completed"] and not any(trial[k] for k in ("inconclusive", "false_verified", "budget_violation")))
+                                semantic_sha256=None, originals_sha256=file_hash(data / "trial.json", deadline), healthy=False)
                             report["samples"].append(sample)
+                            checkpoint()
+                            replay_native(run, trial, data, label, case)
+                            normalized = semantic(original)
+                            save(data / "semantic.json", normalized)
+                            sample.update(semantic_sha256=evidence.digest(normalized),
+                                healthy=profile["complete"] and trial["completed"] and not any(trial[k] for k in ("inconclusive", "false_verified", "budget_violation")))
                             report.pop("in_progress")
                             checkpoint()
             report["complete"] = True
         except (TimeoutError, RuntimeError, OSError, ValueError, KeyError, TypeError) as error:
             save(run.base / "private-error.json", dict(type=type(error).__name__, detail=str(error)))
             report["stop_reason"] = type(error).__name__
+            if report.get("in_progress") and getattr(run, "timings", None):
+                report["last_native_call"] = next((t for t in reversed(run.timings) if t["stage"] == "native_trial"), None)
         # Read back every private artifact within the same registered ceiling.
         try:
             hashes = {str(p.relative_to(run.base)): file_hash(p, final_deadline)

@@ -1,0 +1,256 @@
+{
+  "attempts": [
+    {
+      "evidence": {
+        "base": "d61d896",
+        "binary_sha256": "e1bb71d934f83e900a426f4ce89a71a306b1294c1836b3d39f09a3d8a6853b9d",
+        "ceiling_ms": 1800000,
+        "cells": [
+          {
+            "equivalent": false,
+            "family": "verification",
+            "healthy": true,
+            "medians": {},
+            "paired": false,
+            "passed": false,
+            "prior_tasks": 0,
+            "ratios": {},
+            "samples": 0
+          },
+          {
+            "equivalent": false,
+            "family": "verification",
+            "healthy": true,
+            "medians": {},
+            "paired": false,
+            "passed": false,
+            "prior_tasks": 10,
+            "ratios": {},
+            "samples": 0
+          },
+          {
+            "equivalent": false,
+            "family": "verification",
+            "healthy": true,
+            "medians": {},
+            "paired": false,
+            "passed": false,
+            "prior_tasks": 20,
+            "ratios": {},
+            "samples": 0
+          },
+          {
+            "equivalent": false,
+            "family": "retrieval",
+            "healthy": true,
+            "medians": {},
+            "paired": false,
+            "passed": false,
+            "prior_tasks": 0,
+            "ratios": {},
+            "samples": 0
+          },
+          {
+            "equivalent": false,
+            "family": "retrieval",
+            "healthy": true,
+            "medians": {},
+            "paired": false,
+            "passed": false,
+            "prior_tasks": 10,
+            "ratios": {},
+            "samples": 0
+          },
+          {
+            "equivalent": false,
+            "family": "retrieval",
+            "healthy": true,
+            "medians": {},
+            "paired": false,
+            "passed": false,
+            "prior_tasks": 20,
+            "ratios": {},
+            "samples": 0
+          }
+        ],
+        "complete": false,
+        "cpu_affinity": [
+          2
+        ],
+        "default_enabled": false,
+        "elapsed_ms": 105,
+        "implementation": "e1bb71d934f83e900a426f4ce89a71a306b1294c1836b3d39f09a3d8a6853b9d",
+        "implementation_commit": "1aa698cd669992b76a95514f006ca26014f74b30",
+        "in_progress": {
+          "family": "verification",
+          "mode": "0",
+          "pair": 0,
+          "prior_tasks": 0
+        },
+        "kind": "engineering_diagnostic",
+        "model": "scripted@2a8abdc536683cab0ed25cca5cf12a54051af61aa6c4f48d8649d8e6948fa4f6",
+        "normalization": "fresh task/entry/action/session identities and measured times; receipt hashes replaced by normalized content",
+        "passed": false,
+        "preservation": {
+          "files": 16,
+          "manifest_sha256": "a58cb6dfbb204f032a241ab87ecf8ccf3cada1835bd63ce608e1ef623f7e9542",
+          "verified": true
+        },
+        "prior_task_definition": "total task journals: half native scripted tasks, half their independent oracle tasks",
+        "protocol": "dcd053af23b1a755f9514c48e2553a2d3ffc63ec22927485d42e56fa9e10eb9b",
+        "registration": "f04201d",
+        "runner_sha256": "4cce7d6796a3a2e6cdcab868f7367c914145416b27d3f1f5457d1de0006c30a1",
+        "samples": [],
+        "schema": 1,
+        "seeds": [
+          {
+            "family": "verification",
+            "files": 0,
+            "prior_tasks": 0,
+            "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          }
+        ],
+        "started_utc": "2026-10-30T15:15:48.476249+00:00",
+        "stop_reason": "RuntimeError",
+        "timing": "native_wall_ms includes the fresh bridge/test process and native trial; Nibli spans count actual evaluations only"
+      },
+      "failed_attempt_native_calls": [
+        {
+          "label": "verification-0-0-0",
+          "ms": 31.898410001304,
+          "stage": "native_trial"
+        }
+      ],
+      "id": "a1",
+      "note": "Workspace guard rejected a configuration-directory destination before measurements. The guard was preserved; the next attempt uses an allowed private experiment directory."
+    },
+    {
+      "evidence": {
+        "base": "d61d896",
+        "binary_sha256": "e1bb71d934f83e900a426f4ce89a71a306b1294c1836b3d39f09a3d8a6853b9d",
+        "ceiling_ms": 1800000,
+        "cells": [
+          {
+            "equivalent": false,
+            "family": "verification",
+            "healthy": true,
+            "medians": {},
+            "paired": false,
+            "passed": false,
+            "prior_tasks": 0,
+            "ratios": {},
+            "samples": 0
+          },
+          {
+            "equivalent": false,
+            "family": "verification",
+            "healthy": true,
+            "medians": {},
+            "paired": false,
+            "passed": false,
+            "prior_tasks": 10,
+            "ratios": {},
+            "samples": 0
+          },
+          {
+            "equivalent": false,
+            "family": "verification",
+            "healthy": true,
+            "medians": {},
+            "paired": false,
+            "passed": false,
+            "prior_tasks": 20,
+            "ratios": {},
+            "samples": 0
+          },
+          {
+            "equivalent": false,
+            "family": "retrieval",
+            "healthy": true,
+            "medians": {},
+            "paired": false,
+            "passed": false,
+            "prior_tasks": 0,
+            "ratios": {},
+            "samples": 0
+          },
+          {
+            "equivalent": false,
+            "family": "retrieval",
+            "healthy": true,
+            "medians": {},
+            "paired": false,
+            "passed": false,
+            "prior_tasks": 10,
+            "ratios": {},
+            "samples": 0
+          },
+          {
+            "equivalent": false,
+            "family": "retrieval",
+            "healthy": true,
+            "medians": {},
+            "paired": false,
+            "passed": false,
+            "prior_tasks": 20,
+            "ratios": {},
+            "samples": 0
+          }
+        ],
+        "complete": false,
+        "cpu_affinity": [
+          2
+        ],
+        "default_enabled": false,
+        "elapsed_ms": 526,
+        "implementation": "e1bb71d934f83e900a426f4ce89a71a306b1294c1836b3d39f09a3d8a6853b9d",
+        "implementation_commit": "1aa698cd669992b76a95514f006ca26014f74b30",
+        "in_progress": {
+          "family": "verification",
+          "mode": "0",
+          "pair": 0,
+          "prior_tasks": 0
+        },
+        "kind": "engineering_diagnostic",
+        "model": "scripted@2a8abdc536683cab0ed25cca5cf12a54051af61aa6c4f48d8649d8e6948fa4f6",
+        "normalization": "fresh task/entry/action/session identities and measured times; receipt hashes replaced by normalized content",
+        "passed": false,
+        "preservation": {
+          "files": 41,
+          "manifest_sha256": "8eb920ce59f4dad1d44a2be3505d45a5d3fd50b94f31e7f62033c441ce84a6c5",
+          "verified": true
+        },
+        "prior_task_definition": "total task journals: half native scripted tasks, half their independent oracle tasks",
+        "protocol": "dcd053af23b1a755f9514c48e2553a2d3ffc63ec22927485d42e56fa9e10eb9b",
+        "registration": "f04201d",
+        "runner_sha256": "4cce7d6796a3a2e6cdcab868f7367c914145416b27d3f1f5457d1de0006c30a1",
+        "samples": [],
+        "schema": 1,
+        "seeds": [
+          {
+            "family": "verification",
+            "files": 0,
+            "prior_tasks": 0,
+            "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          }
+        ],
+        "started_utc": "2026-10-30T15:16:37.108330+00:00",
+        "stop_reason": "ValueError",
+        "timing": "native_wall_ms includes the fresh bridge/test process and native trial; Nibli spans count actual evaluations only"
+      },
+      "failed_attempt_native_calls": [
+        {
+          "label": "verification-0-0-0",
+          "ms": 446.97080300102243,
+          "stage": "native_trial"
+        }
+      ],
+      "id": "a2",
+      "note": "Benchmark incorrectly treated typed Rust receipt hashes as sorted JSON hashes. One native call completed; its measurement is retained below. The runner was corrected to use the existing typed native scorer; the audit implementation is unchanged."
+    }
+  ],
+  "default_enabled": false,
+  "registration": "f04201d",
+  "registration_file": "S6a-audit-performance.md",
+  "schema": 1
+}
