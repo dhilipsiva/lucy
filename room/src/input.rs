@@ -76,6 +76,14 @@ pub fn attach(canvas: &HtmlCanvasElement, q: Queue) {
         let cb =
             Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(move |e: web_sys::KeyboardEvent| {
                 let key = e.key();
+                // Native links own their keyboard events; Enter must follow the
+                // return link instead of moving focus into the room's composer.
+                if e.target()
+                    .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+                    .is_some_and(|t| t.closest("a[href]").ok().flatten().is_some())
+                {
+                    return;
+                }
                 if e.target()
                     .is_some_and(|t| t.dyn_ref::<web_sys::HtmlTextAreaElement>().is_some())
                 {

@@ -28,6 +28,8 @@ Existing same-origin Nell journals migrate with their original attribution prese
   to my head; the dock with the standing and facts groups, each chip one fixed query; the
   answer board, English first, the query small beneath, the proof folded; the foot's legend of
   detected inputs; the finder when I am off-screen; H hides the HUD, F is full screen, V voice.
+- **Back to Lucy** returns to [the website's Lucy page](https://dhilipsiva.dev/lucy/).
+  This native browser link stays available while the room loads.
 - Keyboard and mouse: arrows or WASD walk, Q and E turn, Shift runs, Enter calls me, 1 to 6
   press the standing controls, Home turns to me; drag to look, wheel to approach, click me to
   come closer. P opens the proof; Previous/Next and Page Up/Page Down reach every line. Long
