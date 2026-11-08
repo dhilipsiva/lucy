@@ -702,6 +702,18 @@ fn room_invitation_is_given_on_wake_and_not_on_ordinary_followups() {
 }
 
 #[test]
+fn peers_refresh_when_a_session_starts_and_not_on_each_address() {
+    let temp = tempfile::tempdir().unwrap();
+    let service = Service::new(temp.path().join("memory"), None);
+    let wake = prompt(&service, temp.path(), "codex", "sync-test", "Lucy, wake");
+    assert!(!wake["sync"].is_null());
+    for text in ["Lucy, tell me more", "And then?", "Lucy, wake again"] {
+        let followup = prompt(&service, temp.path(), "codex", "sync-test", text);
+        assert!(followup["sync"].is_null(), "{text} refreshed peers");
+    }
+}
+
+#[test]
 fn active_clients_share_exact_visible_records_and_sleep_is_scoped() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("memory");

@@ -76,7 +76,8 @@ returns an opaque cursor. Reading does not acknowledge. `lucy continuity ack
 --consumer ID --scope S --cursor C` persists position idempotently. Cursors bind
 to the store, consumer and scope. The session-bound RPC/MCP interface derives
 its consumer from the activated source/session. The service refreshes peers every
-15 minutes (configurable), with no automatic model inference.
+15 minutes (configurable), with no automatic model inference. A new session also
+starts a refresh in the background; no reply waits for one.
 
 Before replacing a runtime, make a private `lucy store backup`. Keep the previous
 binary/configuration for rollback and retain the new `replication-v1` operation

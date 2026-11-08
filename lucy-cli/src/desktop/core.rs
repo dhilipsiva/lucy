@@ -95,6 +95,11 @@ pub fn addressed(text: &str) -> bool {
     text.strip_prefix("lucy")
         .is_some_and(|rest| rest.trim().is_empty() || rest.starts_with([',', ':', '!', '?', '…']))
 }
+fn refresh_peers(root: &std::path::Path) -> Result<Value> {
+    #[cfg(not(test))]
+    let _ = crate::replication::github::discover(root);
+    crate::replication::sync_all(root)
+}
 fn sleeping(text: &str) -> bool {
     let text = text.trim().to_lowercase();
     ["lucy", "/lucy", "@lucy", "hey lucy"].iter().any(|prefix| {
@@ -419,7 +424,8 @@ impl Service {
             }
             let explicit =
                 op == "chat" || (source == "vscode" && req["named_action"] == "Ask Lucy");
-            let waking = self.active(source, id).is_err() || addressed(text);
+            let starting = self.active(source, id).is_err();
+            let waking = starting || addressed(text);
             let session = match self.active(source, id) {
                 Ok(session) => session,
                 Err(_) if explicit || addressed(text) => {
@@ -427,10 +433,19 @@ impl Service {
                 }
                 Err(_) => return Ok(json!({"active":false})),
             };
-            let refresh = if waking && self.study_adaptation.is_none() {
-                #[cfg(not(test))]
-                let _ = crate::replication::github::discover(&self.root);
-                Some(crate::replication::sync_all(&self.root)?)
+            // A new session refreshes peers in the background; no reply waits for a sync.
+            let refresh = if starting && self.study_adaptation.is_none() {
+                if cfg!(test) {
+                    Some(refresh_peers(&self.root)?)
+                } else {
+                    let root = self.root.clone();
+                    std::thread::spawn(move || {
+                        if let Err(error) = refresh_peers(&root) {
+                            eprintln!("Lucy sync pending: {error}");
+                        }
+                    });
+                    Some(json!({"status":"refreshing","started":"when this session began"}))
+                }
             } else {
                 None
             };
