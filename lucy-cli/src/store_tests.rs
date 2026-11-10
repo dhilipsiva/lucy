@@ -256,10 +256,10 @@ fn search_stdin_keeps_query_out_of_process_arguments() {
     assert_eq!(result["mode"], "lexical");
 }
 
-/// A local embedding model. While `awake` it lists one model and embeds anything as the
-/// same vector, noting how many characters it was given; otherwise it accepts a request
-/// and never answers it.
-fn model(awake: Arc<AtomicBool>, given: Arc<Mutex<Vec<usize>>>) -> String {
+/// A local embedding model. While `awake` it lists one model, says whether that model is
+/// `loaded`, and embeds anything as the same vector, noting how many characters it was
+/// given; otherwise it accepts a request and never answers it.
+fn model(awake: Arc<AtomicBool>, loaded: Arc<AtomicBool>, given: Arc<Mutex<Vec<usize>>>) -> String {
     use std::io::{Read, Write};
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
@@ -291,6 +291,12 @@ fn model(awake: Arc<AtomicBool>, given: Arc<Mutex<Vec<usize>>>) -> String {
             };
             let body = if raw.starts_with(b"GET /api/tags") {
                 r#"{"models":[{"name":"test:latest","digest":"d1"}]}"#
+            } else if raw.starts_with(b"GET /api/ps") {
+                if loaded.load(Ordering::SeqCst) {
+                    r#"{"models":[{"name":"test:latest","digest":"d1"}]}"#
+                } else {
+                    r#"{"models":[]}"#
+                }
             } else {
                 let sent: Value = serde_json::from_slice(&raw[body_at..]).unwrap();
                 let input = sent["input"].as_str().unwrap();
@@ -325,6 +331,7 @@ fn retrieval_can_skip_the_index_refresh_and_never_waits_long_for_the_model() {
         sync,
         embed_within: Duration::from_millis(300),
         embed_chars: 3_000,
+        embed_loaded_only: false,
     };
     let count = |found: &Value| found["results"].as_array().unwrap().len();
     // A search told not to refresh the index does not read the registered folder.
@@ -341,7 +348,8 @@ fn retrieval_can_skip_the_index_refresh_and_never_waits_long_for_the_model() {
     // With a model that answers, the search is hybrid and embeds only the query's opening.
     let awake = Arc::new(AtomicBool::new(true));
     let given = Arc::new(Mutex::new(Vec::new()));
-    let url = model(awake.clone(), given.clone());
+    let loaded = Arc::new(AtomicBool::new(false));
+    let url = model(awake.clone(), loaded, given.clone());
     let args = ["embed", "--root", root.to_str().unwrap(), "--model", "test"]
         .map(str::to_owned)
         .into_iter()
@@ -367,6 +375,65 @@ fn retrieval_can_skip_the_index_refresh_and_never_waits_long_for_the_model() {
     );
     assert_eq!(found["mode"], "lexical");
     assert!(found["warning"].is_string());
+    assert_eq!(found["results"][0]["id"], "a");
+}
+
+#[test]
+fn a_prompts_search_asks_only_a_model_that_is_already_loaded() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    Store::open(root)
+        .unwrap()
+        .record(&record("a", "the heron stands in the reeds"))
+        .unwrap();
+    let awake = Arc::new(AtomicBool::new(true));
+    let loaded = Arc::new(AtomicBool::new(false));
+    let given = Arc::new(Mutex::new(Vec::new()));
+    let url = model(awake.clone(), loaded.clone(), given.clone());
+    let args = ["embed", "--root", root.to_str().unwrap(), "--model", "test"]
+        .map(str::to_owned)
+        .into_iter()
+        .chain(["--url".to_owned(), url])
+        .collect::<Vec<_>>();
+    assert_eq!(command(&args, "").unwrap()["indexed"], 1);
+    given.lock().unwrap().clear();
+    let search = |loaded_only| {
+        let request = Retrieval {
+            query: "heron",
+            exclude: "",
+            limit: 8,
+            sync: false,
+            embed_within: Duration::from_millis(300),
+            embed_chars: 3_000,
+            embed_loaded_only: loaded_only,
+        };
+        retrieve(Store::open(root).unwrap(), &request).unwrap()
+    };
+    // The model is installed but not in memory: a prompt's search does not make it load,
+    // and that is no fault to report.
+    let found = search(true);
+    assert_eq!(found["mode"], "lexical");
+    assert!(found["warning"].is_null());
+    assert_eq!(found["results"][0]["id"], "a");
+    assert!(given.lock().unwrap().is_empty());
+    // A search someone asked for loads it.
+    assert_eq!(search(false)["mode"], "hybrid");
+    assert_eq!(*given.lock().unwrap(), [5]);
+    // Once the model is in memory, a prompt's search uses it too.
+    loaded.store(true, Ordering::SeqCst);
+    assert_eq!(search(true)["mode"], "hybrid");
+    assert_eq!(*given.lock().unwrap(), [5, 5]);
+    // A server that does not answer counts as not loaded, quickly and quietly.
+    awake.store(false, Ordering::SeqCst);
+    let started = Instant::now();
+    let found = search(true);
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(found["mode"], "lexical");
+    assert!(found["warning"].is_null());
     assert_eq!(found["results"][0]["id"], "a");
 }
 

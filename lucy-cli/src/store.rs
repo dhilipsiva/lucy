@@ -1380,6 +1380,35 @@ fn embed(url: &str, model: &str, text: &str, within: Duration) -> Result<Vec<f32
     normalized(&sum)
 }
 
+/// How long a search waits to learn whether the embedding model is loaded.
+const LOADED_WAIT: Duration = Duration::from_millis(150);
+
+/// Whether Ollama has this model in memory right now. Anything else counts as not
+/// loaded: a server that is unreachable or still starting, or a reply that is not a list.
+fn loaded(url: &str, model: &str) -> bool {
+    let _span = crate::task_model::profile::span("embed_loaded");
+    if local_url(url).is_err() {
+        return false;
+    }
+    let Ok(reply) = crate::talk::http("GET", &format!("{url}/api/ps"), None, LOADED_WAIT) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&reply.body) else {
+        return false;
+    };
+    let name = if model.contains(':') {
+        model.to_owned()
+    } else {
+        format!("{model}:latest")
+    };
+    reply.status == 200
+        && value["models"].as_array().is_some_and(|models| {
+            models
+                .iter()
+                .any(|m| m["name"] == name || m["name"] == model)
+        })
+}
+
 fn model_id(url: &str, model: &str, within: Duration) -> Result<String> {
     let _span = crate::task_model::profile::span("embed_model_id");
     local_url(url)?;
@@ -1427,6 +1456,9 @@ pub struct Retrieval<'a> {
     pub embed_within: Duration,
     /// How much of the query is embedded.
     pub embed_chars: usize,
+    /// Ask the embedding model only if Ollama has it loaded already. A prompt does not
+    /// wait for a model to load; a search someone asked for does.
+    pub embed_loaded_only: bool,
 }
 impl<'a> Retrieval<'a> {
     /// What `lucy store search` asks for: a fresh index and the whole query embedded.
@@ -1438,12 +1470,13 @@ impl<'a> Retrieval<'a> {
             sync: true,
             embed_within: EMBED_WAIT,
             embed_chars: usize::MAX,
+            embed_loaded_only: false,
         }
     }
 }
 
 /// Search the index and every enrolled log. The store lock is not held while the
-/// embedding model is asked, nor while the logs are read.
+/// model embeds, nor while the logs are read.
 pub fn retrieve(store: Store, request: &Retrieval) -> Result<Value> {
     let root = store.root.clone();
     let sync = if request.sync {
@@ -1455,12 +1488,14 @@ pub fn retrieve(store: Store, request: &Retrieval) -> Result<Value> {
     let mut open = Some(store);
     let mut warning = None;
     let mut vector = None;
-    if let Some(model) = &config.embedding_model {
+    let url = config
+        .embedding_url
+        .as_deref()
+        .unwrap_or(crate::talk::DEFAULT_OLLAMA_URL);
+    if let Some(model) = &config.embedding_model
+        && (!request.embed_loaded_only || loaded(url, model))
+    {
         open = None;
-        let url = config
-            .embedding_url
-            .as_deref()
-            .unwrap_or(crate::talk::DEFAULT_OLLAMA_URL);
         let deadline = std::time::Instant::now() + request.embed_within;
         let left = || {
             deadline

@@ -81,8 +81,11 @@ No cloud inference, model download, or private publication happens implicitly.
 model about the whole query. The desktop service answers a prompt on a clock, so
 its search differs in two ways. It re-reads the folders before a conversation's
 first prompt and behind each later reply, so a file edited outside Lucy is found
-one prompt later. And it embeds the prompt's first 3,000 characters and gives the
-model 1.5 seconds; past that, the search is lexical and the service log says why.
+one prompt later. And it asks the embedding model only when Ollama already has
+it loaded: about the prompt's first 3,000 characters, for at most 1.5 seconds.
+No prompt waits for a model to load, so on a host that unloads models after each
+request a prompt's search is lexical. A search someone asks for, `lucy store
+search` or an app's recall request, loads the model.
 
 Results come from two places. Records held in an enrolled log (conversations,
 reviewed notes, a peer's public interactions) are ranked by BM25 over those
