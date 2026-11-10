@@ -151,11 +151,14 @@ pub fn probe() -> Value {
 }
 
 pub fn call(request: Value) -> Result<Value> {
+    call_within(request, Duration::from_secs(660))
+}
+
+/// Ask the service and wait no longer than `wait` for its reply.
+pub fn call_within(request: Value, wait: Duration) -> Result<Value> {
     let mut stream = UnixStream::connect(socket_path()?)
         .map_err(|e| format!("Lucy service unavailable: {e}; start `lucy serve`"))?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(660)))
-        .map_err(err)?;
+    stream.set_read_timeout(Some(wait)).map_err(err)?;
     writeln!(stream, "{request}").map_err(err)?;
     let response = read_frame(&mut BufReader::new(stream))?;
     if let Some(error) = response["error"].as_str() {
@@ -238,7 +241,7 @@ pub fn serve(root: &Path, identity: Option<PathBuf>) -> Result<()> {
                 .try_clone()
                 .map_err(err)
                 .and_then(|input| read_frame(&mut BufReader::new(input)))
-                .and_then(|request| service.dispatch(request));
+                .and_then(|request| service.answer(request));
             let response = result.unwrap_or_else(|error| json!({"error":error}));
             if let Ok(bytes) = serde_json::to_vec(&response)
                 && bytes.len() <= MAX_FRAME

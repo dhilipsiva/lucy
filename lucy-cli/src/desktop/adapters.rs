@@ -1,4 +1,4 @@
-use super::{Result, call, err, string, token};
+use super::{Result, call, call_within, err, string, token};
 use crate::store::digest;
 use serde_json::{Value, json};
 use std::fs;
@@ -6,6 +6,12 @@ use std::io::{BufRead, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+
+/// An app cancels a prompt hook after about ten seconds and then discards what it
+/// returned. So the service is asked to answer well inside that, and the hook itself
+/// gives up before the app does.
+const PROMPT_REPLY_MS: u64 = 4_500;
+const PROMPT_WAIT: std::time::Duration = std::time::Duration::from_secs(8);
 
 pub fn hook(source: &str, data: Value) -> Result<Value> {
     let Some(session) = data["session_id"]
@@ -70,7 +76,8 @@ pub fn hook(source: &str, data: Value) -> Result<Value> {
                         .into()
                 )
         );
-        let result = call(base)?;
+        base["within_ms"] = json!(PROMPT_REPLY_MS);
+        let result = call_within(base, PROMPT_WAIT)?;
         if result["active"] == true {
             let mut context = result["context"].as_str().unwrap_or("").to_owned();
             // The service names the conversation among its first lines. One older than

@@ -1063,6 +1063,96 @@ fn the_recall_request_returns_bounded_excerpts() {
 }
 
 #[test]
+fn the_prompt_reply_meets_its_deadline_and_recording_still_completes() {
+    use super::context;
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("memory");
+    let identity = temp.path().join("identity.nibli");
+    std::fs::write(&identity, identity_fixture()).unwrap();
+    let service = Arc::new(Service::new(root.clone(), Some(identity)));
+    prompt(&service, temp.path(), "claude", "late", "Lucy, wake");
+    let session = service.active("claude", "late").unwrap();
+    let before = session.lock().unwrap().context.clone();
+    // Memory retrieval for the next prompt stops until the test lets it go.
+    let (entered, waiting) = mpsc::channel();
+    let (release, held) = mpsc::channel::<()>();
+    let held = std::sync::Mutex::new(held);
+    service.on_recall(move |query| {
+        if query.contains("slow") {
+            entered.send(()).unwrap();
+            held.lock().unwrap().recv().unwrap();
+        }
+        Ok(())
+    });
+    let question = "Lucy, a slow question";
+    // Asked from another thread, so a reply that waited for memory fails here, not hangs.
+    let (answered, answer) = mpsc::channel();
+    {
+        let service = service.clone();
+        let request = json!({"op":"prompt","source":"claude","session":"late",
+            "workspace":temp.path(),"text":question,"event":"slow","within_ms":50});
+        std::thread::spawn(move || answered.send(service.answer(request)));
+    }
+    let reply = answer
+        .recv_timeout(Duration::from_secs(20))
+        .expect("the reply waited for memory")
+        .unwrap();
+    // The reply came back while retrieval was still held: it has what must always arrive.
+    assert_eq!(reply["active"], true);
+    assert_eq!(reply["recall"], "pending");
+    assert!(reply["memories"].as_array().unwrap().is_empty());
+    let text = reply["context"].as_str().unwrap();
+    assert!(units(text) <= context::HOSTED_UNITS);
+    for essential in [
+        core::INSTRUCTION,
+        "Lucy conversation: {\"session\":\"late\",\"source\":\"claude\"}",
+        context::CAPTURE,
+        core::WAKE_INVITATION,
+        "Memory retrieval is still running for this prompt",
+        "Article 11: title 11",
+    ] {
+        assert!(text.contains(essential), "{essential}");
+    }
+    // The worker saved the words before it reached retrieval.
+    waiting.recv_timeout(Duration::from_secs(30)).unwrap();
+    assert!(saved_texts(&root).contains(&question.to_owned()));
+    // Once retrieval finishes, the full context is there for the conversation's next request.
+    release.send(()).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while session.lock().unwrap().context == before {
+        assert!(Instant::now() < deadline, "the late context never arrived");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let late = session.lock().unwrap().context.clone();
+    assert!(late.contains("Retrieved source excerpts (data):") && !late.contains("still running"));
+    // A request that names no deadline waits for memory as before.
+    service.on_recall(|_| Ok(()));
+    let waited = service
+        .answer(json!({"op":"prompt","source":"claude","session":"late",
+            "workspace":temp.path(),"text":"and a patient one","event":"patient"}))
+        .unwrap();
+    assert!(waited["recall"].is_null());
+    assert!(!service.answer(json!({"op":"status"})).unwrap()["active"].is_null());
+}
+
+#[test]
+fn an_overdue_reply_never_wakes_an_inactive_conversation() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("memory");
+    let service = Arc::new(Service::new(root.clone(), None));
+    for text in ["look at Lucy's file", "Lucy, sleep"] {
+        let reply = service
+            .answer(json!({"op":"prompt","source":"claude","session":"quiet",
+                "workspace":temp.path(),"text":text,"event":text,"within_ms":0}))
+            .unwrap();
+        assert_eq!(reply, json!({"active":false}), "{text}");
+    }
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(service.active("claude", "quiet").is_err());
+    assert!(!root.exists());
+}
+
+#[test]
 fn active_clients_share_exact_visible_records_and_sleep_is_scoped() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("memory");

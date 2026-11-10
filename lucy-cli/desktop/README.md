@@ -132,6 +132,14 @@ were left out. The local chat uses the same builder against its 48 kB prompt:
 identity whole, recent turns, then excerpts. Study runs keep their fixed
 context text. A `recall` request returns at most eight such excerpts.
 
+An app cancels a prompt hook after about ten seconds and discards what it
+returned. So the hook asks the service to answer within 4.5 seconds and gives
+up itself after eight. If memory has not answered by then, the reply carries
+the first lines and the identity with a note that retrieval was still running.
+The prompt's words are saved either way, and the full context is published for
+the conversation's later requests when retrieval finishes. A request that
+names no deadline waits as before.
+
 Sources: [Claude hooks](https://code.claude.com/docs/en/hooks),
 [Codex hooks](https://learn.chatgpt.com/docs/hooks),
 [Cursor hooks](https://cursor.com/docs/hooks),
