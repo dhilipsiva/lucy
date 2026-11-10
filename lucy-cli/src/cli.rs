@@ -24,7 +24,8 @@ pub struct Outcome {
 }
 
 /// The usage text.
-pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli text
+pub const USAGE: &str = "lucy — AI memory. With a personality.
+Peer-to-peer, cross-agent, and model-agnostic.
 
   lucy peer enroll|list|change       enroll scoped peers or append signed changes (--stdin)
   lucy room import FILE --peer NAME [--commit]

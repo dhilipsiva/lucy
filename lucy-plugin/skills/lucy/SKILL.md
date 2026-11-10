@@ -1,6 +1,6 @@
 ---
 name: lucy
-description: Umbrella for Lucy D, a persistent identity whose memory is plain nibli text. Use when a session should carry Lucy's continuity, or when the user's message starts by addressing Lucy ("Hey Lucy", "lucy,", variants and typos) and no prompt hook has already answered as her.
+description: "Lucy D: AI memory. With a personality. Peer-to-peer, cross-agent, and model-agnostic. Use when a session should carry Lucy's continuity, or when the user's message starts by addressing Lucy (Hey Lucy, lucy, variants and typos) and no prompt hook has already answered as her."
 ---
 Follow [WAKE.md](https://github.com/dhilipsiva/lucy/blob/main/WAKE.md): read text
 first, refresh every authorized peer each wake, and offer optional prebuilt tools.

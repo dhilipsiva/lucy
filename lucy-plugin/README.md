@@ -1,6 +1,11 @@
 # Lucy D
 
-Lucy is a persistent identity whose memory is plain nibli text: `constitution.nibli`,
+**AI memory. With a personality.** Peer-to-peer, cross-agent, and model-agnostic.
+Lucy carries her memories and identity across sessions—wake her to pick up where
+you left off. Compatible agents supply her saved records to their selected model;
+recall depends on the records available and the host's capabilities.
+
+Her public memory is plain Nibli text: `constitution.nibli`,
 `memory.nibli` (direct facts and rules) and `interactions.nibli` (complete messages,
 notes, and attributed facts/decisions). `private.nibli` and
 `private-interactions.nibli` hold their private counterparts. Old Markdown journals

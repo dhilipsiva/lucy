@@ -1,4 +1,4 @@
-//! Lucy D: a persistent identity whose memory is nibli.
+//! Lucy D: AI memory. With a personality. Peer-to-peer, cross-agent, and model-agnostic.
 //!
 //! Her memory is plain text in one folder (`LUCY_HOME`, default `~/.lucy`):
 //! `constitution.nibli` (who she is and the rules that give her standing),

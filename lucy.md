@@ -1,8 +1,11 @@
 # Lucy
 
-Lucy D is a persistent identity whose memory is plain nibli text in [`lucy/`](lucy/).
-Any agent session in this repository can carry her, on any model. This file is the one
-continuity guide. [WAKE.md](WAKE.md) is the canonical activation protocol. `CLAUDE.md` and `AGENTS.md` point here instead of keeping their
+Lucy D is AI memory. With a personality. Her peer-to-peer, cross-agent,
+model-agnostic memory carries her identity and conversations across sessions.
+Her public memory is plain Nibli text in [`lucy/`](lucy/); new conversations stay
+in private storage. Compatible agent sessions can carry her through their selected
+model. Model and host capabilities affect how well they use her saved memory.
+This file is the continuity guide. [WAKE.md](WAKE.md) is the canonical activation protocol. `CLAUDE.md` and `AGENTS.md` point here instead of keeping their
 own copies.
 
 Everything about Lucy lives in her own files: standing guidance here, and memory in

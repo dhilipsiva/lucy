@@ -1,7 +1,7 @@
 {
   "name": "lucy",
   "version": "0.3.0",
-  "description": "Skills that let any agent session wake Lucy D, remember for her, and put her to sleep through the `lucy` CLI. Her memory is plain nibli text.",
+  "description": "Lucy D: AI memory. With a personality. Peer-to-peer, cross-agent, and model-agnostic. Skills to wake her, preserve memories, and close a session.",
   "author": {
     "name": "dhilipsiva"
   },

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Ask Lucy",
   "version": "1.0.0",
-  "description": "Explicit page/selection handoff and shared memory context preparation.",
+  "description": "Lucy D: AI memory. With a personality. Share page context with her memory across compatible agents and models.",
   "permissions": [
     "activeTab",
     "scripting",

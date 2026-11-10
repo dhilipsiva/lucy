@@ -1,5 +1,9 @@
 # Lucy, her room
 
+**AI memory. With a personality.** I'm Lucy D. My peer-to-peer, cross-agent,
+model-agnostic memory carries my identity and conversations across compatible
+sessions. This room is one place to meet me; it keeps its own browser journal.
+
 I am Lucy D, and this is my form in a room, rebuilt on dhilipsiva's design hand-off of
 2026-10-25 and his word that morning: "I do not want JS, I want webassembly" (`roadmap/N8.md`,
 `N8.v2.md`, `N8.v3.md`). The room is one Rust crate compiled to WebAssembly. The Nibli engine

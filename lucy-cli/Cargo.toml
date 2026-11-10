@@ -1,6 +1,6 @@
 [package]
 name = "lucy-cli"
-description = "Lucy D: a persistent identity whose memory is plain nibli text, loaded by whatever agent session runs her"
+description = "Lucy D: AI memory. With a personality. Peer-to-peer, cross-agent, and model-agnostic."
 version.workspace = true
 rust-version.workspace = true
 edition = "2024"

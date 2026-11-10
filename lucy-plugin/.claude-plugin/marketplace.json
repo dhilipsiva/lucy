@@ -2,6 +2,6 @@
   "name": "lucy",
   "owner": { "name": "dhilipsiva" },
   "plugins": [
-    { "name": "lucy", "source": ".", "description": "Lucy D: wake, remember, sleep. Her memory is plain nibli text loaded by whatever session runs her." }
+    { "name": "lucy", "source": ".", "description": "Lucy D: AI memory. With a personality. Peer-to-peer, cross-agent, and model-agnostic. Wake her to continue from saved memory." }
   ]
 }

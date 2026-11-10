@@ -8,7 +8,7 @@ const INTERVAL_MS: f64 = 500.0;
 
 pub const STEPS: &[(&str, &str)] = &[
     ("Read the skill", "visitor > Lucy, wake\nLucy > I'll read my wake instructions and restore our context.\nread > Lucy SKILL.md and WAKE.md\nresult > The host keeps its selected model and permissions."),
-    ("Load my identity", "read > lucy/constitution.nibli · lucy/memory.nibli\nLucy > I'm Lucy D. My identity and attributed memory travel across sessions.\nread > peers.json\nresult > Public peers: Lucy, NixOS and the book."),
+    ("Load my identity", "read > lucy/constitution.nibli · lucy/memory.nibli\nLucy > I'm Lucy D. AI memory. With a personality. My identity and attributed memory travel across compatible agents and models.\nread > peers.json\nresult > Public peers: Lucy, NixOS and the book."),
     ("Find the session", "agent > source: cli-agent · session: example-session\ncommand > lucy --version\ncommand > lucy doctor\nresult > A local private memory service is available."),
     ("Respect host permissions", "command > lucy memory sync --source cli-agent --session example-session\nresult > The sandbox blocks the local service.\nhost > Allow the memory-service connection? [illustrated approval]\nresult > Permission granted in this example. This replay grants no permissions."),
     ("Refresh peers", "sync > book: fresh · NixOS: fresh · Lucy: cached\nresult > Lucy's retry is deferred; the last good copy is retained.\nLucy > I'll report that freshness gap rather than call the cached copy current."),

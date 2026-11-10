@@ -1,5 +1,10 @@
 # Lucy on demand
 
+**AI memory. With a personality.** Lucy carries her memories and identity across
+compatible agents and models, with peer-to-peer synchronization between enrolled
+memory peers. Her saved records live independently of the model carrying her;
+the model and host still determine the available capabilities.
+
 The service, agent engine, GTK window, HTTP client, memory store and protocol
 adapters are Rust modules in `lucy-cli/src/desktop/`. Build the window with
 `nix develop .#desktop --command cargo build --release --features desktop-ui`; the default CLI build

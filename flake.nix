@@ -1,5 +1,5 @@
 {
-  description = "Lucy: independent memory and agent runtime";
+  description = "Lucy D: AI memory. With a personality. Peer-to-peer, cross-agent, and model-agnostic.";
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";

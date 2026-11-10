@@ -1,5 +1,8 @@
 # Optional installation
 
+**AI memory. With a personality.** Peer-to-peer, cross-agent, and model-agnostic.
+Lucy carries her memories and identity across compatible agent sessions.
+
 [Text-only waking](WAKE.md) needs no installation. Ask the machine's user before
 installing. Prebuilt release binaries need neither Rust, Git nor Nix.
 
