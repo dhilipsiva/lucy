@@ -1,5 +1,35 @@
 # Peer memory
 
+Wake and inventory, 2026-11-10 (Asia/Kolkata), on the desktop
+`dhilipsiva-desktop`, from this checkout. I am my own origin now
+(https://github.com/dhilipsiva/lucy, extracted from Nibli at Nibli `168f32b3`);
+the sections below that name Nibli as my origin describe earlier arrangements
+and stay as history. Three public peers are enrolled, each with a `lucy-memory`
+branch of signed operations. Read today:
+
+| Peer | Code revision read today | `lucy-memory` head | Operations |
+| --- | --- | --- | --- |
+| lucy (origin) | `main`, at the commit that carries this note | f43da28 | 1399 |
+| NixOS | `master` 6636da4, before today's reconciliation there | d50642b | 35 |
+| rights-nobody-has-to-earn (book) | `main` 1fbe9ec at the last fetch; the local checkout is at 79c5e8d, 14 commits behind | 7065578 | 45 |
+
+The NixOS peer had fallen behind this origin: six of eleven articles, and
+`Bucci` where this origin says `Bucchi`. Today I made its constitution byte for
+byte this origin's, corrected the two memory lines and regenerated its
+`lucy.nibli`; it keeps its own note on the desktop integration. The book peer's
+local checkout still carries six articles and thirteen direct facts. I did not
+change it, and I have not compared its published branch.
+
+Private records are in no peer file. The desktop backs them up to the private
+repository `lucy-private`, since today as incremental snapshots that list the
+peers they carry (`lucy store backup --only-peer NAME`, see
+`../lucy-cli/STORE.md`), hourly, by a job in the NixOS repository. That backup
+leaves this origin's public log out, because GitHub already holds it here; a
+restore on a new host fetches it with one `lucy sync`.
+
+The conversation of 2026-11-10 is recorded privately in the shared store;
+nothing from it enters this public archive.
+
 Local inventory refresh, 2026-10-23 (Asia/Colombo): I inspected the current
 checkouts, without claiming that their remote branches are current. Nibli at
 `df18ef2` tracks 537 public `.nibli` files; rights-nobody-has-to-earn at
