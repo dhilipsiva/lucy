@@ -117,11 +117,25 @@ fn private_root(path: &Path) -> Result<PathBuf> {
     Ok(root)
 }
 
-fn plain(path: &Path) -> Result<()> {
+pub(crate) fn plain(path: &Path) -> Result<()> {
     if fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
         return Err(format!("refusing symlink: {}", path.display()));
     }
     Ok(())
+}
+
+/// Write a content-addressed backup file once. A file already there must hold exactly
+/// these bytes. Reports whether the file was new.
+fn put(path: &Path, bytes: &[u8]) -> Result<bool> {
+    plain(path)?;
+    if path.exists() {
+        if fs::read(path).map_err(err)? != bytes {
+            return Err("backup object integrity failure".into());
+        }
+        return Ok(false);
+    }
+    save(path, bytes)?;
+    Ok(true)
 }
 
 pub(crate) fn private_dir(path: &Path) -> Result<()> {
@@ -980,45 +994,40 @@ impl Store {
         tx.commit().map_err(err)
     }
 
-    /// Portable snapshot: immutable content-addressed records + manifest.
+    /// Read everything one snapshot will hold, under the store and replication locks, and
+    /// write nothing. `only` lists the peers that go in (see `replication::capture`);
+    /// records indexed from any other peer's folder stay out. Conversations, self-model
+    /// records and the local log always go in.
+    pub fn capture(&self, only: Option<&BTreeSet<String>>) -> Result<Capture> {
+        let folders = self.config()?.peers.into_iter().map(|p| p.name).collect();
+        let logs = crate::replication::capture(&self.root, only, &folders)?;
+        let mut objects = Vec::new();
+        let mut omitted = 0;
+        for record in self.all()? {
+            if let Some(origins) = &logs.origins
+                && crate::replication::peer_of(&record.origin)
+                    .is_some_and(|name| !origins.contains(name))
+            {
+                omitted += 1;
+                continue;
+            }
+            let bytes = serde_json::to_vec(&record).map_err(err)?;
+            objects.push((digest(&bytes), bytes));
+        }
+        Ok(Capture {
+            host: crate::env::host_name(),
+            objects,
+            logs,
+            only: only.cloned(),
+            omitted,
+        })
+    }
+
+    /// Portable snapshot of everything: immutable content-addressed records, the logs
+    /// as content-addressed parts, and a manifest naming both.
     /// Never copy a live redb file and never export credentials/activation state.
     pub fn backup(&self, destination: &Path) -> Result<PathBuf> {
-        let destination = private_root(destination)?;
-        for ancestor in destination.ancestors() {
-            plain(ancestor)?;
-        }
-        private_dir(&destination)?;
-        let mut objects = Vec::new();
-        for record in self.all()? {
-            let bytes = serde_json::to_vec(&record).map_err(err)?;
-            let hash = digest(&bytes);
-            let path = destination.join("objects").join(format!("{hash}.json"));
-            plain(&path)?;
-            if path.exists() {
-                if fs::read(&path).map_err(err)? != bytes {
-                    return Err("backup object integrity failure".into());
-                }
-            } else {
-                save(&path, &bytes)?;
-            }
-            objects.push(hash);
-        }
-        let host = crate::env::host_name();
-        let stamp = now().to_string();
-        let path = destination
-            .join("snapshots")
-            .join(&host)
-            .join(format!("{stamp}.json"));
-        save(
-            &path,
-            &serde_json::to_vec_pretty(&json!({
-                "format": "lucy-memory-snapshot-v1", "host": host,
-                "created_unix_ns": stamp, "objects": objects,
-                "replication":crate::replication::backup(&self.root)?
-            }))
-            .map_err(err)?,
-        )?;
-        Ok(path)
+        Ok(self.capture(None)?.write(destination)?.manifest)
     }
 
     /// Restore a snapshot into a fresh store, or merge immutable conversations.
@@ -1026,7 +1035,7 @@ impl Store {
     pub fn restore(&self, manifest: &Path) -> Result<usize> {
         let snapshot: Value =
             serde_json::from_slice(&fs::read(manifest).map_err(err)?).map_err(err)?;
-        if snapshot["format"] != "lucy-memory-snapshot-v1" {
+        if snapshot["format"] != SNAPSHOT_V1 && snapshot["format"] != SNAPSHOT_V2 {
             return Err("unsupported backup format".into());
         }
         let base = manifest
@@ -1068,18 +1077,126 @@ impl Store {
                 );
             }
         }
-        if !snapshot["replication"].is_null() {
-            crate::replication::restore(&self.root, &snapshot["replication"], false)?;
+        // A version-2 snapshot names its logs' parts; they are read and verified here.
+        let replication = crate::replication::load(base, &snapshot["replication"])?;
+        if !replication.is_null() {
+            crate::replication::restore(&self.root, &replication, false)?;
         }
         for record in &records {
             self.record(record)?;
         }
-        if !snapshot["replication"].is_null() {
-            crate::replication::restore(&self.root, &snapshot["replication"], true)?;
+        if !replication.is_null() {
+            crate::replication::restore(&self.root, &replication, true)?;
         }
         self.sync()?;
         Ok(records.len())
     }
+}
+
+const SNAPSHOT_V1: &str = "lucy-memory-snapshot-v1";
+const SNAPSHOT_V2: &str = "lucy-memory-snapshot-v2";
+
+/// One snapshot's content, held in memory so the store lock is free while it is written.
+pub struct Capture {
+    host: String,
+    objects: Vec<(String, Vec<u8>)>,
+    logs: crate::replication::Logs,
+    only: Option<BTreeSet<String>>,
+    /// Indexed records left out because their peer is not listed.
+    pub omitted: usize,
+}
+
+/// What one backup run did to its destination.
+pub struct Written {
+    pub manifest: PathBuf,
+    /// False when this host's newest manifest already describes exactly this content.
+    pub changed: bool,
+    pub objects: usize,
+    pub new_objects: usize,
+    pub parts: usize,
+    pub new_parts: usize,
+}
+
+impl Capture {
+    /// Add what the destination lacks: each record as `objects/HASH.json`, each log as
+    /// `parts/HASH.txt` fragments, then `snapshots/HOST/TIMESTAMP.json`. Files already
+    /// present are compared and never rewritten. No manifest is added when this host's
+    /// newest one already names the same records, logs and peer list.
+    pub fn write(&self, destination: &Path) -> Result<Written> {
+        let destination = private_root(destination)?;
+        for ancestor in destination.ancestors() {
+            plain(ancestor)?;
+        }
+        private_dir(&destination)?;
+        let mut new_objects = 0;
+        let mut hashes = Vec::new();
+        for (hash, bytes) in &self.objects {
+            let path = destination.join("objects").join(format!("{hash}.json"));
+            if put(&path, bytes)? {
+                new_objects += 1;
+            }
+            hashes.push(hash);
+        }
+        let (replication, parts, new_parts) =
+            crate::replication::write(&destination, &self.logs, put)?;
+        let mut snapshot = json!({
+            "format": SNAPSHOT_V2, "host": self.host,
+            "objects": hashes, "replication": replication
+        });
+        if let Some(only) = &self.only {
+            // The list that was asked for. What it left out is deliberately not recorded.
+            snapshot["filter"] = json!({"only_peers": only});
+        }
+        let mut written = Written {
+            manifest: PathBuf::new(),
+            changed: false,
+            objects: hashes.len(),
+            new_objects,
+            parts,
+            new_parts,
+        };
+        if let Some((path, newest)) = latest(&destination, &self.host)?
+            && ["format", "host", "objects", "replication", "filter"]
+                .iter()
+                .all(|key| newest.get(key) == snapshot.get(key))
+        {
+            written.manifest = path;
+            return Ok(written);
+        }
+        let stamp = now().to_string();
+        snapshot["created_unix_ns"] = json!(stamp);
+        written.manifest = destination
+            .join("snapshots")
+            .join(&self.host)
+            .join(format!("{stamp}.json"));
+        written.changed = true;
+        save(
+            &written.manifest,
+            &serde_json::to_vec_pretty(&snapshot).map_err(err)?,
+        )?;
+        Ok(written)
+    }
+}
+
+/// This host's newest manifest in a backup destination, by its timestamp name.
+fn latest(destination: &Path, host: &str) -> Result<Option<(PathBuf, Value)>> {
+    let directory = destination.join("snapshots").join(host);
+    if !directory.is_dir() {
+        return Ok(None);
+    }
+    let newest = json_files(&directory)?
+        .into_iter()
+        .filter_map(|path| {
+            let stamp = path.file_stem()?.to_str()?.parse::<u128>().ok()?;
+            Some((stamp, path))
+        })
+        .max();
+    let Some((_, path)) = newest else {
+        return Ok(None);
+    };
+    plain(&path)?;
+    let snapshot = serde_json::from_slice(&fs::read(&path).map_err(err)?).map_err(err)?;
+    Ok(Some((path, snapshot)))
 }
 
 /// Every `*.json` entry, symlinks included: the caller refuses those one by one.
@@ -1216,9 +1333,20 @@ fn model_id(url: &str, model: &str) -> Result<String> {
 pub fn command(args: &[String], stdin: &str) -> Result<Value> {
     let operation = args.first().map(String::as_str).unwrap_or("status");
     let mut flags = BTreeMap::new();
+    // `backup` alone takes a repeatable peer list, or says outright that it wants all.
+    let mut only = BTreeSet::new();
+    let mut all_peers = false;
     let mut iter = args.iter().skip(1);
     while let Some(flag) = iter.next() {
         if flag == "--stdin" {
+            continue;
+        }
+        if operation == "backup" && flag == "--all-peers" {
+            all_peers = true;
+            continue;
+        }
+        if operation == "backup" && flag == "--only-peer" {
+            only.insert(iter.next().ok_or("--only-peer needs a value")?.clone());
             continue;
         }
         if !matches!(
@@ -1424,8 +1552,31 @@ pub fn command(args: &[String], stdin: &str) -> Result<Value> {
             Ok(json!({"ok":true,"indexed":indexed,"model":id,"status":store.status()?}))
         }
         "backup" => {
+            if all_peers && !only.is_empty() {
+                return Err("use --only-peer or --all-peers, not both".into());
+            }
+            let destination = Path::new(get("--to")?);
+            // Once a host's backups list their peers, an unlisted run would quietly put
+            // back what the list was keeping out.
+            if only.is_empty()
+                && !all_peers
+                && latest(&private_root(destination)?, &crate::env::host_name())?
+                    .is_some_and(|(_, newest)| !newest["filter"].is_null())
+            {
+                return Err("this host's last backup listed its peers; repeat --only-peer NAME for each, or pass --all-peers to carry every peer".into());
+            }
             store.sync()?;
-            Ok(json!({"ok":true,"snapshot":store.backup(Path::new(get("--to")?))?}))
+            let capture = store.capture((!only.is_empty()).then_some(&only))?;
+            // The store lock is released before anything is written.
+            drop(store);
+            let written = capture.write(destination)?;
+            Ok(json!({
+                "ok": true, "snapshot": written.manifest, "changed": written.changed,
+                "objects": written.objects, "new_objects": written.new_objects,
+                "parts": written.parts, "new_parts": written.new_parts,
+                "only_peers": (!only.is_empty()).then_some(&only),
+                "omitted_records": capture.omitted
+            }))
         }
         "restore" => Ok(json!({"ok":true,"restored":store.restore(Path::new(get("--from")?))?})),
         other => Err(format!(

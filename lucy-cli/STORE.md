@@ -5,8 +5,9 @@ an enrolled actor. See [SYNC.md](../SYNC.md) for causal corrections, tombstones,
 scopes and continuity. Existing JSON originals remain as compatibility copies.
 `lucy peer migrate` checkpoints legacy originals into the local private Nibli log;
 only exact `record_origins` enrolled for a peer may be uploaded. Backups include
-canonical logs and public verification keys, but exclude signing keys, credentials,
-local paths and automatic upload grants. Restore never enables uploads.
+the canonical logs of the peers they list and public verification keys, but exclude
+signing keys, credentials, local paths and automatic upload grants. Restore never
+enables uploads.
 
 The following describes the compatible legacy originals and redb index:
 
@@ -84,18 +85,38 @@ source trees. Existing legacy files in that repository can remain untouched.
 ```sh
 git clone git@github.com:dhilipsiva/lucy-private.git ~/.local/share/lucy-private-backup
 git -C ~/.local/share/lucy-private-backup pull --ff-only
-lucy store backup --to ~/.local/share/lucy-private-backup/shared-store
+lucy store backup --to ~/.local/share/lucy-private-backup/shared-store --only-peer PEER
 git -C ~/.local/share/lucy-private-backup add -- shared-store
 git -C ~/.local/share/lucy-private-backup commit -m 'Back up Lucy shared memory'
 git -C ~/.local/share/lucy-private-backup push
 ```
 
-Each snapshot lists SHA-256 addressed complete records in `objects/`.
-Manifests live in `snapshots/HOST/TIMESTAMP.json`, so hosts add separate files.
+`--only-peer NAME`, repeated, lists what a backup carries beyond my own
+conversations. Each name is an enrolled peer or a registered folder; it admits
+that peer's log, its enrollment and the records indexed from its folder. My
+private conversations, self-model records and the local log always travel.
+Every other peer stays out, including a folder that is registered a second time
+under another name. An unknown name, or a listed log that holds a record of a
+peer outside the list, stops the run before anything is written. `--all-peers`
+carries everything. Once a host's newest manifest was made from a list, a run
+with neither option is refused, so a listed backup is never widened by accident.
+A host that also holds someone else's private peer lists its own peers.
+
+Each snapshot lists SHA-256 addressed complete records in `objects/`. Each
+carried log is stored as `parts/HASH.txt` fragments, cut at operation
+boundaries in each actor's counter order and never larger than 4 MiB. Earlier
+parts keep their bytes, so a run adds only new records, the parts that hold new
+operations and one manifest. When nothing changed it adds nothing and reports
+`"changed": false`. Manifests live in `snapshots/HOST/TIMESTAMP.json`, so hosts
+add separate files. A manifest made from a list records it as
+`filter.only_peers` and is partial by design; it does not name what stayed out.
+Never delete an object or a part: another manifest may name it.
+
 Pull before pushing; concurrent hosts may need a normal Git rebase before retrying
 a rejected push. The CLI does not force-push, merge live databases, publish to a
-remote, or configure a periodic backup. Keep the Git repository private: these
-portable files contain the original conversation text, not encrypted ciphertext.
+remote, or configure a periodic backup; a host may schedule these steps itself.
+Keep the Git repository private: these portable files contain the original
+conversation text, not encrypted ciphertext.
 Only stage this generated subtree, never a live `memory.redb` or credentials.
 
 On another host, clone or pull that private repository, then:
@@ -108,7 +129,12 @@ lucy store register --name book --path /this/host/rights-nobody-has-to-earn/lucy
 lucy store embed --model embeddinggemma
 ```
 
-Restore validates every object hash before writing. It is idempotent and rejects
+Restore reads `lucy-memory-snapshot-v2` and both older shapes of
+`lucy-memory-snapshot-v1`: records alone, and records with every log's whole
+text inside the manifest. It validates every object, every part and each
+assembled log before writing, and leaves a peer the snapshot does not carry
+untouched. A binary older than version 2 refuses such a manifest.
+It is idempotent and rejects
 conflicting immutable IDs. Existing local registered peer files take precedence
 over their snapshot copies. Restore additional host snapshots to merge their
 conversation records; current local peer files remain authoritative. There is no

@@ -49,7 +49,8 @@ pub const USAGE: &str = "lucy — a persistent identity whose memory is nibli te
                                      read a local peer's Lucy directory on every recall
   lucy store search --query TEXT      search all local peers and app conversations
   lucy store embed [--model MODEL]    generate vectors using local Ollama
-  lucy store backup --to DIR         write a portable snapshot for a private Git backup
+  lucy store backup --to DIR [--only-peer NAME]... | --all-peers
+                                     add what a private Git backup lacks; list the peers it may carry
   lucy store restore --from FILE     restore a snapshot; embeddings can be rebuilt
   lucy agent [TASK...] [--workspace DIR]
                                      run the shared agent in the terminal; approve actions

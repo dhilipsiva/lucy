@@ -25,6 +25,44 @@ pub struct Archive {
     pub sha256: String,
     pub parts: Vec<Part>,
 }
+impl Part {
+    /// A fragment named by its own hash.
+    pub fn of(fragment: &str) -> Self {
+        let sha256 = digest(fragment.as_bytes());
+        Self {
+            path: format!("parts/{sha256}.txt"),
+            bytes: fragment.len(),
+            sha256,
+        }
+    }
+}
+impl Archive {
+    /// Verify parts in order against this descriptor alone, without a manifest.
+    pub fn assembler(&self) -> Assembler<'_> {
+        Assembler {
+            archive: self,
+            legacy: false,
+            text: String::new(),
+            next: 0,
+        }
+    }
+}
+/// UTF-8 fragments of at most `PART_BYTES`. An empty text is one empty fragment.
+pub fn fragments(text: &str) -> Vec<&str> {
+    let mut fragments = Vec::new();
+    let mut start = 0;
+    loop {
+        let mut end = text.len().min(start + PART_BYTES);
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        fragments.push(&text[start..end]);
+        start = end;
+        if start == text.len() {
+            return fragments;
+        }
+    }
+}
 #[derive(Clone, Debug)]
 pub struct Manifest {
     pub version: u64,
@@ -221,25 +259,12 @@ pub fn bundle(
                 sha256: digest(text.as_bytes()),
                 parts: Vec::new(),
             };
-            let mut start = 0;
-            loop {
-                let mut end = text.len().min(start + PART_BYTES);
-                while !text.is_char_boundary(end) {
-                    end -= 1;
-                }
-                let fragment = &text[start..end];
-                let sha256 = digest(fragment.as_bytes());
-                let path = format!("parts/{sha256}.txt");
-                archive.parts.push(Part {
-                    path: path.clone(),
-                    bytes: fragment.len(),
-                    sha256,
-                });
-                parts.entry(path).or_insert_with(|| fragment.to_owned());
-                start = end;
-                if start == text.len() {
-                    break;
-                }
+            for fragment in fragments(&text) {
+                let part = Part::of(fragment);
+                parts
+                    .entry(part.path.clone())
+                    .or_insert_with(|| fragment.to_owned());
+                archive.parts.push(part);
             }
             metadata["artifacts"][name] =
                 serde_json::to_value(archive).map_err(|e| e.to_string())?;
@@ -319,6 +344,29 @@ mod tests {
         bad["artifacts"]["operations"]["bytes"] = json!(ARCHIVE_BYTES + 1);
         assert!(Manifest::parse(&bad.to_string(), "test/memory", "test", true).is_err());
         assert!(Manifest::parse(&original.to_string(), "test/memory", "test", false).is_err());
+    }
+    #[test]
+    fn a_descriptor_built_from_fragments_verifies_without_a_manifest() {
+        let text = format!("{}é\nshort tail 🐦", "x".repeat(PART_BYTES - 1));
+        let pieces = fragments(&text);
+        assert_eq!(pieces.len(), 2);
+        assert!(pieces.iter().all(|piece| piece.len() <= PART_BYTES));
+        assert_eq!(fragments(""), vec![""]);
+        let archive = Archive {
+            bytes: text.len(),
+            sha256: digest(text.as_bytes()),
+            parts: pieces.iter().map(|piece| Part::of(piece)).collect(),
+        };
+        let mut whole = archive.assembler();
+        for piece in &pieces {
+            whole.push(piece).unwrap();
+        }
+        assert_eq!(whole.finish().unwrap(), text);
+        // Out of order, short, or cut off: each is refused.
+        assert!(archive.assembler().push(pieces[1]).is_err());
+        let mut cut = archive.assembler();
+        cut.push(pieces[0]).unwrap();
+        assert!(cut.finish().is_err());
     }
     #[test]
     fn archive_above_old_64_mib_limit_roundtrips() {

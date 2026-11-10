@@ -383,3 +383,36 @@ fn source_revision_reverts_update_projection_without_restoring_tombstones() {
             .contains("assertions:memory.nibli")
     );
 }
+
+#[test]
+fn backup_groups_keep_their_bytes_when_operations_are_appended() {
+    let d = tempfile::tempdir().unwrap();
+    let r = Replica::open(d.path()).unwrap();
+    let p = r.local_peer();
+    for i in 0..30 {
+        r.append(
+            &p,
+            &format!("r{i}"),
+            Change::Add,
+            payload(&"x".repeat(8000)),
+            json!({}),
+        )
+        .unwrap();
+    }
+    let before = segments(&r.read(&p).unwrap());
+    assert!(before.len() > 2, "{} groups", before.len());
+    assert!(before.iter().all(|group| group.len() <= GROUP_BYTES));
+    // Counter order, not the log's key order, where 10 sorts before 2.
+    let first = decode(&before[0]).unwrap();
+    assert!(first.values().any(|op| op.counter == 2));
+    assert!(first.values().all(|op| op.counter < 10));
+    r.append(&p, "one-more", Change::Add, payload("small"), json!({}))
+        .unwrap();
+    let log = r.read(&p).unwrap();
+    let after = segments(&log);
+    assert_eq!(before[..before.len() - 1], after[..before.len() - 1]);
+    // The same lines in any order are the same log.
+    assert_eq!(decode(&after.concat()).unwrap(), log);
+    assert_eq!(decode(&encode(&log)).unwrap(), log);
+    assert!(segments(&BTreeMap::new()).is_empty());
+}

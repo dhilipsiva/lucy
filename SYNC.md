@@ -79,7 +79,8 @@ its consumer from the activated source/session. The service refreshes peers ever
 15 minutes (configurable), with no automatic model inference. A new session also
 starts a refresh in the background; no reply waits for one.
 
-Before replacing a runtime, make a private `lucy store backup`. Keep the previous
+Before replacing a runtime, make a private `lucy store backup` with the host's usual
+`--only-peer` list. Keep the previous
 binary/configuration for rollback and retain the new `replication-v1` operation
 logs even if an older runtime cannot interpret them. Do not commit a live database
 or signing key. NixOS staging and reboot are separate operator actions.

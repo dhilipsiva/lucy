@@ -49,8 +49,11 @@ Retrieve complete evidence with `lucy memory transcript --source APP --session I
 or `lucy store transcript`. Private app conversations stay outside every public
 checkout, including Nix sources. Shared retrieval does not publish them.
 
-Use `lucy store backup --to PRIVATE_CHECKOUT/shared-store` for a portable snapshot
-in the existing private `dhilipsiva/lucy-private` repository. Commit and push only
+Use `lucy store backup --to PRIVATE_CHECKOUT/shared-store --only-peer NAME` for a
+portable snapshot in the existing private `dhilipsiva/lucy-private` repository,
+repeating `--only-peer` for each peer that belongs there. My own conversations
+always travel; a peer that is not listed stays out, so a host that also holds
+someone else's private peer never copies it into this one. Commit and push only
 that backup subtree. On another host, clone/pull the private repository and run
 `lucy store restore --from PRIVATE_CHECKOUT/shared-store/snapshots/HOST/SNAPSHOT.json`.
 Snapshots preserve complete records; local peer paths are registered separately.

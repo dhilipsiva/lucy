@@ -3,8 +3,10 @@
 use crate::store::{Record, digest, private_dir, save};
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
+use lucy_room_memory::transport::{Archive, PART_BYTES, Part, fragments};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -376,16 +378,39 @@ impl Replica {
     }
 }
 
+fn line(op: &Operation) -> String {
+    format!(
+        "record({}, {}, Operation, Json).\n",
+        json!(op.id),
+        json!(serde_json::to_string(op).unwrap())
+    )
+}
 pub fn encode(log: &BTreeMap<String, Operation>) -> String {
-    log.values()
-        .map(|op| {
-            format!(
-                "record({}, {}, Operation, Json).\n",
-                json!(op.id),
-                json!(serde_json::to_string(op).unwrap())
-            )
-        })
-        .collect()
+    log.values().map(line).collect()
+}
+/// A backup group closes at an operation boundary near this size.
+const GROUP_BYTES: usize = 64 * 1024;
+/// The same lines as `encode`, in each actor's counter order and cut into groups at
+/// operation boundaries. Operations are immutable and an actor's counters only grow, so
+/// appending changes nothing but that actor's last group. `decode` accepts any line order.
+pub(crate) fn segments(log: &BTreeMap<String, Operation>) -> Vec<String> {
+    let mut ordered: Vec<&Operation> = log.values().collect();
+    ordered.sort_by(|a, b| (a.actor.as_str(), a.counter).cmp(&(b.actor.as_str(), b.counter)));
+    let mut groups = Vec::new();
+    let mut group = String::new();
+    let mut actor = "";
+    for op in ordered {
+        let line = line(op);
+        if !group.is_empty() && (op.actor != actor || group.len() + line.len() > GROUP_BYTES) {
+            groups.push(std::mem::take(&mut group));
+        }
+        actor = &op.actor;
+        group.push_str(&line);
+    }
+    if !group.is_empty() {
+        groups.push(group);
+    }
+    groups
 }
 /// Parse two JSON-quoted Nibli constants, requiring the exact typed record tail.
 pub fn decode(text: &str) -> Result<BTreeMap<String, Operation>> {
@@ -1152,23 +1177,158 @@ fn route_local(replica: &Replica, peer: &Peer) -> Result<()> {
     Ok(())
 }
 
-/// Portable backup of canonical logs, with public verification keys and no
-/// credentials, signing keys, local paths, upload grants or activation state.
+/// The registered folder or peer a `peer:NAME/file` record origin names.
+pub(crate) fn peer_of(origin: &str) -> Option<&str> {
+    origin.strip_prefix("peer:")?.split('/').next()
+}
+/// A backup never carries credentials, signing keys, local paths or upload grants.
+fn portable(mut peer: Peer) -> Peer {
+    peer.upload = false;
+    peer.local_path = None;
+    peer.credential_env = None;
+    peer.credential_file = None;
+    peer.record_origins.clear();
+    peer
+}
+/// The canonical logs one backup carries, read under the lock and written after it.
+pub struct Logs {
+    /// Each portable peer with its operation lines, grouped as `segments` cuts them.
+    pub entries: Vec<(Peer, Vec<String>)>,
+    /// The names a `peer:NAME/...` record origin may carry. `None` admits every origin.
+    pub origins: Option<BTreeSet<String>>,
+}
+/// Read the logs a backup may carry and write nothing. `only` lists what goes in: each
+/// name is an enrolled peer or one of the store's registered `folders`, and admits that
+/// peer's log, its enrollment and the records indexed from its folder. The local log
+/// always travels. An unknown name, or a listed log holding a record that belongs to a
+/// peer outside the list, stops the backup here.
+pub fn capture(
+    root: &Path,
+    only: Option<&BTreeSet<String>>,
+    folders: &BTreeSet<String>,
+) -> Result<Logs> {
+    let replica = Replica::open(root)?;
+    let mut peers = replica.config()?.peers;
+    let origins = match only {
+        None => None,
+        Some(names) => {
+            let mut origins = BTreeSet::new();
+            for name in names {
+                let peer = peers.get(name);
+                if peer.is_none() && !folders.contains(name) && name != "local" {
+                    return Err(format!(
+                        "unknown peer {name}; name an enrolled peer or a registered folder"
+                    ));
+                }
+                origins.insert(name.clone());
+                origins.extend(peer.and_then(|p| p.legacy_origin.clone()));
+            }
+            Some(origins)
+        }
+    };
+    peers.insert("local".into(), replica.local_peer());
+    let mut entries = Vec::new();
+    for peer in peers.into_values() {
+        if peer.name != "local" && only.is_some_and(|names| !names.contains(&peer.name)) {
+            continue;
+        }
+        let log = replica.read(&peer)?;
+        if let Some(origins) = &origins
+            && log.values().any(|op| {
+                op.payload["record"]["origin"]
+                    .as_str()
+                    .and_then(peer_of)
+                    .is_some_and(|name| !origins.contains(name))
+            })
+        {
+            return Err(
+                "a listed log holds a record from a peer outside the list; nothing was written"
+                    .into(),
+            );
+        }
+        entries.push((portable(peer), segments(&log)));
+    }
+    Ok(Logs { entries, origins })
+}
+/// Write every group as hash-named fragments under `destination/parts` and describe each
+/// log by its parts. `put` saves a file once and reports whether it was new. Returns the
+/// manifest's replication section, the number of parts it names and how many were new.
+pub fn write(
+    destination: &Path,
+    logs: &Logs,
+    put: impl Fn(&Path, &[u8]) -> Result<bool>,
+) -> Result<(Value, usize, usize)> {
+    let mut described = Vec::new();
+    let (mut parts, mut new) = (0, 0);
+    for (peer, groups) in &logs.entries {
+        let mut archive = Archive {
+            bytes: 0,
+            sha256: String::new(),
+            parts: Vec::new(),
+        };
+        let mut whole = Sha256::new();
+        for group in groups {
+            whole.update(group.as_bytes());
+            archive.bytes += group.len();
+            for fragment in fragments(group) {
+                let part = Part::of(fragment);
+                if put(&destination.join(&part.path), fragment.as_bytes())? {
+                    new += 1;
+                }
+                archive.parts.push(part);
+            }
+        }
+        archive.sha256 = format!("{:x}", whole.finalize());
+        parts += archive.parts.len();
+        described.push(json!({"peer":peer,"archive":archive}));
+    }
+    Ok((json!({"version":2,"logs":described}), parts, new))
+}
+/// Bring a snapshot's replication section into the version-1 shape that `restore`
+/// validates. Version 2 names each log's parts; every part and each whole log is
+/// checked here by length and hash, so nothing is trusted before `restore` reads it.
+pub fn load(base: &Path, section: &Value) -> Result<Value> {
+    if section.is_null() || section["version"] == 1 {
+        return Ok(section.clone());
+    }
+    if section["version"] != 2 {
+        return Err("unsupported operation backup".into());
+    }
+    let mut logs = Vec::new();
+    for entry in section["logs"].as_array().ok_or("missing operation logs")? {
+        let archive: Archive = serde_json::from_value(entry["archive"].clone()).map_err(err)?;
+        let mut whole = archive.assembler();
+        for part in &archive.parts {
+            let named = part.sha256.len() == 64
+                && part
+                    .sha256
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+            if !named
+                || part.path != format!("parts/{}.txt", part.sha256)
+                || part.bytes > PART_BYTES
+            {
+                return Err("invalid backup part path, size or hash".into());
+            }
+            let path = base.join(&part.path);
+            crate::store::plain(&path)?;
+            whole.push(&fs::read_to_string(&path).map_err(err)?)?;
+        }
+        let operations = whole.finish()?;
+        logs.push(json!({"peer":entry["peer"],"sha256":digest(operations.as_bytes()),"operations":operations}));
+    }
+    Ok(json!({"version":1,"logs":logs}))
+}
+/// The version-1 form: every log's whole text inside one value. `Store` no longer writes
+/// it, because it repeats every log in every snapshot; `restore` still reads it.
 pub fn backup(root: &Path) -> Result<Value> {
     let replica = Replica::open(root)?;
     let mut peers = replica.config()?.peers;
     peers.insert("local".into(), replica.local_peer());
     let mut logs = Vec::new();
-    for mut peer in peers.into_values() {
+    for peer in peers.into_values() {
         let operations = encode(&replica.read(&peer)?);
-        peer.upload = false;
-        peer.local_path = None;
-        peer.credential_env = None;
-        peer.credential_file = None;
-        peer.record_origins.clear();
-        logs.push(
-            json!({"peer":peer,"operations":operations,"sha256":digest(operations.as_bytes())}),
-        );
+        logs.push(json!({"peer":portable(peer),"operations":operations,"sha256":digest(operations.as_bytes())}));
     }
     Ok(json!({"version":1,"logs":logs}))
 }
