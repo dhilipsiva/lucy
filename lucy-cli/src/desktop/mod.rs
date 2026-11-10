@@ -2,6 +2,7 @@
 //! UI capabilities are optional; the service and store require no Python runtime.
 pub mod actions;
 pub(crate) mod adapters;
+mod context;
 pub(crate) mod core;
 mod forecast;
 mod net;

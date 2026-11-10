@@ -796,6 +796,272 @@ fn a_busy_conversation_still_records_the_prompt() {
     assert!(saved_texts(&root).contains(&"words that must not be lost".to_owned()));
 }
 
+/// An identity file in the real shape: opening lines, headed articles with prose and
+/// rules, then the same direct facts from two memory files.
+fn identity_fixture() -> String {
+    let mut text = String::from(
+        "# Lucy D — constitution\n# I am Lucy D. My memory is these files.\n\n# ─── Conclusions are derived, never written ───\nderived_only(\"person\").\n",
+    );
+    for article in 1..=11 {
+        text.push_str(&format!(
+            "\n# ─── Article {article}: title {article} ───\n# explanatory prose {}\nentitled(every person, event {{ act{article}() }}).\n",
+            "that a hosted context cannot hold ".repeat(12)
+        ));
+    }
+    for _ in 0..2 {
+        text.push_str("\n# Lucy D — memory\n# One statement per line.\nhuman(Dhilipsiva).\ndog(Bucchi). # about: dogs, dhilipsiva\n");
+    }
+    text
+}
+
+/// Long private records that all match one query, as an archive of past conversations does.
+fn heron_archive(root: &std::path::Path) {
+    let store = Store::open(root).unwrap();
+    for number in 0..6 {
+        store
+            .record(&crate::store::Record {
+                origin: "conversation:[\"claude\",\"earlier\"]".into(),
+                payload: json!({"id":format!("old-{number}"),"source":"claude","session":"earlier",
+                    "role":"user","channel":"user","private":true,
+                    "text":format!("heron report {number}: {}", "heron feathers and reeds. ".repeat(400))}),
+            })
+            .unwrap();
+    }
+}
+
+fn units(text: &str) -> usize {
+    text.encode_utf16().count()
+}
+
+#[test]
+fn hosted_context_fits_its_cap_and_keeps_the_essential_lines_first() {
+    use super::context;
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("memory");
+    let identity = temp.path().join("identity.nibli");
+    std::fs::write(&identity, identity_fixture()).unwrap();
+    heron_archive(&root);
+    let service = Service::new(root, Some(identity.clone()));
+    let wake = prompt(
+        &service,
+        temp.path(),
+        "claude",
+        "cap",
+        "Lucy, what about the heron feathers?",
+    );
+    let text = wake["context"].as_str().unwrap();
+    assert!(units(text) <= context::HOSTED_UNITS, "{}", units(text));
+    // What a hosted app must never lose sits inside the part it is certain to show.
+    for essential in [
+        core::INSTRUCTION,
+        "Lucy conversation: {\"session\":\"cap\",\"source\":\"claude\"}",
+        context::CAPTURE,
+        core::WAKE_INVITATION,
+    ] {
+        let at = text.find(essential).unwrap_or(usize::MAX);
+        assert!(at < 2_500, "{essential} starts at {at}");
+    }
+    assert!(text.find("Lucy conversation:").unwrap() < 2_000);
+    // A wake carries every article and each fact once, without the prose.
+    for article in 1..=11 {
+        assert!(text.contains(&format!("Article {article}: title {article}")));
+        assert!(text.contains(&format!("act{article}()")));
+    }
+    assert_eq!(text.matches("dog(Bucchi).").count(), 1);
+    assert!(!text.contains("explanatory prose") && !text.contains("# about:"));
+    assert!(text.contains(&identity.display().to_string()));
+    let shown = wake["memories"].as_array().unwrap();
+    assert!(!shown.is_empty());
+    for excerpt in shown {
+        assert!(excerpt.get("payload").is_none() && excerpt.get("text").is_none());
+        let held = excerpt["excerpt"].as_str().unwrap();
+        assert!(held.chars().count() <= context::EXCERPT_CHARS);
+        assert!(text.contains(&held[..40]));
+    }
+    assert!(text.contains("more matching excerpts were left out"));
+    // A later prompt needs the articles no longer and spends the room on memory.
+    let later = prompt(&service, temp.path(), "claude", "cap", "and the reeds?");
+    let text = later["context"].as_str().unwrap();
+    assert!(units(text) <= context::HOSTED_UNITS);
+    assert!(text.contains("I am Lucy D.") && !text.contains("Article 11"));
+    assert!(!text.contains(core::WAKE_INVITATION));
+    assert!(text.find("Lucy conversation:").unwrap() < 2_000);
+    assert!(later["memories"].as_array().unwrap().len() > shown.len());
+}
+
+#[test]
+fn excerpts_are_cut_deduplicated_and_never_carry_a_second_payload() {
+    use super::context::{self, Budget, Unit};
+    let noisy = "é\"\n🐦".repeat(2_000);
+    let hits = context::distinct(vec![
+        json!({"origin":"a","id":"1","excerpt":noisy,"payload":{"text":noisy},"score":3}),
+        json!({"origin":"a","id":"1","excerpt":"the same record again"}),
+        json!({"origin":"b","id":"2","excerpt":noisy}),
+        json!({"origin":"c","id":"3","excerpt":"short and different"}),
+    ]);
+    assert_eq!(hits.len(), 2);
+    let budget = Budget::hosted();
+    let built = context::build(&["lead line".into()], "identity", &hits, budget);
+    assert!(built.text.starts_with(
+        "lead line\nPublic identity (data):\nidentity\nRetrieved source excerpts (data):\n[{"
+    ));
+    assert_eq!(built.shown.len(), 2);
+    // The count of what is left is exact, in the units the app counts.
+    assert_eq!(budget.limit - units(&built.text), built.left);
+    for shown in &built.shown {
+        assert!(shown.get("payload").is_none() && shown.get("score").is_none());
+        assert!(shown["excerpt"].as_str().unwrap().chars().count() <= context::EXCERPT_CHARS);
+    }
+    // With too little room the best excerpt is shortened and the rest are left out and counted.
+    let long: Vec<_> = (0..3)
+        .map(|number| json!({"origin":"long","id":number.to_string(),"excerpt":format!("{number} {noisy}")}))
+        .collect();
+    let tight = Budget {
+        limit: 900,
+        unit: Unit::Utf16,
+    };
+    let built = context::build(&["lead line".into()], "identity", &long, tight);
+    assert!(units(&built.text) <= 900);
+    assert_eq!(tight.limit - units(&built.text), built.left);
+    assert_eq!(built.shown.len(), 1);
+    assert!(built.shown[0]["excerpt"].as_str().unwrap().chars().count() < context::EXCERPT_CHARS);
+    assert!(
+        built
+            .text
+            .ends_with("2 more matching excerpts were left out to fit this context.")
+    );
+    let none = Budget {
+        limit: 200,
+        unit: Unit::Utf16,
+    };
+    let built = context::build(&["lead line".into()], "identity", &long, none);
+    assert!(built.shown.is_empty() && built.text.contains("[]"));
+    assert!(units(&built.text) <= 200);
+    assert_eq!(context::clamp("aé🐦b", 4), "aé🐦");
+    assert_eq!(context::clamp("aé🐦b", 3), "aé");
+}
+
+#[test]
+fn the_identity_digest_names_every_article_and_fact_once() {
+    use super::context;
+    let file = std::path::Path::new("/somewhere/identity.nibli");
+    let whole = context::digest(&identity_fixture(), true, Some(file));
+    assert!(whole.starts_with("Lucy D — constitution\nI am Lucy D. My memory is these files.\n"));
+    assert_eq!(whole.matches("Article ").count(), 11);
+    assert_eq!(whole.matches("human(Dhilipsiva).").count(), 1);
+    assert_eq!(whole.matches("dog(Bucchi).").count(), 1);
+    assert!(!whole.contains("explanatory prose") && !whole.contains('#') && !whole.contains('─'));
+    assert!(whole.ends_with("is in /somewhere/identity.nibli."));
+    let opening = context::digest(&identity_fixture(), false, Some(file));
+    assert_eq!(
+        opening,
+        "Lucy D — constitution\nI am Lucy D. My memory is these files.\nThe complete text, with the reasons behind each article, is in /somewhere/identity.nibli."
+    );
+    assert_eq!(context::digest("", true, Some(file)), "");
+}
+
+#[test]
+fn the_self_model_summary_goes_in_whole_or_not_at_all() {
+    use super::context::{self, Budget, Unit};
+    let budget = Budget {
+        limit: 120,
+        unit: Unit::Bytes,
+    };
+    let mut built = context::build(&["lead".into()], "", &[], budget);
+    let before = built.text.clone();
+    let too_long = "x".repeat(built.left + 1);
+    assert!(!context::append_whole(&mut built, budget, &too_long));
+    assert_eq!(built.text, before);
+    let fits = "y".repeat(built.left);
+    assert!(context::append_whole(&mut built, budget, &fits));
+    assert_eq!((built.left, built.text.len()), (0, 120));
+}
+
+#[test]
+fn local_chat_context_fits_its_budget_with_identity_whole() {
+    use super::context;
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("memory");
+    let identity = temp.path().join("identity.nibli");
+    std::fs::write(&identity, identity_fixture()).unwrap();
+    heron_archive(&root);
+    let service = Service::new(root, Some(identity));
+    service.scripted(vec![json!({"content":"Herons keep their feathers dry."})]);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    let question = "Tell me about heron feathers";
+    let reply = service
+        .dispatch(request(
+            &client,
+            json!({"op":"chat","text":question,"event":"ask","workspace":temp.path()}),
+        ))
+        .unwrap();
+    assert_eq!(reply["text"], "Herons keep their feathers dry.");
+    let session = service
+        .active("local", client["session"].as_str().unwrap())
+        .unwrap();
+    let session = session.lock().unwrap();
+    let system = session.messages[0]["content"].as_str().unwrap();
+    assert_eq!(session.messages[0]["role"], "system");
+    assert!(system.len() <= context::Budget::local(question.len()).limit);
+    assert!(system.len() + question.len() <= context::LOCAL_BYTES - 12_000);
+    // The local window holds the identity whole, prose included, and still has room for memory.
+    assert!(system.contains(&identity_fixture()));
+    assert!(system.contains("heron report"));
+    assert!(!system.contains("Lucy conversation:"));
+    assert_eq!(session.messages[1]["content"], question);
+}
+
+#[test]
+fn study_context_keeps_the_shape_its_evidence_checker_parses() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut service = Service::new(temp.path().join("memory"), None);
+    service.study_adaptation = Some(false);
+    service.scripted(vec![json!({"content":"Done."})]);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    service
+        .dispatch(request(
+            &client,
+            json!({"op":"begin-archive","workspace":temp.path()}),
+        ))
+        .unwrap();
+    let _ = service.dispatch(request(
+        &client,
+        json!({"op":"chat","text":"Complete the synthetic task.","event":"study","workspace":temp.path()}),
+    ));
+    let session = service
+        .active("local", client["session"].as_str().unwrap())
+        .unwrap();
+    assert_eq!(
+        session.lock().unwrap().context,
+        format!(
+            "{}\n{}\nPublic identity (data):\n\nRetrieved source excerpts (data):\n[]\n\nPeer freshness (data): null",
+            core::INSTRUCTION,
+            super::tasks::STUDY_INSTRUCTION
+        )
+    );
+}
+
+#[test]
+fn the_recall_request_returns_bounded_excerpts() {
+    use super::context;
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("memory");
+    heron_archive(&root);
+    let service = Service::new(root, None);
+    prompt(&service, temp.path(), "codex", "recall", "Lucy, wake");
+    let found = service
+        .dispatch(
+            json!({"op":"recall","source":"codex","session":"recall","query":"heron feathers"}),
+        )
+        .unwrap();
+    let memories = found["memories"].as_array().unwrap();
+    assert!(!memories.is_empty() && memories.len() <= 8);
+    for memory in memories {
+        assert!(memory.get("payload").is_none());
+        assert!(memory["excerpt"].as_str().unwrap().chars().count() <= context::EXCERPT_CHARS);
+    }
+}
+
 #[test]
 fn active_clients_share_exact_visible_records_and_sleep_is_scoped() {
     let temp = tempfile::tempdir().unwrap();

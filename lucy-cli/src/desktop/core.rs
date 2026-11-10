@@ -358,6 +358,21 @@ impl Service {
         });
         Ok(records)
     }
+    /// The conversation's latest turns, oldest first, within the local chat's history budget.
+    fn recent(&self, source: &str, session: &str) -> Result<Vec<Value>> {
+        let mut recent = Vec::new();
+        let mut size = 0;
+        for turn in self.transcript(source, session)?.into_iter().rev() {
+            let bytes = turn["text"].as_str().unwrap_or("").len();
+            if size + bytes > super::context::HISTORY_BYTES {
+                break;
+            }
+            size += bytes;
+            recent.push(turn);
+        }
+        recent.reverse();
+        Ok(recent)
+    }
     pub fn dispatch(&self, req: Value) -> Result<Value> {
         // LUCY_PROFILE=1 leaves the last prompt's stage timings beside the store: stage
         // names, counts and durations, never text.
@@ -540,29 +555,78 @@ impl Service {
                 .map(|p| std::fs::read_to_string(p).map_err(err))
                 .transpose()?
                 .unwrap_or_default();
-            let context = format!(
-                "{INSTRUCTION}\n{}\nPublic identity (data):\n{}\nRetrieved source excerpts (data):\n{}\n{}",
-                if self.study_adaptation.is_some() {
-                    super::tasks::STUDY_INSTRUCTION
-                } else {
-                    super::tasks::INSTRUCTION
-                },
-                identity.chars().take(16000).collect::<String>(),
-                json!(memories),
-                if self.study_adaptation.is_some() {
-                    String::new()
-                } else {
-                    self_model::context(&self.memory()?)?
-                }
-            );
-            let context = format!(
-                "{context}\nPeer freshness (data): {}{recall_note}",
-                json!(refresh)
-            );
-            let context = if waking {
-                format!("{context}\n{WAKE_INVITATION}")
+            // The local chat also sends its recent turns. What they take decides how much the
+            // system message may hold, so they are read first.
+            let recent = if op == "chat" {
+                self.recent(source, id)?
             } else {
-                context
+                Vec::new()
+            };
+            let (context, memories) = if self.study_adaptation.is_some() {
+                // A study's evidence checker parses this exact text, so it stays as it was.
+                let context = format!(
+                    "{INSTRUCTION}\n{}\nPublic identity (data):\n{}\nRetrieved source excerpts (data):\n{}\n",
+                    super::tasks::STUDY_INSTRUCTION,
+                    identity.chars().take(16000).collect::<String>(),
+                    json!(memories),
+                );
+                let context = format!(
+                    "{context}\nPeer freshness (data): {}{recall_note}",
+                    json!(refresh)
+                );
+                if waking {
+                    (format!("{context}\n{WAKE_INVITATION}"), memories)
+                } else {
+                    (context, memories)
+                }
+            } else {
+                // What must always arrive goes first and is never cut.
+                let mut lead = vec![INSTRUCTION.to_owned(), super::tasks::INSTRUCTION.to_owned()];
+                if op == "prompt" {
+                    lead.push(format!(
+                        "Lucy conversation: {}",
+                        json!({"source":source,"session":id})
+                    ));
+                    lead.push(super::context::CAPTURE.to_owned());
+                }
+                if waking {
+                    lead.push(WAKE_INVITATION.to_owned());
+                }
+                if let Some(refresh) = &refresh {
+                    lead.push(format!("Peer freshness (data): {refresh}"));
+                }
+                if !recall_note.is_empty() {
+                    lead.push(recall_note.trim_start().to_owned());
+                }
+                // The local chat's window holds my identity whole. A hosted app's limit does
+                // not, so it gets every article and fact once and the file to read the rest.
+                let (budget, identity) = if op == "chat" {
+                    let history = recent
+                        .iter()
+                        .map(|turn| turn["text"].as_str().unwrap_or("").len())
+                        .sum();
+                    (
+                        super::context::Budget::local(history),
+                        identity.chars().take(16000).collect::<String>(),
+                    )
+                } else {
+                    (
+                        super::context::Budget::hosted(),
+                        super::context::digest(&identity, waking, self.identity.as_deref()),
+                    )
+                };
+                // A turn the chat already sends as history is not repeated as an excerpt.
+                let hits: Vec<_> = super::context::distinct(memories)
+                    .into_iter()
+                    .filter(|hit| !recent.iter().any(|turn| turn["id"] == hit["id"]))
+                    .collect();
+                let mut built = super::context::build(&lead, &identity, &hits, budget);
+                // The self-model summary goes in whole or not at all, into room left over.
+                if built.left >= 1_000 {
+                    let summary = self_model::context(&self.memory()?)?;
+                    super::context::append_whole(&mut built, budget, &summary);
+                }
+                (built.text, built.shown)
             };
             let mut result = json!({"active":true,"context":context,"memories":memories,"record_id":saved["id"],"sync":refresh});
             {
@@ -577,18 +641,12 @@ impl Service {
                 s.memories = memories;
                 result["workspace"] = json!(s.workspace);
                 if op == "chat" {
-                    let mut recent = Vec::new();
-                    let mut size = 0;
-                    for r in self.transcript(source, id)?.into_iter().rev() {
-                        if size + r["text"].as_str().unwrap_or("").len() > 18000 {
-                            break;
-                        }
-                        size += r["text"].as_str().unwrap_or("").len();
-                        recent.push(json!({"role":r["role"],"content":r["text"]}));
-                    }
-                    recent.reverse();
                     s.messages = vec![json!({"role":"system","content":s.context})];
-                    s.messages.extend(recent);
+                    s.messages.extend(
+                        recent
+                            .iter()
+                            .map(|turn| json!({"role":turn["role"],"content":turn["text"]})),
+                    );
                 }
             }
             return if op == "chat" {
@@ -658,7 +716,16 @@ impl Service {
                     crate::continuity::ack(&self.root, &consumer, scope, string(&req, "cursor")?)
                 }
             }
-            "recall" => Ok(json!({"memories":self.recall(string(&req,"query")?,"")?})),
+            "recall" => {
+                // The same bound as a prompt's excerpts: attributed text, no second payload.
+                let hits = super::context::distinct(self.recall(string(&req, "query")?, "")?);
+                let memories: Vec<_> = hits
+                    .iter()
+                    .take(8)
+                    .map(|hit| super::context::slim(hit, super::context::EXCERPT_CHARS))
+                    .collect();
+                Ok(json!({"memories":memories}))
+            }
             "transcript" => Ok(json!({"messages":self.transcript(source,id)?})),
             "reindex" => {
                 self.controlled(&req)?;
@@ -1235,7 +1302,7 @@ fn local_chat(messages: &[Value], schemas: Value, cancel: &AtomicBool) -> Result
                     .map_or(0, |calls| calls.to_string().len())
         })
         .sum();
-    if text_bytes > 48_000 {
+    if text_bytes > super::context::LOCAL_BYTES {
         return Err("local context budget reached".into());
     }
     let body = json!({"model":model(),"messages":messages,"tools":schemas,"stream":false,

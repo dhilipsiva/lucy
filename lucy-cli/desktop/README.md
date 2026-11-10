@@ -119,6 +119,19 @@ transcript is scraped. VS Code saves its participant's completed text. Zed and w
 AI chats require explicit record/import; Zed has no reliable close callback, so
 sleep explicitly. No automatic background scraping is implemented for utilities.
 
+Context handed to a model is budgeted. A hosted app receives at most 9,000
+UTF-16 code units, because Claude Code passes a hook's context whole only up to
+10,000 characters and otherwise shows the model a 2,000-character preview. The
+first lines are the instructions, the native conversation ID and the capture
+reminder. Then comes the identity: on a wake every article heading, rule and
+direct fact once, on a later prompt only its opening lines, and in both cases
+the path of the identity file, which holds the complete text. Retrieved
+excerpts follow until the budget is full, each cut to 1,600 characters,
+deduplicated and without a second copy of its record; the reply says how many
+were left out. The local chat uses the same builder against its 48 kB prompt:
+identity whole, recent turns, then excerpts. Study runs keep their fixed
+context text. A `recall` request returns at most eight such excerpts.
+
 Sources: [Claude hooks](https://code.claude.com/docs/en/hooks),
 [Codex hooks](https://learn.chatgpt.com/docs/hooks),
 [Cursor hooks](https://cursor.com/docs/hooks),
