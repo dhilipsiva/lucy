@@ -713,6 +713,89 @@ fn peers_refresh_when_a_session_starts_and_not_on_each_address() {
     }
 }
 
+fn saved_texts(root: &std::path::Path) -> Vec<String> {
+    Store::open(root)
+        .unwrap()
+        .all()
+        .unwrap()
+        .into_iter()
+        .map(|record| record.payload["text"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn a_prompt_is_recorded_while_an_earlier_prompt_is_still_reading_memory() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("memory");
+    let service = Arc::new(Service::new(root.clone(), None));
+    prompt(&service, temp.path(), "codex", "pair", "Lucy, wake");
+    // The first prompt stops inside memory retrieval until the test lets it go.
+    let (entered, waiting) = mpsc::channel();
+    let (release, held) = mpsc::channel::<()>();
+    let held = std::sync::Mutex::new(held);
+    service.on_recall(move |query| {
+        if query.contains("slow") {
+            entered.send(()).unwrap();
+            held.lock().unwrap().recv().unwrap();
+        }
+        Ok(())
+    });
+    let first = {
+        let service = service.clone();
+        let workspace = temp.path().to_owned();
+        std::thread::spawn(move || {
+            service.dispatch(json!({"op":"prompt","source":"codex","session":"pair",
+                "workspace":workspace,"text":"a slow question","event":"first"}))
+        })
+    };
+    waiting.recv_timeout(Duration::from_secs(30)).unwrap();
+    let second = prompt(&service, temp.path(), "codex", "pair", "a quick question");
+    assert_eq!(second["active"], true);
+    release.send(()).unwrap();
+    // The overtaken prompt says it was replaced; the words of both are saved.
+    assert!(first.join().unwrap().unwrap_err().contains("newer prompt"));
+    let texts = saved_texts(&root);
+    assert!(texts.contains(&"a slow question".to_owned()), "{texts:?}");
+    assert!(texts.contains(&"a quick question".to_owned()), "{texts:?}");
+}
+
+#[test]
+fn a_prompt_is_recorded_even_when_recall_fails() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("memory");
+    let service = Service::new(root.clone(), None);
+    service.on_recall(|_| Err("index unavailable".into()));
+    let text = "Lucy, remember the brass compass";
+    let reply = prompt(&service, temp.path(), "codex", "fail", text);
+    assert_eq!(reply["active"], true);
+    assert!(reply["memories"].as_array().unwrap().is_empty());
+    assert!(
+        reply["context"]
+            .as_str()
+            .unwrap()
+            .contains("Memory retrieval failed for this prompt: index unavailable")
+    );
+    assert_eq!(saved_texts(&root), [text]);
+}
+
+#[test]
+fn a_busy_conversation_still_records_the_prompt() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("memory");
+    let service = Service::new(root.clone(), None);
+    prompt(&service, temp.path(), "codex", "busy", "Lucy, wake");
+    service
+        .active("codex", "busy")
+        .unwrap()
+        .lock()
+        .unwrap()
+        .busy = true;
+    let refused = service.dispatch(json!({"op":"prompt","source":"codex","session":"busy",
+        "workspace":temp.path(),"text":"words that must not be lost","event":"later"}));
+    assert!(refused.unwrap_err().contains("already running"));
+    assert!(saved_texts(&root).contains(&"words that must not be lost".to_owned()));
+}
+
 #[test]
 fn active_clients_share_exact_visible_records_and_sleep_is_scoped() {
     let temp = tempfile::tempdir().unwrap();

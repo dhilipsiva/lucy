@@ -81,7 +81,11 @@ pub struct Service {
     study_trace: Mutex<Vec<Value>>,
     #[cfg(test)]
     replies: Mutex<Option<std::collections::VecDeque<Value>>>,
+    #[cfg(test)]
+    recall_hook: Mutex<Option<RecallHook>>,
 }
+#[cfg(test)]
+type RecallHook = Arc<dyn Fn(&str) -> Result<()> + Send + Sync>;
 pub fn addressed(text: &str) -> bool {
     let text = text.trim_start().to_lowercase();
     for prefix in ["hey lucy", "hi lucy", "hello lucy", "@lucy", "/lucy"] {
@@ -135,7 +139,14 @@ impl Service {
             study_trace: Mutex::new(Vec::new()),
             #[cfg(test)]
             replies: Mutex::new(None),
+            #[cfg(test)]
+            recall_hook: Mutex::new(None),
         }
+    }
+    /// Let a test hold or fail memory retrieval for a prompt.
+    #[cfg(test)]
+    pub(crate) fn on_recall(&self, hook: impl Fn(&str) -> Result<()> + Send + Sync + 'static) {
+        *self.recall_hook.lock().unwrap() = Some(Arc::new(hook));
     }
     #[cfg(test)]
     pub(crate) fn scripted(&self, replies: Vec<Value>) {
@@ -208,6 +219,7 @@ impl Service {
         text: &str,
         channel: &str,
     ) -> Result<Value> {
+        let _span = task_model::profile::span("prompt_remember");
         let store = self.memory()?;
         let saved = store.message(json!({"id":record_id(source,session,event,role),
             "source":source,"session":session,"role":role,"text":text,"channel":channel}))?;
@@ -230,6 +242,24 @@ impl Service {
         )?;
         Ok(saved)
     }
+    /// The person's words are saved even when another writer briefly holds the store.
+    fn remember_prompt(
+        &self,
+        source: &str,
+        session: &str,
+        event: &str,
+        text: &str,
+    ) -> Result<Value> {
+        let mut retries = 2;
+        loop {
+            match self.remember(source, session, event, "user", text, "user") {
+                Err(error) if retries > 0 && error.starts_with("shared store is busy") => {
+                    retries -= 1;
+                }
+                saved => return saved,
+            }
+        }
+    }
     fn queue_embeddings(&self) {
         if self.embedding.swap(true, Ordering::SeqCst) {
             return;
@@ -245,6 +275,14 @@ impl Service {
         });
     }
     fn recall(&self, query: &str, exclude: &str) -> Result<Vec<Value>> {
+        let _span = task_model::profile::span("prompt_recall");
+        #[cfg(test)]
+        {
+            let hook = self.recall_hook.lock().map_err(err)?.clone();
+            if let Some(hook) = hook {
+                hook(query)?;
+            }
+        }
         if self.study_adaptation.is_some() {
             // Filter before ranking; journals and old conversations must not
             // reintroduce withheld lessons, roadmap text, or oracle answers.
@@ -321,6 +359,16 @@ impl Service {
         Ok(records)
     }
     pub fn dispatch(&self, req: Value) -> Result<Value> {
+        // LUCY_PROFILE=1 leaves the last prompt's stage timings beside the store: stage
+        // names, counts and durations, never text.
+        if req["op"] == "prompt" && std::env::var_os("LUCY_PROFILE").is_some_and(|v| v == "1") {
+            return task_model::profile::capture(&self.root, "prompt-profile.json", || {
+                self.handle(req)
+            });
+        }
+        self.handle(req)
+    }
+    fn handle(&self, req: Value) -> Result<Value> {
         let op = string(&req, "op")?;
         if op == "open" {
             let session = token()?;
@@ -433,6 +481,8 @@ impl Service {
                 }
                 Err(_) => return Ok(json!({"active":false})),
             };
+            // The person's words are saved before anything that can wait, fail or be refused.
+            let saved = self.remember_prompt(source, id, event, text)?;
             // A new session refreshes peers in the background; no reply waits for a sync.
             let refresh = if starting && self.study_adaptation.is_none() {
                 if cfg!(test) {
@@ -449,7 +499,7 @@ impl Service {
             } else {
                 None
             };
-            let _running = Running::begin(&session)?;
+            let running = Running::begin(&session)?;
             let old_task = session.lock().map_err(err)?.task.clone();
             let old_closed = if let Some(task) = old_task {
                 task_model::History::read(&self.memory()?)?
@@ -473,8 +523,17 @@ impl Service {
                     s.adapted = false;
                 }
             }
-            let saved = self.remember(source, id, event, "user", text, "user")?;
-            let memories = self.recall(text, saved["id"].as_str().unwrap())?;
+            // A hosted app runs its own model, so it holds the conversation only while its turn
+            // is set up: a prompt that arrives while this one still reads memory is not refused.
+            let _running = (op == "chat").then_some(running);
+            // Retrieval can fail without costing the prompt: the reply says so and carries on.
+            let (memories, recall_note) = match self.recall(text, saved["id"].as_str().unwrap()) {
+                Ok(memories) => (memories, String::new()),
+                Err(error) => (
+                    Vec::new(),
+                    format!("\nMemory retrieval failed for this prompt: {error}"),
+                ),
+            };
             let identity = self
                 .identity
                 .as_ref()
@@ -496,7 +555,10 @@ impl Service {
                     self_model::context(&self.memory()?)?
                 }
             );
-            let context = format!("{context}\nPeer freshness (data): {}", json!(refresh));
+            let context = format!(
+                "{context}\nPeer freshness (data): {}{recall_note}",
+                json!(refresh)
+            );
             let context = if waking {
                 format!("{context}\n{WAKE_INVITATION}")
             } else {
@@ -507,6 +569,9 @@ impl Service {
                 let mut s = session.lock().map_err(err)?;
                 if s.cancel.load(Ordering::SeqCst) {
                     return Err("request cancelled".into());
+                }
+                if s.turn != event {
+                    return Err("a newer prompt replaced this one; its words are saved".into());
                 }
                 s.context = context;
                 s.memories = memories;
@@ -556,8 +621,10 @@ impl Service {
                 self.respond(session.clone())
             }
             "record" => {
-                let s = session.lock().map_err(err)?;
-                if req.get("turn").is_some_and(|turn| turn != &json!(s.turn)) {
+                // Saving can wait on the store; the conversation is not held meanwhile, so
+                // `status` and every other conversation stay responsive.
+                let turn = json!(session.lock().map_err(err)?.turn);
+                if req.get("turn").is_some_and(|given| given != &turn) {
                     return Err("response belongs to an earlier turn".into());
                 }
                 self.remember(

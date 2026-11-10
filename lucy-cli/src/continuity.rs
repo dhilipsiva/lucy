@@ -53,6 +53,7 @@ pub fn observe(
     provenance: Value,
     records: Vec<String>,
 ) -> Result<()> {
+    let _span = crate::task_model::profile::span("continuity_observe");
     let replica = Replica::open(root)?;
     let mut state = read(&replica)?;
     let event = json!({"id":id,"scope":scope,"kind":kind,"source_timestamp":source_time,

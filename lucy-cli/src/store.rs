@@ -334,6 +334,7 @@ impl Store {
         Ok(payload)
     }
     pub fn open(root: &Path) -> Result<Self> {
+        let _span = crate::task_model::profile::span("store_open");
         let root = private_root(root)?;
         // Private data may never enter a Nix input or public worktree.
         for parent in root.ancestors() {
@@ -696,6 +697,7 @@ impl Store {
     /// so is every file that cannot be read, which is skipped: one bad file must not
     /// take recall away from every app.
     pub fn sync(&self) -> Result<Value> {
+        let _span = crate::task_model::profile::span("store_sync");
         // Original JSON copies may be absent: rebuild from the canonical Nibli log.
         for record in crate::replication::local_originals(&self.root)? {
             self.upsert(&record)?;
@@ -898,6 +900,7 @@ impl Store {
         limit: usize,
         vector: Option<(&str, &[f32])>,
     ) -> Result<Vec<Value>> {
+        let _span = crate::task_model::profile::span("store_search");
         let records: Vec<_> = self
             .all()?
             .into_iter()
@@ -1262,6 +1265,7 @@ fn local_url(url: &str) -> Result<()> {
 }
 
 fn embed(url: &str, model: &str, text: &str) -> Result<Vec<f32>> {
+    let _span = crate::task_model::profile::span("embed_http");
     local_url(url)?;
     // Average bounded chunks; the exact complete message remains in RECORDS.
     let mut sum: Vec<f32> = Vec::new();
@@ -1297,6 +1301,7 @@ fn embed(url: &str, model: &str, text: &str) -> Result<Vec<f32>> {
 }
 
 fn model_id(url: &str, model: &str) -> Result<String> {
+    let _span = crate::task_model::profile::span("embed_model_id");
     local_url(url)?;
     let reply = crate::talk::http(
         "GET",

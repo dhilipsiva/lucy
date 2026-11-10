@@ -160,6 +160,7 @@ pub struct Replica {
 }
 impl Replica {
     pub fn open(data: &Path) -> Result<Self> {
+        let _span = crate::task_model::profile::span("replica_open");
         let root = data.join("replication-v1");
         private_dir(&root)?;
         let path = root.join("lock");
@@ -280,6 +281,7 @@ impl Replica {
         )
     }
     pub fn read(&self, peer: &Peer) -> Result<BTreeMap<String, Operation>> {
+        let _span = crate::task_model::profile::span("log_read");
         peer.validate()?;
         let path = self.root.join(format!("{}.nibli", peer.scope));
         if !path.exists() {
@@ -294,6 +296,7 @@ impl Replica {
         peer: &Peer,
         remote: BTreeMap<String, Operation>,
     ) -> Result<BTreeMap<String, Operation>> {
+        let _span = crate::task_model::profile::span("log_merge");
         let mut log = self.read(peer)?;
         for (id, op) in remote {
             if let Some(old) = log.get(&id)
@@ -564,6 +567,7 @@ pub struct Projection {
     pub reasoning_error: Option<String>,
 }
 pub fn project(log: &BTreeMap<String, Operation>) -> Result<Projection> {
+    let _span = crate::task_model::profile::span("log_project");
     acyclic(log)?;
     let mut out = Projection {
         active: BTreeMap::new(),
@@ -860,6 +864,7 @@ fn sync_using(
 /// Read projections separately from the legacy index so a stale native file
 /// cannot resurrect a retracted record. Only explicitly enrolled scopes enter.
 pub fn recall(root: &Path, query: &str, scope: Option<&str>) -> Result<Vec<Value>> {
+    let _span = crate::task_model::profile::span("log_recall");
     let replica = Replica::open(root)?;
     let mut results = Vec::new();
     let mut peers = replica.config()?.peers;
@@ -1061,6 +1066,7 @@ pub fn command(command: &str, args: &[String], stdin: &str) -> Result<Value> {
 /// Once an origin has a canonical log, suppress legacy-index copies of its
 /// targets (including tombstones/conflicts). Retrieval then uses the projection.
 pub fn filter_legacy(root: &Path, memories: &mut Vec<Value>) -> Result<()> {
+    let _span = crate::task_model::profile::span("log_filter");
     let replica = Replica::open(root)?;
     let mut origins = BTreeSet::new();
     let mut peers = replica.config()?.peers;

@@ -435,6 +435,7 @@ pub fn observe(
 /// Compact context is a data view, not a new instruction channel. Keep the full
 /// auditable event history available via `events`; never truncate that history.
 pub fn context(store: &Store) -> Result<String> {
+    let _span = crate::task_model::profile::span("self_model_context");
     let mut summary = History::read(store)?.summary()?;
     let scopes = summary["scopes"].as_array_mut().unwrap();
     let total = scopes.len();
