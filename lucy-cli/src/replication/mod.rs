@@ -869,19 +869,21 @@ fn sync_using(
 
 /// Read projections separately from the legacy index so a stale native file
 /// cannot resurrect a retracted record. Only explicitly enrolled scopes enter.
+/// The twelve best matches come back, best first, as `store::rank` orders them.
 pub fn recall(root: &Path, query: &str, scope: Option<&str>) -> Result<Vec<Value>> {
     let _span = crate::task_model::profile::span("log_recall");
     let replica = Replica::open(root)?;
-    let mut results = Vec::new();
     let mut peers = replica.config()?.peers;
     peers.insert("local".into(), replica.local_peer());
+    // Each log's active records: the shared projection, or a copy of it for a peer that
+    // still reads legacy sources.
+    let mut sources = Vec::new();
     for peer in peers
-        .values()
+        .into_values()
         .filter(|p| scope.is_none_or(|s| s == p.scope))
     {
-        let projection = replica.verified(peer)?.projection()?;
-        // A shared projection is copied only for a peer that still reads legacy sources.
-        let mut active = std::borrow::Cow::Borrowed(&projection.active);
+        let projection = replica.verified(&peer)?.projection()?;
+        let mut legacy = None;
         if !replica
             .root
             .join(format!("{}.remote.nibli", peer.scope))
@@ -889,6 +891,7 @@ pub fn recall(root: &Path, query: &str, scope: Option<&str>) -> Result<Vec<Value
         {
             let path = replica.root.join(format!("{}.legacy.json", peer.scope));
             if path.exists() {
+                let active = legacy.insert(projection.active.clone());
                 let manifest: Value =
                     serde_json::from_slice(&fs::read(path).map_err(err)?).map_err(err)?;
                 for (path, hash) in manifest["sources"]
@@ -909,34 +912,43 @@ pub fn recall(root: &Path, query: &str, scope: Option<&str>) -> Result<Vec<Value
                     if path.ends_with("interactions.nibli") {
                         for record in crate::interactions::decode(&text, path.contains("private"))?
                         {
-                            active.to_mut().insert(record.id.clone(),json!({"record":{"origin":format!("peer:{}/{}",peer.legacy_origin.as_deref().unwrap_or(&peer.name),path.rsplit('/').next().unwrap_or(path)),"payload":record},"revision":manifest["revision"],"verification":"legacy_source"}));
+                            active.insert(record.id.clone(),json!({"record":{"origin":format!("peer:{}/{}",peer.legacy_origin.as_deref().unwrap_or(&peer.name),path.rsplit('/').next().unwrap_or(path)),"payload":record},"revision":manifest["revision"],"verification":"legacy_source"}));
                         }
                     } else {
-                        active.to_mut().insert(path.clone(),json!({"assertion":text,"verification":"legacy_source","revision":manifest["revision"]}));
+                        active.insert(path.clone(),json!({"assertion":text,"verification":"legacy_source","revision":manifest["revision"]}));
                     }
                 }
             }
         }
-        for (target, payload) in active.iter() {
+        sources.push((peer, projection, legacy));
+    }
+    // The logs are read; ranking them needs no lock.
+    drop(replica);
+    let mut entries = Vec::new();
+    let mut texts = Vec::new();
+    for (source, (_, projection, legacy)) in sources.iter().enumerate() {
+        for (target, payload) in legacy.as_ref().unwrap_or(&projection.active) {
             if payload.get("source_bytes").is_some() {
                 continue;
             }
-            let text = payload["record"]["payload"]["text"]
-                .as_str()
-                .or_else(|| payload["assertion"].as_str())
-                .unwrap_or("");
-            let score = query
-                .split_whitespace()
-                .filter(|w| text.to_lowercase().contains(&w.to_lowercase()))
-                .count();
-            if score > 0 {
-                results.push(json!({"scope":peer.scope,"peer":peer.name,"target":target,"origin":payload["record"]["origin"],"id":payload["record"]["payload"]["id"],"excerpt":text,"payload":payload,"score":score,"reasoning_blocked":projection.reasoning_error}));
-            }
+            entries.push((source, target, payload));
+            texts.push(
+                payload["record"]["payload"]["text"]
+                    .as_str()
+                    .or_else(|| payload["assertion"].as_str())
+                    .unwrap_or(""),
+            );
         }
     }
-    results.sort_by_key(|r| std::cmp::Reverse(r["score"].as_u64().unwrap_or(0)));
-    results.truncate(12);
-    Ok(results)
+    Ok(crate::store::rank(query, &texts)
+        .into_iter()
+        .take(12)
+        .map(|(entry, score)| {
+            let (source, target, payload) = entries[entry];
+            let (peer, projection, _) = &sources[source];
+            json!({"scope":peer.scope,"peer":peer.name,"target":target,"origin":payload["record"]["origin"],"id":payload["record"]["payload"]["id"],"excerpt":texts[entry],"payload":payload,"score":score,"reasoning_blocked":projection.reasoning_error})
+        })
+        .collect())
 }
 
 pub fn command(command: &str, args: &[String], stdin: &str) -> Result<Value> {

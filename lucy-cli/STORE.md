@@ -84,6 +84,14 @@ first prompt and behind each later reply, so a file edited outside Lucy is found
 one prompt later. And it embeds the prompt's first 3,000 characters and gives the
 model 1.5 seconds; past that, the search is lexical and the service log says why.
 
+Results come from two places. Records held in an enrolled log (conversations,
+reviewed notes, a peer's public interactions) are ranked by BM25 over those
+logs' active records: a word most records hold decides little, and a long
+record needs more than a passing mention to outrank a short one. Whatever only
+the index holds, such as a registered folder's files, is ranked as described
+above. The two rankings share no measure, so their results alternate, starting
+with a log's.
+
 Each enrolled log is decoded and its signatures are checked once per content. A
 process keeps the verified log in memory and hashes the file on every read, so
 one changed byte means the whole log is verified again. Nothing of this is

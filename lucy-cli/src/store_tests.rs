@@ -1,5 +1,5 @@
 use crate::replication::{Change, Peer, Replica};
-use crate::store::{Record, Retrieval, Store, command, retrieve};
+use crate::store::{Record, Retrieval, Store, command, rank, retrieve};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -367,6 +367,66 @@ fn retrieval_can_skip_the_index_refresh_and_never_waits_long_for_the_model() {
     );
     assert_eq!(found["mode"], "lexical");
     assert!(found["warning"].is_string());
+    assert_eq!(found["results"][0]["id"], "a");
+}
+
+#[test]
+fn ranking_weighs_rare_words_and_text_length() {
+    let long = format!("the {}", "reeds and water ".repeat(60));
+    let texts = [
+        "the heron stood in the reeds",
+        "the reeds",
+        long.as_str(),
+        "heron heron heron: the heron again, and the heron at dusk",
+        "nothing shared",
+    ];
+    let order = |query: &str| -> Vec<usize> {
+        rank(query, &texts)
+            .into_iter()
+            .map(|(index, _)| index)
+            .collect()
+    };
+    // A word few texts hold outweighs one that most hold, and repeating it helps.
+    assert_eq!(order("the heron"), [3, 0, 1, 2]);
+    // For a word most texts hold: more mentions first, and a long text's one mention last.
+    assert_eq!(order("the"), [0, 3, 1, 2]);
+    assert!(order("bittern").is_empty());
+    assert!(order("").is_empty());
+    assert!(rank("heron", &[]).is_empty());
+    // Every score is positive, even for a word every text holds.
+    assert!(
+        rank("the", &texts[..4])
+            .iter()
+            .all(|(_, score)| *score > 0.0)
+    );
+}
+
+#[test]
+fn log_hits_and_index_hits_take_turns() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = tempfile::tempdir().unwrap();
+    let store = Store::open(dir.path()).unwrap();
+    // Conversations are read from the local log; a registered folder only from the index.
+    store.record(&record("a", "heron by the river")).unwrap();
+    store
+        .record(&record("b", "a heron in the reeds at dusk"))
+        .unwrap();
+    folder(&store, base.path(), "marsh", "heron");
+    let found = retrieve(store, &Retrieval::thorough("heron", "", 8)).unwrap();
+    let origins: Vec<&str> = found["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|hit| hit["origin"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        origins,
+        [
+            "conversation:test/one",
+            "peer:marsh/memory.nibli",
+            "conversation:test/one"
+        ]
+    );
     assert_eq!(found["results"][0]["id"], "a");
 }
 

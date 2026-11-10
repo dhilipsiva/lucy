@@ -494,3 +494,48 @@ fn a_tampered_log_is_rejected_after_a_cached_read() {
     fs::write(&path, &bad).unwrap();
     assert!(recall(d.path(), "words", None).is_err());
 }
+#[test]
+fn a_short_match_outranks_a_long_text_that_mentions_the_word_once() {
+    let d = tempfile::tempdir().unwrap();
+    let r = Replica::open(d.path()).unwrap();
+    let p = peer(&r);
+    r.enroll(p.clone()).unwrap();
+    let add = |id: &str, text: String| {
+        let record =
+            json!({"record":{"origin":"test","payload":{"id":id,"text":text,"private":false}}});
+        r.append(&p, id, Change::Add, record, json!({})).unwrap();
+    };
+    add(
+        "long",
+        format!(
+            "what did the heron do {}",
+            "reeds and water and wind ".repeat(200)
+        ),
+    );
+    add("short", "heron sighting".into());
+    for day in 0..6 {
+        add(
+            &format!("gull-{day}"),
+            format!("what did the gull do on day {day}"),
+        );
+    }
+    drop(r);
+    let order = |query: &str| -> Vec<String> {
+        recall(d.path(), query, None)
+            .unwrap()
+            .iter()
+            .map(|hit| hit["id"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert_eq!(order("heron"), ["short", "long"]);
+    // Counting the query's words inside each text put the long text first here: it
+    // holds all five. Four of them are in nearly every text and decide little.
+    let found = order("what did the heron do");
+    assert_eq!(found.len(), 8);
+    assert_eq!(found[0], "short");
+    assert_eq!(found[7], "long");
+    // Case and punctuation do not matter; a word no text holds finds nothing.
+    assert_eq!(order("HERON?"), ["short", "long"]);
+    assert!(order("bittern").is_empty());
+    assert!(order("?").is_empty());
+}
