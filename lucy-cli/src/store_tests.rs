@@ -1,8 +1,11 @@
 use crate::replication::{Change, Peer, Replica};
-use crate::store::{Record, Store, command};
+use crate::store::{Record, Retrieval, Store, command, retrieve};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 /// Every file under a backup destination, as its relative path and bytes.
 fn files(root: &Path) -> Vec<(String, Vec<u8>)> {
@@ -251,6 +254,120 @@ fn search_stdin_keeps_query_out_of_process_arguments() {
     let result = command(&args, r#"{"query":"unicorn"}"#).unwrap();
     assert_eq!(result["results"][0]["id"], "a");
     assert_eq!(result["mode"], "lexical");
+}
+
+/// A local embedding model. While `awake` it lists one model and embeds anything as the
+/// same vector, noting how many characters it was given; otherwise it accepts a request
+/// and never answers it.
+fn model(awake: Arc<AtomicBool>, given: Arc<Mutex<Vec<usize>>>) -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    std::thread::spawn(move || {
+        let mut unanswered = Vec::new();
+        for stream in listener.incoming() {
+            let mut stream = stream.unwrap();
+            if !awake.load(Ordering::SeqCst) {
+                unanswered.push(stream);
+                continue;
+            }
+            let mut raw = Vec::new();
+            let mut buffer = [0u8; 4096];
+            let body_at = loop {
+                let read = stream.read(&mut buffer).unwrap();
+                raw.extend_from_slice(&buffer[..read]);
+                if let Some(split) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let head = String::from_utf8_lossy(&raw[..split]).to_ascii_lowercase();
+                    let length: usize = head
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length:"))
+                        .map_or(0, |value| value.trim().parse().unwrap());
+                    if read == 0 || raw.len() >= split + 4 + length {
+                        break split + 4;
+                    }
+                } else if read == 0 {
+                    break raw.len();
+                }
+            };
+            let body = if raw.starts_with(b"GET /api/tags") {
+                r#"{"models":[{"name":"test:latest","digest":"d1"}]}"#
+            } else {
+                let sent: Value = serde_json::from_slice(&raw[body_at..]).unwrap();
+                let input = sent["input"].as_str().unwrap();
+                given.lock().unwrap().push(input.chars().count());
+                r#"{"embeddings":[[0.6,0.8]]}"#
+            };
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        }
+    });
+    url
+}
+
+#[test]
+fn retrieval_can_skip_the_index_refresh_and_never_waits_long_for_the_model() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let store = Store::open(root).unwrap();
+    store
+        .record(&record("a", "the heron stands in the reeds"))
+        .unwrap();
+    folder(&store, base.path(), "marsh", "bittern");
+    let quick = |query, sync| Retrieval {
+        query,
+        exclude: "",
+        limit: 8,
+        sync,
+        embed_within: Duration::from_millis(300),
+        embed_chars: 3_000,
+    };
+    let count = |found: &Value| found["results"].as_array().unwrap().len();
+    // A search told not to refresh the index does not read the registered folder.
+    let found = retrieve(store, &quick("bittern", false)).unwrap();
+    assert_eq!(count(&found), 0);
+    assert!(found["sync"].is_null());
+    let found = retrieve(Store::open(root).unwrap(), &quick("bittern", true)).unwrap();
+    assert_eq!(count(&found), 1);
+    assert_eq!(found["sync"]["peers"], json!(["marsh"]));
+    let found = retrieve(Store::open(root).unwrap(), &quick("bittern", false)).unwrap();
+    assert_eq!(count(&found), 1);
+    assert_eq!(found["mode"], "lexical");
+
+    // With a model that answers, the search is hybrid and embeds only the query's opening.
+    let awake = Arc::new(AtomicBool::new(true));
+    let given = Arc::new(Mutex::new(Vec::new()));
+    let url = model(awake.clone(), given.clone());
+    let args = ["embed", "--root", root.to_str().unwrap(), "--model", "test"]
+        .map(str::to_owned)
+        .into_iter()
+        .chain(["--url".to_owned(), url])
+        .collect::<Vec<_>>();
+    assert_eq!(command(&args, "").unwrap()["indexed"], 3);
+    given.lock().unwrap().clear();
+    let long = format!("heron {}", "reeds ".repeat(1_000));
+    let found = retrieve(Store::open(root).unwrap(), &quick(&long, false)).unwrap();
+    assert_eq!(found["mode"], "hybrid");
+    assert!(found["warning"].is_null());
+    assert_eq!(*given.lock().unwrap(), [3_000]);
+
+    // A model that has stopped answering costs the search its vectors, not its results
+    // or its caller's time.
+    awake.store(false, Ordering::SeqCst);
+    let started = Instant::now();
+    let found = retrieve(Store::open(root).unwrap(), &quick("heron", false)).unwrap();
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(found["mode"], "lexical");
+    assert!(found["warning"].is_string());
+    assert_eq!(found["results"][0]["id"], "a");
 }
 
 #[test]

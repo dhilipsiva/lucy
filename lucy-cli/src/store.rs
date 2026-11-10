@@ -876,6 +876,12 @@ impl Store {
         )
     }
 
+    /// Whether an embedding model is configured. `status` says so too, after counting
+    /// every record and vector.
+    pub fn embeds(&self) -> Result<bool> {
+        Ok(self.config()?.embedding_model.is_some())
+    }
+
     pub fn status(&self) -> Result<Value> {
         let records = self.all()?;
         let tx = self.db.begin_read().map_err(err)?;
@@ -1264,7 +1270,8 @@ fn local_url(url: &str) -> Result<()> {
     Ok(())
 }
 
-fn embed(url: &str, model: &str, text: &str) -> Result<Vec<f32>> {
+/// `within` is how long each request may wait for the model's reply.
+fn embed(url: &str, model: &str, text: &str, within: Duration) -> Result<Vec<f32>> {
     let _span = crate::task_model::profile::span("embed_http");
     local_url(url)?;
     // Average bounded chunks; the exact complete message remains in RECORDS.
@@ -1275,7 +1282,7 @@ fn embed(url: &str, model: &str, text: &str) -> Result<Vec<f32>> {
             "POST",
             &format!("{url}/api/embed"),
             Some(&json!({"model": model, "input": part, "truncate": false}).to_string()),
-            Duration::from_secs(120),
+            within,
         )?;
         if reply.status != 200 {
             return Err(format!(
@@ -1300,15 +1307,10 @@ fn embed(url: &str, model: &str, text: &str) -> Result<Vec<f32>> {
     normalized(&sum)
 }
 
-fn model_id(url: &str, model: &str) -> Result<String> {
+fn model_id(url: &str, model: &str, within: Duration) -> Result<String> {
     let _span = crate::task_model::profile::span("embed_model_id");
     local_url(url)?;
-    let reply = crate::talk::http(
-        "GET",
-        &format!("{url}/api/tags"),
-        None,
-        Duration::from_secs(10),
-    )?;
+    let reply = crate::talk::http("GET", &format!("{url}/api/tags"), None, within)?;
     if reply.status != 200 {
         return Err("cannot inspect local embedding models".into());
     }
@@ -1332,6 +1334,94 @@ fn model_id(url: &str, model: &str) -> Result<String> {
         .filter(|s| !s.is_empty())
         .ok_or("model digest missing")?;
     Ok(format!("{name}@{digest}"))
+}
+
+/// How long the local model may take to list its models, and to embed one chunk.
+const MODEL_LIST_WAIT: Duration = Duration::from_secs(10);
+const EMBED_WAIT: Duration = Duration::from_secs(120);
+
+/// One search: what to look for, and what its caller can wait for.
+pub struct Retrieval<'a> {
+    pub query: &'a str,
+    /// A record that must not come back: the prompt being answered.
+    pub exclude: &'a str,
+    pub limit: usize,
+    /// Re-read the registered peers' files first. A caller whose index was refreshed
+    /// a moment ago, or who cannot wait, says no.
+    pub sync: bool,
+    /// How long the embedding model may take in all. Past it the search is lexical
+    /// and says so.
+    pub embed_within: Duration,
+    /// How much of the query is embedded.
+    pub embed_chars: usize,
+}
+impl<'a> Retrieval<'a> {
+    /// What `lucy store search` asks for: a fresh index and the whole query embedded.
+    pub fn thorough(query: &'a str, exclude: &'a str, limit: usize) -> Self {
+        Self {
+            query,
+            exclude,
+            limit,
+            sync: true,
+            embed_within: EMBED_WAIT,
+            embed_chars: usize::MAX,
+        }
+    }
+}
+
+/// Search the index and every enrolled log. The store lock is not held while the
+/// embedding model is asked, nor while the logs are read.
+pub fn retrieve(store: Store, request: &Retrieval) -> Result<Value> {
+    let root = store.root.clone();
+    let sync = if request.sync {
+        store.sync()?
+    } else {
+        Value::Null
+    };
+    let config = store.config()?;
+    let mut open = Some(store);
+    let mut warning = None;
+    let mut vector = None;
+    if let Some(model) = &config.embedding_model {
+        open = None;
+        let url = config
+            .embedding_url
+            .as_deref()
+            .unwrap_or(crate::talk::DEFAULT_OLLAMA_URL);
+        let deadline = std::time::Instant::now() + request.embed_within;
+        let left = || {
+            deadline
+                .checked_duration_since(std::time::Instant::now())
+                .filter(|left| !left.is_zero())
+                .ok_or_else(|| "the local embedding model did not answer in time".to_owned())
+        };
+        let text: String = request.query.chars().take(request.embed_chars).collect();
+        match left()
+            .and_then(|left| model_id(url, model, left.min(MODEL_LIST_WAIT)))
+            .and_then(|id| Ok((id, embed(url, model, &text, left()?)?)))
+        {
+            Ok(found) => vector = Some(found),
+            Err(error) => warning = Some(error),
+        }
+    }
+    let store = match open {
+        Some(store) => store,
+        None => Store::open(&root)?,
+    };
+    let mut results = store.search(
+        request.query,
+        request.exclude,
+        request.limit,
+        vector.as_ref().map(|(id, v)| (id.as_str(), v.as_slice())),
+    )?;
+    drop(store);
+    crate::replication::filter_legacy(&root, &mut results)?;
+    results.extend(crate::replication::recall(&root, request.query, None)?);
+    results.retain(|r| r["id"].as_str() != Some(request.exclude));
+    Ok(
+        json!({"ok":true,"results":results,"mode":if vector.is_some() { "hybrid" } else { "lexical" },
+        "warning":warning,"sync":sync}),
+    )
 }
 
 /// Minimal strict CLI parser, independent of a project memory folder.
@@ -1457,9 +1547,6 @@ pub fn command(args: &[String], stdin: &str) -> Result<Value> {
             Ok(json!({"ok":true,"records":records}))
         }
         "search" => {
-            let sync = store.sync()?;
-            let config = store.config()?;
-            drop(store);
             let input: Value = if args.iter().any(|a| a == "--stdin") {
                 serde_json::from_str(stdin).map_err(err)?
             } else {
@@ -1469,41 +1556,14 @@ pub fn command(args: &[String], stdin: &str) -> Result<Value> {
                 .as_str()
                 .or_else(|| flags.get("--query").copied())
                 .ok_or("--query or JSON query on --stdin is required")?;
-            let mut warning = None;
-            let mut vector = None;
-            if let Some(model) = config.embedding_model {
-                let url = config
-                    .embedding_url
-                    .as_deref()
-                    .unwrap_or(crate::talk::DEFAULT_OLLAMA_URL);
-                match model_id(url, &model)
-                    .and_then(|id| embed(url, &model, query).map(|v| (id, v)))
-                {
-                    Ok(v) => vector = Some(v),
-                    Err(e) => warning = Some(e),
-                }
-            }
-            let store = Store::open(&root)?;
-            let mut results = store.search(
-                query,
-                flags.get("--exclude").copied().unwrap_or(""),
-                flags
-                    .get("--limit")
-                    .unwrap_or(&"8")
-                    .parse::<usize>()
-                    .map_err(err)?
-                    .min(100),
-                vector.as_ref().map(|(id, v)| (id.as_str(), v.as_slice())),
-            )?;
-            drop(store);
-            crate::replication::filter_legacy(&root, &mut results)?;
-            results.extend(crate::replication::recall(&root, query, None)?);
+            let limit = flags
+                .get("--limit")
+                .unwrap_or(&"8")
+                .parse::<usize>()
+                .map_err(err)?
+                .min(100);
             let exclude = flags.get("--exclude").copied().unwrap_or("");
-            results.retain(|r| r["id"].as_str() != Some(exclude));
-            Ok(
-                json!({"ok":true,"results":results,"mode":if vector.is_some() { "hybrid" } else { "lexical" },
-                "warning":warning,"sync":sync}),
-            )
+            retrieve(store, &Retrieval::thorough(query, exclude, limit))
         }
         "embed" => {
             store.sync()?;
@@ -1532,7 +1592,7 @@ pub fn command(args: &[String], stdin: &str) -> Result<Value> {
             drop(table);
             drop(tx);
             drop(store);
-            let id = model_id(url, model)?;
+            let id = model_id(url, model, MODEL_LIST_WAIT)?;
             let mut indexed = 0;
             for record in records {
                 if existing
@@ -1541,12 +1601,12 @@ pub fn command(args: &[String], stdin: &str) -> Result<Value> {
                 {
                     continue;
                 }
-                let vector = embed(url, model, record.text())?;
+                let vector = embed(url, model, record.text(), EMBED_WAIT)?;
                 Store::open(&root)?.put_vector(&record, &id, &vector)?;
                 indexed += 1;
             }
             // Do not mix vectors if a tag changed while indexing.
-            if model_id(url, model)? != id {
+            if model_id(url, model, MODEL_LIST_WAIT)? != id {
                 return Err("embedding model changed during indexing; retry".into());
             }
             let store = Store::open(&root)?;

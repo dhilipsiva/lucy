@@ -416,3 +416,81 @@ fn backup_groups_keep_their_bytes_when_operations_are_appended() {
     assert_eq!(decode(&encode(&log)).unwrap(), log);
     assert!(segments(&BTreeMap::new()).is_empty());
 }
+/// How many logs this thread has decoded and validated in full.
+fn verifications() -> usize {
+    verified::VERIFICATIONS.with(|count| count.get())
+}
+#[test]
+fn a_log_is_verified_once_per_content() {
+    let d = tempfile::tempdir().unwrap();
+    let r = Replica::open(d.path()).unwrap();
+    let p = peer(&r);
+    r.enroll(p.clone()).unwrap();
+    r.append(&p, "r1", Change::Add, payload("heron first"), json!({}))
+        .unwrap();
+    let path = r.root.join("public-test.nibli");
+    // A log this process validated and wrote is not verified again when it is read back,
+    // by a writer or by retrieval.
+    let start = verifications();
+    let first = r.read(&p).unwrap();
+    assert_eq!(r.read(&p).unwrap(), first);
+    drop(r);
+    assert_eq!(recall(d.path(), "heron", None).unwrap().len(), 1);
+    let mut indexed = vec![json!({"origin":"test","id":"r1"})];
+    filter_legacy(d.path(), &mut indexed).unwrap();
+    assert!(indexed.is_empty());
+    assert_eq!(verifications(), start);
+    // Bytes another replica wrote are verified once, then reused.
+    let other = tempfile::tempdir().unwrap();
+    let theirs = Replica::open(other.path()).unwrap();
+    let mut shared = p.clone();
+    shared.keys.insert(theirs.actor(), theirs.public_key());
+    theirs.merge(&shared, first).unwrap();
+    let second = json!({"record":{"origin":"test","payload":{"id":"r2","text":"heron second","private":false}}});
+    theirs
+        .append(&shared, "r2", Change::Add, second, json!({}))
+        .unwrap();
+    let foreign = fs::read(theirs.root.join("public-test.nibli")).unwrap();
+    drop(theirs);
+    fs::write(&path, &foreign).unwrap();
+    let r = Replica::open(d.path()).unwrap();
+    let start = verifications();
+    assert_eq!(r.read(&shared).unwrap().len(), 2);
+    assert_eq!(r.read(&shared).unwrap().len(), 2);
+    assert_eq!(verifications(), start + 1);
+    // The same bytes under other keys are another question, asked in full.
+    assert_eq!(r.read(&p).unwrap_err(), "actor not enrolled");
+    assert_eq!(r.read(&shared).unwrap().len(), 2);
+    assert_eq!(verifications(), start + 1);
+}
+#[test]
+fn a_tampered_log_is_rejected_after_a_cached_read() {
+    let d = tempfile::tempdir().unwrap();
+    let r = Replica::open(d.path()).unwrap();
+    let p = peer(&r);
+    r.enroll(p.clone()).unwrap();
+    r.append(
+        &p,
+        "r1",
+        Change::Add,
+        payload("the original words"),
+        json!({}),
+    )
+    .unwrap();
+    let path = r.root.join("public-test.nibli");
+    let good = fs::read_to_string(&path).unwrap();
+    assert_eq!(r.read(&p).unwrap().len(), 1);
+    // The same length and the same lines: only one character differs.
+    let bad = good.replace("the original words", "the 0riginal words");
+    assert_ne!(bad, good);
+    fs::write(&path, &bad).unwrap();
+    assert_eq!(r.read(&p).unwrap_err(), "invalid signature");
+    drop(r);
+    assert!(recall(d.path(), "words", None).is_err());
+    assert!(filter_legacy(d.path(), &mut Vec::new()).is_err());
+    // The untouched bytes are accepted again; the changed ones never are.
+    fs::write(&path, &good).unwrap();
+    assert_eq!(recall(d.path(), "words", None).unwrap().len(), 1);
+    fs::write(&path, &bad).unwrap();
+    assert!(recall(d.path(), "words", None).is_err());
+}

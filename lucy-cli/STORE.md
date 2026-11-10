@@ -77,6 +77,18 @@ and get vectors on the next indexing pass. `status` reports pending vectors.
 Unavailable embedding models leave visible lexical fallback and durable originals.
 No cloud inference, model download, or private publication happens implicitly.
 
+`lucy store search` re-reads the registered folders first and asks the embedding
+model about the whole query. The desktop service answers a prompt on a clock, so
+its search differs in two ways. It re-reads the folders before a conversation's
+first prompt and behind each later reply, so a file edited outside Lucy is found
+one prompt later. And it embeds the prompt's first 3,000 characters and gives the
+model 1.5 seconds; past that, the search is lexical and the service log says why.
+
+Each enrolled log is decoded and its signatures are checked once per content. A
+process keeps the verified log in memory and hashes the file on every read, so
+one changed byte means the whole log is verified again. Nothing of this is
+written to disk; a new process verifies every log once.
+
 ## Private Git backup and recovery
 
 Use a separate clone of the user's private repository, outside all public/Nix

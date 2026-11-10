@@ -713,6 +713,43 @@ fn peers_refresh_when_a_session_starts_and_not_on_each_address() {
     }
 }
 
+#[test]
+fn only_a_sessions_first_prompt_waits_for_the_index() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("memory");
+    let home = temp.path().join("marsh").join("lucy");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("constitution.nibli"), "# Lucy\n").unwrap();
+    std::fs::write(home.join("memory.nibli"), "bird(bittern).\n").unwrap();
+    Store::open(&root)
+        .unwrap()
+        .register("marsh", &home)
+        .unwrap();
+    let service = Service::new(root.clone(), None);
+    let from_file = |reply: &Value, word: &str| {
+        reply["memories"].as_array().unwrap().iter().any(|hit| {
+            hit["origin"] == "peer:marsh/memory.nibli"
+                && hit["excerpt"].as_str().unwrap().contains(word)
+        })
+    };
+    // The first prompt reads the registered folder before it searches.
+    let wake = prompt(
+        &service,
+        temp.path(),
+        "codex",
+        "index",
+        "Lucy, what do I know about the bittern?",
+    );
+    assert!(from_file(&wake, "bittern"));
+    // A later prompt searches the index as it stands and refreshes it behind its reply,
+    // so a file that changed in between is found one prompt later.
+    std::fs::write(home.join("memory.nibli"), "bird(bittern).\nbird(godwit).\n").unwrap();
+    let second = prompt(&service, temp.path(), "codex", "index", "And the godwit?");
+    assert!(!from_file(&second, "godwit"));
+    let third = prompt(&service, temp.path(), "codex", "index", "The godwit again?");
+    assert!(from_file(&third, "godwit"));
+}
+
 fn saved_texts(root: &std::path::Path) -> Vec<String> {
     Store::open(root)
         .unwrap()

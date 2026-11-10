@@ -140,6 +140,15 @@ The prompt's words are saved either way, and the full context is published for
 the conversation's later requests when retrieval finishes. A request that
 names no deadline waits as before.
 
+Inside that time the service does as little as it can. A conversation's first
+prompt re-reads the registered peers' files; a later prompt searches the index
+as it stands and refreshes it behind the reply, so a file edited outside Lucy
+is found one prompt later. The embedding model is asked about the prompt's
+first 3,000 characters and given 1.5 seconds, after which the search is
+lexical. Each enrolled log is decoded and verified once per content and then
+kept in memory: every read hashes the file, and any changed byte is verified
+again in full.
+
 Sources: [Claude hooks](https://code.claude.com/docs/en/hooks),
 [Codex hooks](https://learn.chatgpt.com/docs/hooks),
 [Cursor hooks](https://cursor.com/docs/hooks),
