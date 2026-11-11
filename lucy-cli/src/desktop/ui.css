@@ -1,243 +1,338 @@
-/* Ask Lucy. The colours follow Lucy's room page: dark ink, a teal accent, amber while she
-   waits for you and coral when something failed. Light first; dark follows the desktop. */
+/* Ask Lucy in QUINE, the design system of dhilipsiva.dev (static/assets/tokens/*.css).
+   Dark-first like the site: the void for surfaces, warm white text, ember as the single
+   accent, phosphor for "alive". The site's light theme, "daylight nihilism", applies when
+   the desktop asks for light. IBM Plex Mono is the voice, Plex Sans is for reading, Space
+   Grotesk for display. */
 window.lucy {
-  --ink: #f5f6f4;
-  --surface: #ffffff;
-  --raised: #eceeec;
-  --line: #d9dedb;
-  --text: #15191d;
-  --muted: #5b6570;
-  --accent: #0d8a75;
-  --accent-ink: #ffffff;
-  --accent-soft: rgba(13, 138, 117, 0.11);
-  --amber: #9a5c00;
-  --amber-soft: rgba(214, 140, 20, 0.12);
-  --coral: #c0402c;
-  --coral-soft: rgba(214, 80, 58, 0.11);
-  --user: #dff1ec;
-  --added: rgba(32, 160, 110, 0.16);
-  --removed: rgba(214, 80, 58, 0.15);
+  --sunken: #07070A;
+  --bg: #0B0B10;
+  --raised: #111119;
+  --card: #181822;
+  --inset: #20202C;
+  --line: #2A2A38;
+  --line-strong: #3A3A4A;
+  --strong: #F4F3EF;
+  --body: #C9C8C2;
+  --muted: #908F9A;
+  --faint: #8B8A95;
+  --accent: #F2542D;
+  --accent-hover: #FF9A6F;
+  --accent-press: #D8431B;
+  --on-accent: #2A0A00;
+  --accent-text: #FF9A6F;
+  --accent-line: rgba(242, 84, 45, 0.35);
+  --accent-soft: rgba(242, 84, 45, 0.16);
+  --alive: #38E3A6;
+  --alive-text: #8BF0CE;
+  --alive-soft: rgba(56, 227, 166, 0.14);
+  --alive-line: rgba(56, 227, 166, 0.32);
+  --warn: #F5B544;
+  --warn-text: #F5B544;
+  --warn-soft: rgba(245, 181, 68, 0.14);
+  --warn-line: rgba(245, 181, 68, 0.32);
+  --danger: #FF4D5E;
+  --danger-text: #FF4D5E;
+  --danger-soft: rgba(255, 77, 94, 0.14);
+  --danger-line: rgba(255, 77, 94, 0.32);
+  --symbol-text: #B6A8FF;
+  --symbol-soft: rgba(139, 124, 246, 0.16);
+  --symbol-line: rgba(139, 124, 246, 0.35);
+  /* Your messages: ember 14% over a card, with an ember hairline (the site's /chat). */
+  --mine: #372024;
+  --mine-line: #703934;
+  --code: #07070A;
+  --grid: rgba(60, 60, 73, 0.6);
 }
 
-@media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: light) {
   window.lucy {
-    --ink: #0d1014;
-    --surface: #13171c;
-    --raised: #1b2027;
-    --line: #29303a;
-    --text: #e6e9ed;
-    --muted: #8d97a3;
-    --accent: #2fd6b5;
-    --accent-ink: #04231d;
-    --accent-soft: rgba(47, 214, 181, 0.12);
-    --amber: #f2b84b;
-    --amber-soft: rgba(242, 184, 75, 0.11);
-    --coral: #f2765f;
-    --coral-soft: rgba(242, 118, 95, 0.12);
-    --user: #123a33;
-    --added: rgba(47, 214, 140, 0.14);
-    --removed: rgba(242, 118, 95, 0.15);
+    --sunken: #E9E8E2;
+    --bg: #F4F3EF;
+    --raised: #FBFAF7;
+    --card: #FFFFFF;
+    --inset: #EFEEE8;
+    --line: #DAD8D0;
+    --line-strong: #C2BFB5;
+    --strong: #16161C;
+    --body: #2E2E38;
+    --muted: #5E5E6C;
+    --faint: #6B6A75;
+    --accent-text: #B23413;
+    --alive-text: #16A877;
+    --warn-text: #9A6700;
+    --danger-text: #C8303F;
+    --symbol-text: #5B4ACB;
+    --mine: #FDEAE6;
+    --mine-line: #E2AA97;
+    --code: #EFEEE8;
+    --grid: rgba(22, 22, 28, 0.08);
   }
 }
 
 window.lucy {
-  background-color: var(--ink);
-  color: var(--text);
-  font-family: "Noto Sans", sans-serif;
+  background-color: var(--bg);
+  color: var(--body);
+  font-family: "IBM Plex Sans", "Noto Sans", sans-serif;
 }
 
+/* The mono voice: labels, data, code, controls. No ligature may join `--` or `=>`. */
 window.lucy .mono,
 window.lucy .code label,
 window.lucy textview.diff text,
-window.lucy textview.raw text {
-  font-family: "Fira Code", monospace;
-  /* Commands and file text are shown exactly: no ligature may join `--` or `=>`. */
+window.lucy textview.raw text,
+window.lucy button,
+window.lucy .badge,
+window.lucy .eyebrow,
+window.lucy .key,
+window.lucy .hint,
+window.lucy .note,
+window.lucy .composer textview,
+window.lucy .composer .placeholder,
+window.lucy .prompt {
+  font-family: "IBM Plex Mono", "Fira Code", monospace;
   font-feature-settings: "liga" 0, "calt" 0;
 }
 
 window.lucy button:focus-visible,
 window.lucy menubutton > button:focus-visible {
-  outline-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* Header */
 window.lucy headerbar {
-  background: var(--ink);
-  color: var(--text);
+  background: var(--bg);
+  color: var(--strong);
   box-shadow: none;
   border-bottom: 1px solid var(--line);
-  min-height: 54px;
+  min-height: 52px;
   padding: 0 12px;
 }
 
-window.lucy .avatar {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border-radius: 999px;
-  min-width: 30px;
-  min-height: 30px;
-  font-weight: 800;
-  font-size: 15px;
-}
-
-window.lucy .avatar.large {
-  min-width: 68px;
-  min-height: 68px;
-  font-size: 32px;
-}
-
-window.lucy .avatar.small {
-  min-width: 26px;
-  min-height: 26px;
-  font-size: 13px;
-}
-
 window.lucy .name {
-  font-weight: 700;
-  font-size: 16px;
+  font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: -0.03em;
+  color: var(--strong);
 }
 
-window.lucy .pill {
-  border-radius: 999px;
-  padding: 3px 10px;
-  background: var(--raised);
+/* A QUINE badge: mono, uppercase, tracked, hairline. */
+window.lucy .pill,
+window.lucy .badge {
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--inset);
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
+  padding: 2px 7px;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
 }
 
 window.lucy .pill .dot {
-  min-width: 8px;
-  min-height: 8px;
+  min-width: 6px;
+  min-height: 6px;
   border-radius: 999px;
-  background: var(--muted);
+  background: currentColor;
 }
 
-window.lucy .pill.ready,
+window.lucy .pill.ready {
+  color: var(--alive-text);
+  background: var(--alive-soft);
+  border-color: var(--alive-line);
+}
+
 window.lucy .pill.thinking {
+  color: var(--accent-text);
   background: var(--accent-soft);
-  color: var(--accent);
-}
-
-window.lucy .pill.ready .dot {
-  background: var(--accent);
+  border-color: var(--accent-line);
 }
 
 window.lucy .pill.approval {
-  background: var(--amber-soft);
-  color: var(--amber);
-}
-
-window.lucy .pill.approval .dot {
-  background: var(--amber);
+  color: var(--warn-text);
+  background: var(--warn-soft);
+  border-color: var(--warn-line);
 }
 
 window.lucy .pill.problem {
-  background: var(--coral-soft);
-  color: var(--coral);
+  color: var(--danger-text);
+  background: var(--danger-soft);
+  border-color: var(--danger-line);
 }
 
-window.lucy .pill.problem .dot {
-  background: var(--coral);
+window.lucy .badge.words {
+  color: var(--symbol-text);
+  background: var(--symbol-soft);
+  border-color: var(--symbol-line);
+  border-style: dashed;
 }
 
+/* Buttons: .q-btn secondary and ghost. */
 window.lucy headerbar button,
 window.lucy headerbar menubutton > button {
   background: transparent;
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  color: var(--strong);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
   box-shadow: none;
   padding: 4px 12px;
   min-height: 30px;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 window.lucy headerbar button:hover,
 window.lucy headerbar menubutton > button:hover,
 window.lucy headerbar menubutton > button:checked {
-  background: var(--raised);
-}
-
-window.lucy headerbar button.close {
-  font-weight: 600;
+  background: var(--inset);
+  border-color: var(--accent);
+  color: var(--accent-hover);
 }
 
 window.lucy headerbar button.close:hover {
-  background: var(--coral-soft);
-  border-color: var(--coral);
-  color: var(--coral);
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger-text);
 }
 
 /* Conversation */
 window.lucy .banner {
-  background: var(--coral-soft);
-  border: 1px solid var(--coral);
-  border-radius: 12px;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--danger);
+  border-radius: 6px;
   padding: 10px 12px 10px 14px;
 }
 
-window.lucy .hero {
-  font-size: 26px;
-  font-weight: 800;
+window.lucy .eyebrow {
+  font-size: 11px;
+  color: var(--faint);
+  letter-spacing: 0.04em;
 }
 
 window.lucy .muted,
-window.lucy .note,
 window.lucy .thinking label {
   color: var(--muted);
 }
 
 window.lucy .note {
-  font-size: 12.5px;
+  color: var(--faint);
+  font-size: 11.5px;
+}
+
+/* The empty state: a blueprint-grid panel (.q-card--grid). */
+window.lucy .blueprint {
+  background-color: var(--card);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px, 24px 24px;
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--accent);
+  border-radius: 10px;
+  padding: 36px 40px 32px;
+}
+
+window.lucy .hero {
+  font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+  font-size: 52px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  color: var(--strong);
+}
+
+window.lucy .comment {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 13px;
+  color: var(--faint);
+}
+
+window.lucy .lead {
+  font-size: 15px;
+  color: var(--body);
 }
 
 window.lucy .workspace {
-  background: var(--raised);
-  border-radius: 999px;
-  padding: 4px 12px;
-  font-size: 12px;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11.5px;
   color: var(--muted);
 }
 
+/* Suggestions: QUINE pills. */
 window.lucy button.suggestion {
-  background: var(--surface);
-  color: var(--text);
+  background: var(--inset);
+  color: var(--body);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 999px;
   box-shadow: none;
-  padding: 9px 14px;
+  padding: 5px 13px;
+  font-size: 12.5px;
+  font-weight: 400;
 }
 
 window.lucy button.suggestion:hover {
   border-color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--accent-hover);
 }
 
+/* Your message: ember-tinted, the tail corner tight. */
 window.lucy .bubble {
-  background: var(--user);
-  color: var(--text);
-  border-radius: 16px 16px 4px 16px;
+  background: var(--mine);
+  border: 1px solid var(--mine-line);
+  color: var(--strong);
+  border-radius: 10px 10px 2px 10px;
   padding: 10px 14px;
+  font-size: 14.5px;
 }
 
-window.lucy .reply label {
-  color: var(--text);
+/* Lucy's reply: a card, the tail corner tight. */
+window.lucy .said {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 2px 10px 10px 10px;
+  padding: 12px 16px;
 }
 
-window.lucy .reply .heading {
-  font-weight: 700;
-  font-size: 16px;
+window.lucy .said label {
+  color: var(--body);
+  font-size: 14.5px;
 }
 
-window.lucy .reply .marker {
+window.lucy .said .heading {
+  font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+  color: var(--strong);
+}
+
+window.lucy .said .marker {
   color: var(--accent);
-  font-weight: 700;
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 600;
+}
+
+/* Lucy's tile: the terminal void with an ember L. */
+window.lucy .avatar {
+  background: var(--code);
+  color: var(--accent);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  min-width: 28px;
+  min-height: 28px;
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 600;
+  font-size: 14px;
 }
 
 window.lucy .code {
-  background: var(--raised);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  background: var(--code);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
 }
 
 window.lucy .code .codebar {
@@ -246,201 +341,243 @@ window.lucy .code .codebar {
 }
 
 window.lucy .code .codebar label {
-  font-size: 11.5px;
-  color: var(--muted);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  color: var(--faint);
 }
 
 window.lucy .code > label {
   padding: 10px 12px;
-  font-size: 13px;
+  font-size: 12.5px;
+  color: var(--body);
 }
 
+/* Ghost buttons: Copy, memories, Dismiss. */
 window.lucy button.chip {
   background: transparent;
   color: var(--muted);
-  border: none;
+  border: 1px solid transparent;
   box-shadow: none;
-  border-radius: 999px;
-  padding: 2px 9px;
+  border-radius: 4px;
+  padding: 1px 8px;
   min-height: 24px;
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 window.lucy button.chip:hover,
 window.lucy button.chip:checked {
-  background: var(--raised);
-  color: var(--text);
+  background: var(--inset);
+  color: var(--strong);
 }
 
+/* A recalled memory: a left-ruled row. */
 window.lucy .memory {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 8px 12px;
+  border-left: 2px solid var(--line-strong);
+  padding: 4px 0 4px 12px;
 }
 
 window.lucy .memory .source {
-  color: var(--accent);
-  font-size: 11.5px;
+  color: var(--faint);
+  font-size: 11px;
 }
 
 window.lucy .memory .excerpt {
   font-size: 13px;
+  color: var(--body);
 }
 
-/* Approval and task cards */
+/* Cards and callouts */
 window.lucy .card {
-  background: var(--surface);
+  background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 10px;
   padding: 14px 16px;
 }
 
 window.lucy .card.approval {
-  border-left: 4px solid var(--amber);
+  background: var(--inset);
+  border-left: 3px solid var(--warn);
+  border-radius: 6px;
 }
 
 window.lucy .card.outcome {
-  border-left: 4px solid var(--accent);
+  background: var(--inset);
+  border-left: 3px solid var(--alive);
+  border-radius: 6px;
 }
 
 window.lucy .card.outcome.failure {
-  border-left-color: var(--coral);
+  border-left-color: var(--danger);
 }
 
 window.lucy .card.outcome.inconclusive {
-  border-left-color: var(--amber);
+  border-left-color: var(--warn);
 }
 
 window.lucy .card-title {
-  font-weight: 700;
-  font-size: 14.5px;
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--strong);
 }
 
 window.lucy .card .key {
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
 }
 
 window.lucy .card .value {
-  font-size: 13px;
+  font-size: 12.5px;
+  color: var(--strong);
 }
 
 window.lucy textview.diff,
 window.lucy textview.diff text,
 window.lucy textview.raw,
 window.lucy textview.raw text {
-  background-color: var(--raised);
-  color: var(--text);
-  font-size: 12.5px;
+  background-color: var(--code);
+  color: var(--body);
+  font-size: 12px;
 }
 
 window.lucy .diffbox {
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
 }
 
-window.lucy button.approve {
+window.lucy expander title {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* Primary and danger buttons (.q-btn--primary, .q-btn--danger). */
+window.lucy button.approve,
+window.lucy button.send,
+window.lucy popover.settings button.use {
   background: var(--accent);
-  color: var(--accent-ink);
-  border: none;
+  color: var(--on-accent);
+  border: 1px solid transparent;
   box-shadow: none;
-  border-radius: 10px;
-  font-weight: 700;
-  padding: 6px 18px;
+  border-radius: 6px;
+  font-weight: 600;
+  padding: 6px 16px;
 }
 
-window.lucy button.approve:hover {
-  filter: brightness(1.08);
+window.lucy button.approve:hover,
+window.lucy button.send:hover,
+window.lucy popover.settings button.use:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 0 0 1px var(--accent-line), 0 6px 28px rgba(242, 84, 45, 0.32);
+}
+
+window.lucy button.approve:active,
+window.lucy button.send:active {
+  background: var(--accent-press);
 }
 
 window.lucy button.deny {
   background: transparent;
-  color: var(--text);
-  border: 1px solid var(--line);
+  color: var(--strong);
+  border: 1px solid var(--line-strong);
   box-shadow: none;
-  border-radius: 10px;
-  padding: 6px 16px;
+  border-radius: 6px;
+  padding: 6px 14px;
 }
 
 window.lucy button.deny:hover {
-  border-color: var(--coral);
-  color: var(--coral);
+  border-color: var(--danger);
+  color: var(--danger-text);
+  background: var(--danger-soft);
 }
 
 window.lucy .decision {
-  font-weight: 600;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
   color: var(--muted);
 }
 
 window.lucy .verdict {
-  font-weight: 800;
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 700;
   min-width: 16px;
 }
 
 window.lucy .verdict.success {
-  color: var(--accent);
+  color: var(--alive);
 }
 
 window.lucy .verdict.failure {
-  color: var(--coral);
+  color: var(--danger);
 }
 
 window.lucy .verdict.inconclusive {
-  color: var(--amber);
+  color: var(--warn);
 }
 
 window.lucy .verdict.unchecked {
-  color: var(--muted);
+  color: var(--faint);
 }
 
 window.lucy .taskbar {
-  background: var(--surface);
+  background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-top: 2px solid var(--accent);
+  border-radius: 10px;
   padding: 10px 14px;
 }
 
-window.lucy .taskbar .criterion {
+window.lucy .criterion {
   font-size: 12.5px;
+  color: var(--body);
 }
 
-/* Composer */
+/* Composer: the inset field with a phosphor prompt, ember on focus. */
 window.lucy .composer {
-  background: var(--surface);
+  background: var(--inset);
   border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 6px 6px 6px 14px;
+  border-radius: 6px;
+  padding: 6px 6px 6px 12px;
 }
 
 window.lucy .composer:focus-within {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(242, 84, 45, 0.18);
+}
+
+window.lucy .prompt {
+  color: var(--alive);
+  font-size: 15px;
+  font-weight: 600;
 }
 
 window.lucy .composer textview,
 window.lucy .composer textview text {
   background: transparent;
-  color: var(--text);
+  color: var(--strong);
+  font-size: 14px;
 }
 
 window.lucy .composer .placeholder {
-  color: var(--muted);
+  color: var(--faint);
+  font-size: 14px;
 }
 
 window.lucy button.send {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: none;
-  box-shadow: none;
-  border-radius: 12px;
-  font-weight: 700;
-  padding: 6px 18px;
-  min-height: 36px;
+  min-height: 34px;
 }
 
 window.lucy button.send.stop {
-  background: var(--coral);
-  color: #ffffff;
+  background: transparent;
+  color: var(--danger-text);
+  border-color: var(--danger-line);
+}
+
+window.lucy button.send.stop:hover {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  box-shadow: none;
 }
 
 window.lucy button.send:disabled {
@@ -448,21 +585,38 @@ window.lucy button.send:disabled {
 }
 
 window.lucy .hint {
-  color: var(--muted);
-  font-size: 11.5px;
+  color: var(--faint);
+  font-size: 11px;
 }
 
 /* Settings */
 window.lucy popover.settings > contents {
-  background: var(--surface);
-  color: var(--text);
+  background: var(--card);
+  color: var(--strong);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 10px;
   padding: 16px;
 }
 
 window.lucy popover.settings .section {
-  font-weight: 700;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+window.lucy popover.settings entry,
+window.lucy popover.settings dropdown > button {
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--strong);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 13px;
+}
+
+window.lucy popover.settings button {
+  border-radius: 6px;
 }
 
 window.lucy popover.settings list {
@@ -471,14 +625,9 @@ window.lucy popover.settings list {
 
 window.lucy popover.settings list row {
   padding: 5px 8px;
-  border-radius: 8px;
+  border-radius: 4px;
 }
 
-window.lucy popover.settings button.use {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: none;
-  box-shadow: none;
-  border-radius: 10px;
-  font-weight: 700;
+window.lucy popover.settings list row:hover {
+  background: var(--inset);
 }

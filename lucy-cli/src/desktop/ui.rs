@@ -21,6 +21,8 @@ const PROVIDERS: [(&str, &str); 5] = [
     ("openrouter", "OpenRouter"),
 ];
 const NOTICE: &str = "Local Ollama is the default. Choosing a hosted provider sends your prompts, retrieved memories and tool results to it. Free access depends on the model and account; Lucy does not switch providers automatically.";
+/// QUINE's single accent, for the few marks set in markup rather than the stylesheet.
+const EMBER: &str = "#F2542D";
 const SUGGESTIONS: [&str; 3] = [
     "What were we working on last?",
     "What do you remember about this project?",
@@ -111,6 +113,17 @@ fn rich(markup: &str, class: &str) -> gtk::Label {
     label
 }
 
+/// A QUINE eyebrow: an ember `//`, then the words, escaped.
+fn eyebrow(words: &str) -> gtk::Label {
+    let eyebrow = label("", "eyebrow");
+    eyebrow.set_wrap(false);
+    eyebrow.set_markup(&format!(
+        "<span foreground=\"{EMBER}\">//</span> {}",
+        view::escape(words)
+    ));
+    eyebrow
+}
+
 fn avatar(size: &str) -> gtk::Label {
     let avatar = gtk::Label::new(Some("L"));
     avatar.add_css_class("avatar");
@@ -193,7 +206,7 @@ fn block(block: Block) -> gtk::Widget {
             frame.add_css_class("code");
             let bar = gtk::Box::new(gtk::Orientation::Horizontal, 6);
             bar.add_css_class("codebar");
-            let kind = label("code", "");
+            let kind = label("CODE", "");
             kind.set_hexpand(true);
             bar.append(&kind);
             bar.append(&copy(text.clone()));
@@ -299,12 +312,12 @@ impl Window {
             self.pill.remove_css_class(class);
         }
         let (class, text) = match status {
-            Status::Asleep => ("", "Asleep"),
-            Status::Ready => ("ready", "Ready"),
-            Status::Thinking => ("thinking", "Thinking"),
-            Status::Approval => ("approval", "Needs your approval"),
-            Status::Stopped => ("", "Stopped"),
-            Status::Problem => ("problem", "Problem"),
+            Status::Asleep => ("", "ASLEEP"),
+            Status::Ready => ("ready", "READY"),
+            Status::Thinking => ("thinking", "THINKING"),
+            Status::Approval => ("approval", "NEEDS APPROVAL"),
+            Status::Stopped => ("", "STOPPED"),
+            Status::Problem => ("problem", "PROBLEM"),
         };
         if !class.is_empty() {
             self.pill.add_css_class(class);
@@ -366,7 +379,7 @@ impl Window {
                 if self.thinking.parent().is_some() {
                     self.messages.remove(&self.thinking);
                 }
-                self.send.set_label("Send");
+                self.send.set_label("Send →");
                 self.send.remove_css_class("stop");
                 self.send.set_tooltip_text(Some("Send (Enter)"));
             }
@@ -403,12 +416,25 @@ impl Window {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         row.add_css_class("reply");
         row.append(&avatar("small"));
-        let column = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        let column = gtk::Box::new(gtk::Orientation::Vertical, 6);
         column.set_hexpand(true);
+        let said = gtk::Box::new(gtk::Orientation::Vertical, 8);
+        said.add_css_class("said");
+        said.set_halign(gtk::Align::Start);
         for part in view::markup(text) {
-            column.append(&block(part));
+            said.append(&block(part));
         }
-        let footer = gtk::Box::new(gtk::Orientation::Horizontal, 2);
+        column.append(&said);
+        let footer = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        // As in Lucy's room: what a model says is labelled words, never a verdict.
+        let words = label("IN WORDS", "badge");
+        words.add_css_class("words");
+        words.set_wrap(false);
+        words.set_valign(gtk::Align::Center);
+        words.set_tooltip_text(Some(
+            "Written by the model: words, not a verdict from the engine",
+        ));
+        footer.append(&words);
         footer.append(&copy(super::visible(text)));
         column.append(&footer);
         let found = view::memories(memories);
@@ -453,6 +479,7 @@ impl Window {
         let frame = gtk::Box::new(gtk::Orientation::Vertical, 10);
         frame.add_css_class("card");
         frame.add_css_class("approval");
+        frame.append(&eyebrow("needs your approval"));
         frame.append(&label(&card.title, "card-title"));
         frame.append(&label("Nothing runs until you approve it.", "note"));
         if !card.rows.is_empty() {
@@ -461,7 +488,7 @@ impl Window {
                 .row_spacing(6)
                 .build();
             for (row, (key, value)) in card.rows.iter().enumerate() {
-                let key = label(key, "key");
+                let key = label(&key.to_uppercase(), "key");
                 key.set_wrap(false);
                 key.set_valign(gtk::Align::Start);
                 let value = plain(value, "value");
@@ -535,7 +562,7 @@ impl Window {
                     self.task_rows.remove(&child);
                 }
                 let heading = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-                heading.append(&label("Working on a task", "card-title"));
+                heading.append(&eyebrow("task"));
                 let title = label(&task.title, "muted");
                 title.set_wrap(false);
                 title.set_ellipsize(pango::EllipsizeMode::End);
@@ -559,6 +586,7 @@ impl Window {
                     "failure" => "failure",
                     _ => "inconclusive",
                 });
+                card.append(&eyebrow("task finished"));
                 card.append(&label(
                     match outcome.as_str() {
                         "success" => "Task done, and every check passed",
@@ -804,14 +832,15 @@ impl Window {
 }
 
 /// GTK 4.20 answers a stylesheet's `prefers-color-scheme` from that stylesheet's own setting,
-/// so it follows the desktop's light or dark choice here. Older GTK keeps the light colours.
+/// so it follows the desktop here. QUINE is dark-first: the window is dark unless the desktop
+/// asks for light, and older GTK keeps it dark.
 fn follow_scheme(settings: &gtk::Settings, provider: &gtk::CssProvider) {
-    let dark = glib::EnumValue::from_value(&settings.property_value("gtk-interface-color-scheme"))
-        .is_some_and(|(_, scheme)| scheme.nick() == "dark");
+    let light = glib::EnumValue::from_value(&settings.property_value("gtk-interface-color-scheme"))
+        .is_some_and(|(_, scheme)| scheme.nick() == "light");
     if let Some(value) = provider
         .find_property("prefers-color-scheme")
         .and_then(|spec| glib::EnumClass::with_type(spec.value_type()))
-        .and_then(|class| class.to_value_by_nick(if dark { "dark" } else { "light" }))
+        .and_then(|class| class.to_value_by_nick(if light { "light" } else { "dark" }))
     {
         provider.set_property_from_value("prefers-color-scheme", &value);
     }
@@ -841,52 +870,62 @@ fn style() {
 }
 
 fn empty_state(workspace: &Path, entry: &gtk::TextView) -> gtk::Box {
-    let empty = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    let empty = gtk::Box::new(gtk::Orientation::Vertical, 0);
     empty.set_valign(gtk::Align::Center);
     empty.set_halign(gtk::Align::Center);
     empty.set_vexpand(true);
-    empty.append(&avatar("large"));
-    let hello = label("Hi, I'm Lucy.", "hero");
-    hello.set_halign(gtk::Align::Center);
-    empty.append(&hello);
-    for (text, class) in [
-        (
-            "AI memory, with a personality. I remember what we've worked on across your agents, and I can look at the files here when you ask.",
-            "muted",
-        ),
-        ("I'm asleep until you send something.", "note"),
-    ] {
-        let line = label(text, class);
-        line.set_halign(gtk::Align::Center);
-        line.set_xalign(0.5);
-        line.set_justify(gtk::Justification::Center);
-        line.set_max_width_chars(56);
-        empty.append(&line);
-    }
-    let place = label(&format!("Working in {}", home(workspace)), "workspace");
+    // QUINE's engineered panel: the blueprint grid under an ember rule.
+    let panel = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    panel.add_css_class("blueprint");
+    panel.set_width_request(520);
+    let hello = label("", "hero");
+    hello.set_markup(&format!("Lucy<span foreground=\"{EMBER}\">.</span>"));
+    panel.append(&hello);
+    let comment = label("", "comment");
+    comment.set_markup(&format!(
+        "<span foreground=\"{EMBER}\">//</span> ai memory, with a personality"
+    ));
+    panel.append(&comment);
+    let lead = label(
+        "I remember what we've worked on across your agents, and I can look at the files here when you ask.",
+        "lead",
+    );
+    lead.set_max_width_chars(52);
+    lead.set_margin_top(8);
+    panel.append(&lead);
+    panel.append(&label("I'm asleep until you send something.", "note"));
+    let place = label(&format!("~ working in {}", home(workspace)), "workspace");
     place.add_css_class("mono");
-    place.set_halign(gtk::Align::Center);
+    place.set_halign(gtk::Align::Start);
     place.set_wrap(false);
     place.set_ellipsize(pango::EllipsizeMode::Middle);
+    place.set_margin_top(6);
     place.set_tooltip_text(Some(
         "Lucy's tools work in this folder, and only after you approve them.",
     ));
-    empty.append(&place);
-    let ideas = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    ideas.set_margin_top(10);
-    ideas.set_halign(gtk::Align::Center);
+    panel.append(&place);
+    let ideas = gtk::FlowBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .column_spacing(8)
+        .row_spacing(8)
+        .max_children_per_line(2)
+        .homogeneous(false)
+        .build();
+    ideas.set_margin_top(14);
     for idea in SUGGESTIONS {
         let button = gtk::Button::with_label(idea);
         button.add_css_class("suggestion");
+        button.set_halign(gtk::Align::Start);
         button.set_tooltip_text(Some("Put this in the message box"));
         let entry = entry.clone();
         button.connect_clicked(move |_| {
             entry.buffer().set_text(idea);
             entry.grab_focus();
         });
-        ideas.append(&button);
+        ideas.insert(&button, -1);
     }
-    empty.append(&ideas);
+    panel.append(&ideas);
+    empty.append(&panel);
     empty
 }
 
@@ -905,7 +944,7 @@ struct Settings {
 fn settings() -> Settings {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 10);
     content.set_width_request(380);
-    content.append(&label("Model and provider", "section"));
+    content.append(&label("MODEL AND PROVIDER", "section"));
     let names: Vec<&str> = PROVIDERS.iter().map(|(_, name)| *name).collect();
     let provider = gtk::DropDown::from_strings(&names);
     content.append(&provider);
@@ -986,11 +1025,9 @@ fn build(app: &gtk::Application, client: &Value, workspace: &Path, handoff: Opti
     let header = gtk::HeaderBar::new();
     header.set_show_title_buttons(false);
     header.set_title_widget(Some(&gtk::Box::new(gtk::Orientation::Horizontal, 0)));
-    let identity = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    let mark = avatar("");
-    mark.set_valign(gtk::Align::Center);
-    identity.append(&mark);
-    let name = label("Lucy", "name");
+    let identity = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    let name = label("", "name");
+    name.set_markup(&format!("Lucy<span foreground=\"{EMBER}\">.</span>"));
     name.set_wrap(false);
     identity.append(&name);
     let pill = gtk::Box::new(gtk::Orientation::Horizontal, 6);
@@ -1003,7 +1040,7 @@ fn build(app: &gtk::Application, client: &Value, workspace: &Path, handoff: Opti
     pill_dot.add_css_class("dot");
     pill_dot.set_valign(gtk::Align::Center);
     pill.append(&pill_dot);
-    let pill_label = label("Asleep", "");
+    let pill_label = label("ASLEEP", "");
     pill_label.set_wrap(false);
     pill.append(&pill_label);
     identity.append(&pill);
@@ -1097,16 +1134,21 @@ fn build(app: &gtk::Application, client: &Value, workspace: &Path, handoff: Opti
     typing.set_child(Some(&scroll(&entry, 200)));
     typing.add_overlay(&placeholder);
     typing.set_hexpand(true);
-    let send = gtk::Button::with_label("Send");
+    let send = gtk::Button::with_label("Send →");
     send.add_css_class("send");
     send.set_valign(gtk::Align::End);
     send.set_tooltip_text(Some("Send (Enter)"));
     let composer = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     composer.add_css_class("composer");
+    let prompt = label("❯", "prompt");
+    prompt.set_wrap(false);
+    prompt.set_valign(gtk::Align::Start);
+    prompt.set_margin_top(7);
+    composer.append(&prompt);
     composer.append(&typing);
     composer.append(&send);
     let hint = label(
-        "Enter to send · Shift+Enter for a new line · Ctrl+W to close",
+        "enter to send · shift+enter for a new line · ctrl+w to close",
         "hint",
     );
     hint.set_xalign(0.5);
