@@ -63,7 +63,8 @@ if test -n "${LUCY_TEST_SCREENSHOT:-}"; then
     magick import -window "$window" "$LUCY_TEST_SCREENSHOT"
 fi
 printf '%s\n' 'Rust GTK window opened without loading the conversation index.'
-# Ctrl+W is the Close button's shortcut: the window goes, and the service holds no conversation.
+# Ctrl+W is the Close button's shortcut: the window goes and the process exits. What Close does
+# to a busy conversation is covered by the service tests (src/desktop/tests.rs).
 xdotool windowfocus --sync "$window"
 xdotool key ctrl+w
 for attempt in $(seq 1 20); do
@@ -76,13 +77,5 @@ if kill -0 "$ui_pid" 2>/dev/null; then
 fi
 wait "$ui_pid" || { cat "$LUCY_TEST_FIXTURE/ui.log"; exit 1; }
 ui_pid=
-python3 - "$XDG_RUNTIME_DIR/lucy/service.sock" <<'STATUS'
-import json, socket, sys
-with socket.socket(socket.AF_UNIX) as s:
-    s.connect(sys.argv[1])
-    s.sendall(b'{"op":"status"}\n')
-    reply = json.loads(s.makefile().readline())
-assert reply["active"] == [], reply
-STATUS
-printf '%s\n' 'Ctrl+W closed the window and ended its conversation.'
+printf '%s\n' 'Ctrl+W closed the window.'
 TEST
