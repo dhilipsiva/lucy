@@ -39,6 +39,8 @@ pub struct Session {
     pub task_continue: Option<String>,
     pub inferences: u8,
     pub(crate) task_clock: Option<task_model::runtime::ActiveClock>,
+    /// Set by close and sleep: a prompt already under way may not start this conversation again.
+    pub ended: bool,
 }
 type Sessions = BTreeMap<(String, String), Arc<Mutex<Session>>>;
 struct Running(Arc<Mutex<Session>>);
@@ -530,9 +532,13 @@ impl Service {
                 let mut s = session.lock().map_err(err)?;
                 s.cancel.store(true, Ordering::SeqCst);
                 s.pending.clear();
-                if !s.busy
-                    && let Some(task) = &s.task
-                {
+                s.ended |= op != "cancel";
+                if s.busy {
+                    // The running request may unwind on any path; its task ends once it lets go.
+                    let (session, cancelled) = (session.clone(), s.cancel.clone());
+                    let root = self.root.clone();
+                    std::thread::spawn(move || finish_when_released(&session, &cancelled, &root));
+                } else if let Some(task) = &s.task {
                     task_model::finish(&self.memory()?, &s.workspace, task, true)?;
                 }
             }
@@ -612,6 +618,10 @@ impl Service {
             };
             {
                 let mut s = session.lock().map_err(err)?;
+                // Closed while this prompt was saved: its cancel must not be replaced.
+                if s.ended {
+                    return Err("conversation ended".into());
+                }
                 s.cancel = Arc::new(AtomicBool::new(false));
                 s.turn = event.into();
                 s.pending.clear();
@@ -966,6 +976,7 @@ impl Service {
             task_continue: None,
             inferences: 0,
             task_clock: None,
+            ended: false,
         }));
         self.sessions
             .lock()
@@ -1330,6 +1341,37 @@ impl Service {
             let status=self.task_status(&session,true,true);
             format!("{error}\nTask evidence (data): {status}")
         })
+    }
+}
+
+/// Waits for a cancelled conversation's running request to let go of it, then ends the task it
+/// left open as interrupted. A turn begun since (a message after Stop) has its own cancel flag
+/// and keeps its task. Finishing is idempotent, so a task the request ended stays as it was.
+fn finish_when_released(
+    session: &Mutex<Session>,
+    cancelled: &Arc<AtomicBool>,
+    root: &std::path::Path,
+) {
+    let started = std::time::Instant::now();
+    while started.elapsed() < std::time::Duration::from_secs(15 * 60) {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let Ok(s) = session.lock() else { return };
+        if s.busy {
+            continue;
+        }
+        if !Arc::ptr_eq(&s.cancel, cancelled) {
+            return;
+        }
+        let (Some(task), workspace) = (s.task.clone(), s.workspace.clone()) else {
+            return;
+        };
+        drop(s);
+        if let Err(error) =
+            Store::open(root).and_then(|store| task_model::finish(&store, &workspace, &task, true))
+        {
+            eprintln!("Lucy could not end an interrupted task: {error}");
+        }
+        return;
     }
 }
 

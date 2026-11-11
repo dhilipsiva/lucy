@@ -12,6 +12,12 @@ mod tasks;
 mod tests;
 #[cfg(all(feature = "desktop-ui", target_os = "linux"))]
 mod ui;
+// The window's text logic, built and tested without GTK.
+#[cfg_attr(
+    not(all(feature = "desktop-ui", target_os = "linux")),
+    allow(dead_code)
+)]
+mod view;
 
 pub use core::Service;
 use serde_json::{Value, json};

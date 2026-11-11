@@ -1805,6 +1805,165 @@ fn network_reads_are_cancellable_and_size_bounded() {
     worker.join().unwrap();
 }
 
+fn task_ended_within(service: &Service, task: &str, limit: Duration) -> bool {
+    let started = Instant::now();
+    while started.elapsed() < limit {
+        let store = Store::open(&service.root).unwrap();
+        if crate::task_model::History::read(&store)
+            .unwrap()
+            .outcome(task)
+            .is_some()
+        {
+            return true;
+        }
+        // Each read holds the store's lock: poll gently, or the service never gets it.
+        drop(store);
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    false
+}
+
+/// A chat whose task is open with one proposal waiting: (client, task ID, pending action ID).
+fn open_task(
+    service: &Service,
+    workspace: &std::path::Path,
+    action: Value,
+) -> (Value, String, String) {
+    service.scripted(vec![task_declaration(), action]);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    let reply = service
+        .dispatch(request(
+            &client,
+            json!({"op":"chat","text":"Do the fixture task","event":"one","workspace":workspace}),
+        ))
+        .unwrap();
+    let task = reply["task_status"]["tasks"][0]["task"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let action = reply["pending"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+    (client, task, action)
+}
+
+#[test]
+fn closing_during_an_approved_http_call_stops_it_and_ends_the_task() {
+    let temp = tempfile::tempdir().unwrap();
+    let service = Arc::new(Service::new(temp.path().join("memory"), None));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/", listener.local_addr().unwrap());
+    let (accepted, connected) = mpsc::channel();
+    // Accepts the request and never answers it.
+    std::thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        accepted.send(()).unwrap();
+        std::thread::sleep(Duration::from_secs(30));
+        drop(stream);
+    });
+    let (client, task, action) = open_task(
+        &service,
+        temp.path(),
+        task_call("http", json!({"method":"GET","url":url})),
+    );
+    let approval = {
+        let (service, client) = (service.clone(), client.clone());
+        std::thread::spawn(move || {
+            let result = service.dispatch(request(
+                &client,
+                json!({"op":"approve","action":action,"allow":true}),
+            ));
+            (result, Instant::now())
+        })
+    };
+    connected.recv_timeout(Duration::from_secs(10)).unwrap();
+    assert!(!task_ended_within(&service, &task, Duration::ZERO));
+    let closed = Instant::now();
+    service
+        .dispatch(request(&client, json!({"op":"close"})))
+        .unwrap();
+    let (result, returned) = approval.join().unwrap();
+    assert!(result.is_err(), "{result:?}");
+    assert!(returned - closed < Duration::from_secs(5));
+    assert!(task_ended_within(&service, &task, Duration::from_secs(5)));
+}
+
+#[test]
+fn closing_while_a_prompt_is_set_up_ends_the_open_task() {
+    let temp = tempfile::tempdir().unwrap();
+    let service = Arc::new(Service::new(temp.path().join("memory"), None));
+    let (client, task, _) = open_task(
+        &service,
+        temp.path(),
+        task_call("write", json!({"path":"note.txt","text":"fixture"})),
+    );
+    let (entered, waiting) = mpsc::channel();
+    let (release, held) = mpsc::channel::<()>();
+    let held = std::sync::Mutex::new(held);
+    service.on_recall(move |query| {
+        if query.contains("slow") {
+            entered.send(()).unwrap();
+            held.lock().unwrap().recv().unwrap();
+        }
+        Ok(())
+    });
+    let second = {
+        let (service, client, workspace) =
+            (service.clone(), client.clone(), temp.path().to_owned());
+        std::thread::spawn(move || {
+            service.dispatch(request(
+                &client,
+                json!({"op":"chat","text":"a slow follow-up","event":"two","workspace":workspace}),
+            ))
+        })
+    };
+    waiting.recv_timeout(Duration::from_secs(30)).unwrap();
+    service
+        .dispatch(request(&client, json!({"op":"close"})))
+        .unwrap();
+    release.send(()).unwrap();
+    assert!(second.join().unwrap().is_err());
+    assert!(task_ended_within(&service, &task, Duration::from_secs(5)));
+    assert!(!temp.path().join("note.txt").exists());
+}
+
+#[test]
+fn stop_while_busy_ends_the_task_unless_a_new_turn_began() {
+    for new_turn in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let service = Service::new(temp.path().join("memory"), None);
+        let (client, task, _) = open_task(
+            &service,
+            temp.path(),
+            task_call("write", json!({"path":"note.txt","text":"fixture"})),
+        );
+        let session = service
+            .active(
+                client["source"].as_str().unwrap(),
+                client["session"].as_str().unwrap(),
+            )
+            .unwrap();
+        session.lock().unwrap().busy = true;
+        service
+            .dispatch(request(&client, json!({"op":"cancel"})))
+            .unwrap();
+        {
+            // The cancelled request lets go; a message sent after Stop brings its own flag.
+            let mut s = session.lock().unwrap();
+            if new_turn {
+                s.cancel = Arc::new(AtomicBool::new(false));
+            }
+            s.busy = false;
+        }
+        let limit = Duration::from_millis(if new_turn { 400 } else { 5000 });
+        assert_eq!(task_ended_within(&service, &task, limit), !new_turn);
+    }
+}
+
 #[test]
 fn cancellation_stops_command_process_groups() {
     let temp = tempfile::tempdir().unwrap();

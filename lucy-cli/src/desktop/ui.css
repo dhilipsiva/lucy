@@ -1,0 +1,484 @@
+/* Ask Lucy. The colours follow Lucy's room page: dark ink, a teal accent, amber while she
+   waits for you and coral when something failed. Light first; dark follows the desktop. */
+window.lucy {
+  --ink: #f5f6f4;
+  --surface: #ffffff;
+  --raised: #eceeec;
+  --line: #d9dedb;
+  --text: #15191d;
+  --muted: #5b6570;
+  --accent: #0d8a75;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(13, 138, 117, 0.11);
+  --amber: #9a5c00;
+  --amber-soft: rgba(214, 140, 20, 0.12);
+  --coral: #c0402c;
+  --coral-soft: rgba(214, 80, 58, 0.11);
+  --user: #dff1ec;
+  --added: rgba(32, 160, 110, 0.16);
+  --removed: rgba(214, 80, 58, 0.15);
+}
+
+@media (prefers-color-scheme: dark) {
+  window.lucy {
+    --ink: #0d1014;
+    --surface: #13171c;
+    --raised: #1b2027;
+    --line: #29303a;
+    --text: #e6e9ed;
+    --muted: #8d97a3;
+    --accent: #2fd6b5;
+    --accent-ink: #04231d;
+    --accent-soft: rgba(47, 214, 181, 0.12);
+    --amber: #f2b84b;
+    --amber-soft: rgba(242, 184, 75, 0.11);
+    --coral: #f2765f;
+    --coral-soft: rgba(242, 118, 95, 0.12);
+    --user: #123a33;
+    --added: rgba(47, 214, 140, 0.14);
+    --removed: rgba(242, 118, 95, 0.15);
+  }
+}
+
+window.lucy {
+  background-color: var(--ink);
+  color: var(--text);
+  font-family: "Noto Sans", sans-serif;
+}
+
+window.lucy .mono,
+window.lucy .code label,
+window.lucy textview.diff text,
+window.lucy textview.raw text {
+  font-family: "Fira Code", monospace;
+  /* Commands and file text are shown exactly: no ligature may join `--` or `=>`. */
+  font-feature-settings: "liga" 0, "calt" 0;
+}
+
+window.lucy button:focus-visible,
+window.lucy menubutton > button:focus-visible {
+  outline-color: var(--accent);
+}
+
+/* Header */
+window.lucy headerbar {
+  background: var(--ink);
+  color: var(--text);
+  box-shadow: none;
+  border-bottom: 1px solid var(--line);
+  min-height: 54px;
+  padding: 0 12px;
+}
+
+window.lucy .avatar {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-radius: 999px;
+  min-width: 30px;
+  min-height: 30px;
+  font-weight: 800;
+  font-size: 15px;
+}
+
+window.lucy .avatar.large {
+  min-width: 68px;
+  min-height: 68px;
+  font-size: 32px;
+}
+
+window.lucy .avatar.small {
+  min-width: 26px;
+  min-height: 26px;
+  font-size: 13px;
+}
+
+window.lucy .name {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+window.lucy .pill {
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+window.lucy .pill .dot {
+  min-width: 8px;
+  min-height: 8px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+window.lucy .pill.ready,
+window.lucy .pill.thinking {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+window.lucy .pill.ready .dot {
+  background: var(--accent);
+}
+
+window.lucy .pill.approval {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+window.lucy .pill.approval .dot {
+  background: var(--amber);
+}
+
+window.lucy .pill.problem {
+  background: var(--coral-soft);
+  color: var(--coral);
+}
+
+window.lucy .pill.problem .dot {
+  background: var(--coral);
+}
+
+window.lucy headerbar button,
+window.lucy headerbar menubutton > button {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: none;
+  padding: 4px 12px;
+  min-height: 30px;
+}
+
+window.lucy headerbar button:hover,
+window.lucy headerbar menubutton > button:hover,
+window.lucy headerbar menubutton > button:checked {
+  background: var(--raised);
+}
+
+window.lucy headerbar button.close {
+  font-weight: 600;
+}
+
+window.lucy headerbar button.close:hover {
+  background: var(--coral-soft);
+  border-color: var(--coral);
+  color: var(--coral);
+}
+
+/* Conversation */
+window.lucy .banner {
+  background: var(--coral-soft);
+  border: 1px solid var(--coral);
+  border-radius: 12px;
+  padding: 10px 12px 10px 14px;
+}
+
+window.lucy .hero {
+  font-size: 26px;
+  font-weight: 800;
+}
+
+window.lucy .muted,
+window.lucy .note,
+window.lucy .thinking label {
+  color: var(--muted);
+}
+
+window.lucy .note {
+  font-size: 12.5px;
+}
+
+window.lucy .workspace {
+  background: var(--raised);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+window.lucy button.suggestion {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: none;
+  padding: 9px 14px;
+}
+
+window.lucy button.suggestion:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+window.lucy .bubble {
+  background: var(--user);
+  color: var(--text);
+  border-radius: 16px 16px 4px 16px;
+  padding: 10px 14px;
+}
+
+window.lucy .reply label {
+  color: var(--text);
+}
+
+window.lucy .reply .heading {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+window.lucy .reply .marker {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+window.lucy .code {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+window.lucy .code .codebar {
+  border-bottom: 1px solid var(--line);
+  padding: 2px 4px 2px 12px;
+}
+
+window.lucy .code .codebar label {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+window.lucy .code > label {
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+window.lucy button.chip {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  padding: 2px 9px;
+  min-height: 24px;
+  font-size: 12px;
+}
+
+window.lucy button.chip:hover,
+window.lucy button.chip:checked {
+  background: var(--raised);
+  color: var(--text);
+}
+
+window.lucy .memory {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+window.lucy .memory .source {
+  color: var(--accent);
+  font-size: 11.5px;
+}
+
+window.lucy .memory .excerpt {
+  font-size: 13px;
+}
+
+/* Approval and task cards */
+window.lucy .card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+window.lucy .card.approval {
+  border-left: 4px solid var(--amber);
+}
+
+window.lucy .card.outcome {
+  border-left: 4px solid var(--accent);
+}
+
+window.lucy .card.outcome.failure {
+  border-left-color: var(--coral);
+}
+
+window.lucy .card.outcome.inconclusive {
+  border-left-color: var(--amber);
+}
+
+window.lucy .card-title {
+  font-weight: 700;
+  font-size: 14.5px;
+}
+
+window.lucy .card .key {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+window.lucy .card .value {
+  font-size: 13px;
+}
+
+window.lucy textview.diff,
+window.lucy textview.diff text,
+window.lucy textview.raw,
+window.lucy textview.raw text {
+  background-color: var(--raised);
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+window.lucy .diffbox {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+window.lucy button.approve {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  box-shadow: none;
+  border-radius: 10px;
+  font-weight: 700;
+  padding: 6px 18px;
+}
+
+window.lucy button.approve:hover {
+  filter: brightness(1.08);
+}
+
+window.lucy button.deny {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--line);
+  box-shadow: none;
+  border-radius: 10px;
+  padding: 6px 16px;
+}
+
+window.lucy button.deny:hover {
+  border-color: var(--coral);
+  color: var(--coral);
+}
+
+window.lucy .decision {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+window.lucy .verdict {
+  font-weight: 800;
+  min-width: 16px;
+}
+
+window.lucy .verdict.success {
+  color: var(--accent);
+}
+
+window.lucy .verdict.failure {
+  color: var(--coral);
+}
+
+window.lucy .verdict.inconclusive {
+  color: var(--amber);
+}
+
+window.lucy .verdict.unchecked {
+  color: var(--muted);
+}
+
+window.lucy .taskbar {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+
+window.lucy .taskbar .criterion {
+  font-size: 12.5px;
+}
+
+/* Composer */
+window.lucy .composer {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 6px 6px 6px 14px;
+}
+
+window.lucy .composer:focus-within {
+  border-color: var(--accent);
+}
+
+window.lucy .composer textview,
+window.lucy .composer textview text {
+  background: transparent;
+  color: var(--text);
+}
+
+window.lucy .composer .placeholder {
+  color: var(--muted);
+}
+
+window.lucy button.send {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  box-shadow: none;
+  border-radius: 12px;
+  font-weight: 700;
+  padding: 6px 18px;
+  min-height: 36px;
+}
+
+window.lucy button.send.stop {
+  background: var(--coral);
+  color: #ffffff;
+}
+
+window.lucy button.send:disabled {
+  opacity: 0.45;
+}
+
+window.lucy .hint {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+/* Settings */
+window.lucy popover.settings > contents {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+window.lucy popover.settings .section {
+  font-weight: 700;
+}
+
+window.lucy popover.settings list {
+  background: transparent;
+}
+
+window.lucy popover.settings list row {
+  padding: 5px 8px;
+  border-radius: 8px;
+}
+
+window.lucy popover.settings button.use {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  box-shadow: none;
+  border-radius: 10px;
+  font-weight: 700;
+}

@@ -17,7 +17,14 @@ commands retain their source files and also refresh the shared local Rust index.
 See [shared memory and backups](../STORE.md) for registration and recovery.
 
 `lucy ui` opens the named Ask Lucy window without inference. Sending there or in
-`lucy chat` invokes Lucy. `lucy agent 'inspect this project' --workspace DIR`
+`lucy chat` invokes Lucy. In the window, Enter sends and Shift+Enter starts a new
+line; replies show the memories they used, approval requests show every argument
+(a file write shows its changed lines) with the raw request one click away, and an
+open task shows its criteria above the message box. Send becomes Stop while Lucy
+works. The header's **Close** button, Ctrl+W and Ctrl+Q close the window for
+desktops that draw no window controls: closing stops the running request and any
+approved command or HTTP call, and ends an open task as interrupted once the
+request lets go. `lucy agent 'inspect this project' --workspace DIR`
 runs a task through the same service and tools; `lucy agent` starts an interactive
 terminal conversation. Start `lucy serve` if the user service is unavailable.
 Ctrl+C cancels the terminal's service session and its running actions.
