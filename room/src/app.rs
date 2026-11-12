@@ -122,6 +122,16 @@ pub struct App {
     source_label: String,
     drawer_body: String,
     mirrored_version: u64,
+    /// The conversation at the centre of the room (roadmap/N9.md), and what it needs.
+    chat: Option<crate::chat::Chat>,
+    settings: crate::settings::Settings,
+    remote: Option<crate::backends::Stream>,
+    remote_visible: crate::model::Visible,
+    generation_label: String,
+    generation_model: String,
+    chat_subject: Option<String>,
+    notice: Option<String>,
+    chat_drawn: (u64, usize),
 }
 
 fn now_ms() -> f64 {
@@ -248,7 +258,19 @@ pub fn boot() -> Result<(), String> {
         source_label: String::new(),
         drawer_body: String::new(),
         mirrored_version: 0,
+        chat: crate::chat::Chat::new(&document),
+        settings: crate::settings::load(),
+        remote: None,
+        remote_visible: Default::default(),
+        generation_label: String::new(),
+        generation_model: String::new(),
+        chat_subject: None,
+        notice: None,
+        chat_drawn: (0, 0),
     };
+    if let Some(c) = &app.chat {
+        c.show(app.settings.view == "chat");
+    }
     app.detect_input();
     app.log(&format!(
         "wake: lucy · origin main · nothing leaves this tab · {}",
@@ -1101,6 +1123,11 @@ impl App {
         let Some(e) = self.entities.get(i).cloned() else {
             return;
         };
+        if via == "pointer" && !self.xr_active && self.chat.is_some() {
+            self.show_conversation(true);
+            self.ask_about(&e.name);
+            return;
+        }
         self.world.focus_cast(&self.scene, i);
         self.subject = Some(i);
         self.group = "cast".into();
@@ -1421,6 +1448,7 @@ impl App {
     }
     fn answer_submission(&mut self, s: crate::desk::Submission) {
         match s.mode.as_str() {
+            "lucy" => self.answer_lucy(s),
             "nibli" => {
                 let id = self.engine.ask(&s.text);
                 self.typed_queries.insert(id);
@@ -1528,12 +1556,18 @@ impl App {
     }
     fn finish_words(&mut self, text: &str, status: &str) {
         self.desk.generating = false;
+        let label = if self.generation_label.is_empty() {
+            "WORDS · LOCAL MODEL".to_string()
+        } else {
+            format!("WORDS · {}", self.generation_label.to_uppercase())
+        };
+        self.generation_label.clear();
         if let Some(mut message) = self.generation.take() {
             message.text = text.into();
             message.provenance.status = status.into();
             if !text.is_empty() {
                 self.desk.store(message);
-                self.say(text, Verdict::Words, Some("WORDS · LOCAL MODEL"));
+                self.say(text, Verdict::Words, Some(&label));
                 self.mirrors.set_answer(text);
                 self.answer = Some(AnswerCard {
                     verdict: Verdict::Words,
@@ -1638,6 +1672,10 @@ impl App {
         }
     }
     fn handle(&mut self, ev: InputEvent) {
+        if self.in_conversation() && !matches!(ev, InputEvent::Draft(_) | InputEvent::Typing) {
+            self.keys.clear();
+            return;
+        }
         let waking = self.phase == Phase::Wake && !self.wake_skipped;
         match ev {
             InputEvent::Draft(text) => {
@@ -1998,12 +2036,21 @@ impl App {
         if changed {
             self.version += 1;
         }
+        let chat_events: Vec<crate::chat::ChatEvent> = self
+            .chat
+            .as_ref()
+            .map(|c| c.events.borrow_mut().drain(..).collect())
+            .unwrap_or_default();
+        for e in chat_events {
+            self.on_chat(e);
+        }
         self.poll_words();
+        self.poll_remote();
         if self.demo.tick(now) {
             self.version += 1;
         }
         if let Some(s) = submit {
-            if self.subject.is_some() {
+            if self.subject.is_some() && s.mode != "lucy" {
                 self.relay = Some(s);
                 self.group = "talk".into();
                 self.say("I can relay that question about this presence. Put Nibli to the engine, or look for an attributed record?",Verdict::Recall,Some("RELAY"));
@@ -2047,7 +2094,7 @@ impl App {
         for e in events {
             self.handle(e);
         }
-        if !self.xr_active {
+        if !self.xr_active && !self.in_conversation() {
             self.poll_keys(dt);
             self.poll_pads(dt);
         }
@@ -2067,6 +2114,11 @@ impl App {
         }
         // the engine: post what waits (or, on the main thread, run one query now)
         self.engine.pump();
+        if self.in_conversation() {
+            self.render_chat();
+            self.engine.frame_drawn();
+            return;
+        }
         self.world.step(&mut self.scene, t, dt);
         // render the scene
         let view = self.world.view();
@@ -2221,5 +2273,437 @@ impl App {
             self.hud.render(&self.gl, quad_mesh, self.w, self.h);
         }
         self.engine.frame_drawn();
+    }
+}
+
+// ── the conversation (roadmap/N9.md) ──
+impl App {
+    fn in_conversation(&self) -> bool {
+        self.chat.is_some() && self.settings.view == "chat" && !self.xr_active
+    }
+    fn show_conversation(&mut self, chat: bool) {
+        self.settings.view = if chat { "chat" } else { "scene" }.into();
+        crate::settings::save(&self.settings);
+        if let Some(c) = &self.chat {
+            c.show(chat);
+        }
+        self.keys.clear();
+        self.chat_drawn = (0, 0);
+        self.version += 1;
+    }
+    fn ask_about(&mut self, name: &str) {
+        self.chat_subject = Some(name.to_string());
+        let q = format!("Who is {}?", crate::script::display(name));
+        self.send_lucy(&q);
+    }
+    /// A visitor's message from the conversation: saved first, answered once the save confirms.
+    fn send_lucy(&mut self, text: &str) {
+        self.notice = None;
+        self.version += 1;
+        if !self.desk.ready {
+            self.notice = Some("My device journal is still opening; try again in a moment.".into());
+            return;
+        }
+        if self.desk.generating || self.desk.submitting.is_some() || self.remote.is_some() {
+            self.notice =
+                Some("I'm still answering. Stop me first, or wait for me to finish.".into());
+            return;
+        }
+        let (mode, body) = if let Some(rest) = text.strip_prefix("/nibli ") {
+            ("nibli", rest)
+        } else if let Some(rest) = text.strip_prefix("/recall ") {
+            ("recall", rest)
+        } else {
+            ("lucy", text)
+        };
+        // the panel above the transcript closes, so my reply is in view (at phone width it
+        // would push it off the screen)
+        if let Some(c) = &mut self.chat {
+            c.open_panel(None);
+        }
+        let previous = std::mem::replace(&mut self.desk.mode, mode.into());
+        self.desk.draft = body.to_string();
+        self.desk.submit();
+        self.desk.mode = previous;
+    }
+    fn on_chat(&mut self, e: crate::chat::ChatEvent) {
+        use crate::chat::ChatEvent as E;
+        self.version += 1;
+        match e {
+            E::Send(t) => self.send_lucy(&t),
+            E::Stop => self.stop_generation(),
+            E::Subject(Some(n)) => self.ask_about(&n),
+            E::Subject(None) => self.chat_subject = None,
+            E::Filter(f) => {
+                if let Some(c) = &mut self.chat {
+                    c.set_filter(&f);
+                }
+            }
+            E::Panel(p) => {
+                if let Some(c) = &mut self.chat {
+                    c.open_panel(p);
+                }
+            }
+            E::Backend(b) => {
+                self.settings.backend = b;
+                self.notice = None;
+            }
+            E::Provider(p) => {
+                self.settings.provider_model = crate::backends::hosted_presets()
+                    .into_iter()
+                    .find(|x| x.name == p)
+                    .map(|x| x.model)
+                    .unwrap_or_default();
+                self.settings.provider = p;
+            }
+            E::ProviderModel(m) => self.settings.provider_model = m.trim().into(),
+            E::Key(k) => {
+                crate::settings::set_key(&self.settings.provider, &k);
+                if let Some(c) = &mut self.chat {
+                    c.refresh_panel();
+                }
+            }
+            E::Accept => {
+                let p = self.settings.provider.clone();
+                if !self.settings.accepted.contains(&p) {
+                    self.settings.accepted.push(p);
+                }
+            }
+            E::OllamaBase(u) => self.settings.ollama_base = u.trim().into(),
+            E::OllamaModel(m) => self.settings.ollama_model = m.trim().into(),
+            E::LoadWords => {
+                if let Err(err) = self.words.load() {
+                    self.notice = Some(err);
+                }
+            }
+            E::StopWords => self.words.stop(),
+            E::Scene => self.show_conversation(false),
+            E::Conversation => self.show_conversation(true),
+            E::Export(all) => self.desk.export(!all),
+            E::Imported(text) => self.desk.restore_text(text),
+            E::Persist => self.desk.persist(),
+            E::Forget => {
+                let confirming = self.desk.forget_confirm;
+                self.desk.forget();
+                if confirming {
+                    crate::settings::forget_all();
+                    let view = self.settings.view.clone();
+                    self.settings = Default::default();
+                    self.settings.view = view;
+                    self.chat_subject = None;
+                }
+            }
+            E::Sync => {
+                let q = web_sys::window()
+                    .and_then(|w| w.location().search().ok())
+                    .unwrap_or_default();
+                self.desk.sync(&q);
+            }
+        }
+        crate::settings::save(&self.settings);
+    }
+    fn stop_generation(&mut self) {
+        if let Some(r) = &self.remote {
+            r.stop();
+        }
+        if self.words.busy {
+            self.words.stop();
+        }
+    }
+    fn answer_lucy(&mut self, s: crate::desk::Submission) {
+        match self.settings.backend.clone().as_str() {
+            "words" if self.words.ready => {
+                self.generation_label = "my model".into();
+                self.answer_submission(crate::desk::Submission {
+                    mode: "words".into(),
+                    ..s
+                });
+            }
+            "words" => {
+                self.notice = Some("My model isn't loaded yet: open the model menu to load it. Here's my scripted answer meanwhile.".into());
+                self.scripted(s);
+            }
+            "provider" => self.start_provider(s),
+            "ollama" => self.start_ollama(s),
+            _ => self.scripted(s),
+        }
+    }
+    fn entities_now(&self) -> Vec<Entity> {
+        if self.entities.is_empty() {
+            cast::presences(&self.facts)
+        } else {
+            self.entities.clone()
+        }
+    }
+    /// My scripted reply, from my public memory only; its sources are kept as references.
+    fn scripted(&mut self, s: crate::desk::Submission) {
+        if self.facts.is_empty() {
+            if let Some((t, _, _)) = self.texts.get("memory") {
+                self.facts = fact_lines(t);
+            }
+        }
+        let entities = self.entities_now();
+        let reply = {
+            let memory = &self.desk.memory;
+            let records = |q: &str| -> Vec<(String, String)> {
+                memory
+                    .search(q, 3)
+                    .into_iter()
+                    .map(|r| (r.citation(), r.text))
+                    .collect()
+            };
+            let notes = |name: &str| -> Vec<(String, String)> {
+                memory
+                    .records
+                    .iter()
+                    .filter(|r| {
+                        r.payload.get("kind").and_then(|k| k.as_str()) == Some("note")
+                            && r.text.contains(name)
+                    })
+                    .take(1)
+                    .map(|r| (r.citation(), r.text.clone()))
+                    .collect()
+            };
+            let k = crate::script::Knowledge {
+                facts: &self.facts,
+                entities: &entities,
+                standing: &self.standing,
+                records: &records,
+                notes: &notes,
+            };
+            crate::script::reply(&s.text, self.chat_subject.as_deref(), &k)
+        };
+        if let Some(sub) = &reply.subject {
+            self.chat_subject = Some(sub.clone());
+        }
+        let refs = reply
+            .sources
+            .iter()
+            .map(|src| lucy_room_memory::Reference {
+                peer: if src.contains('(') {
+                    "my direct memory".into()
+                } else {
+                    "my files".into()
+                },
+                id: src.clone(),
+                timestamp: String::new(),
+                sha256: lucy_room_memory::digest(src.as_bytes()),
+            })
+            .collect();
+        self.desk
+            .record_reply(&reply.text, "scripted", Some("script-1"), refs);
+        self.say(&reply.text, Verdict::Recall, Some("SCRIPTED"));
+    }
+    fn build_context(
+        &mut self,
+        s: &crate::desk::Submission,
+        budget: crate::context::Budget,
+    ) -> (String, Vec<(String, String)>) {
+        let recalled = self.desk.recall(&s.text, &s.id);
+        let entities = self.entities_now();
+        let subject = self
+            .chat_subject
+            .as_deref()
+            .and_then(|n| entities.iter().find(|e| e.name == n));
+        let direct = crate::context::direct(&s.text, &self.facts, subject);
+        let evidence = crate::context::evidence(&direct, "", &recalled, budget);
+        let turns: Vec<(&str, &str)> = self
+            .desk
+            .archive
+            .messages
+            .iter()
+            .filter(|m| m.id != s.id && m.session == self.desk.session)
+            .map(|m| {
+                (
+                    if m.role == "user" {
+                        "user"
+                    } else {
+                        "assistant"
+                    },
+                    m.text.as_str(),
+                )
+            })
+            .collect();
+        let history = crate::context::turns(turns.into_iter(), budget);
+        self.generation_context = evidence.clone();
+        (evidence, history)
+    }
+    fn start_provider(&mut self, s: crate::desk::Submission) {
+        let p = self.settings.provider.clone();
+        let who = crate::backends::label(&p);
+        let Some(mut preset) = crate::backends::hosted_presets()
+            .into_iter()
+            .find(|x| x.name == p)
+        else {
+            return self.scripted(s);
+        };
+        // a test names a loopback stand-in for the provider; nothing else may redirect a key
+        if let Some(base) = web_sys::window()
+            .and_then(|w| w.location().search().ok())
+            .and_then(|q| web_sys::UrlSearchParams::new_with_str(&q).ok())
+            .and_then(|q| q.get("provider_base"))
+            .filter(|b| b.starts_with("http://127.0.0.1:") || b.starts_with("http://localhost:"))
+        {
+            preset.endpoint = base;
+        }
+        let Some(key) = crate::settings::key(&p) else {
+            self.notice = Some(format!(
+                "Add your {who} key in the model menu first. Here's my scripted answer meanwhile."
+            ));
+            return self.scripted(s);
+        };
+        if !self.settings.accepted.contains(&p) {
+            self.notice = Some(format!("Accept the notice for {who} in the model menu first. Here's my scripted answer meanwhile."));
+            return self.scripted(s);
+        }
+        let model = if self.settings.provider_model.is_empty() {
+            preset.model.clone()
+        } else {
+            self.settings.provider_model.clone()
+        };
+        if model.is_empty() {
+            self.notice = Some(format!(
+                "Name a {who} model in the model menu first. Here's my scripted answer meanwhile."
+            ));
+            return self.scripted(s);
+        }
+        let (evidence, history) = self.build_context(&s, crate::context::LARGE);
+        let req = crate::backends::hosted(&preset, &key, &model, &evidence, &history, &s.text);
+        self.start_remote(req, format!("{p}:{model}"));
+    }
+    fn start_ollama(&mut self, s: crate::desk::Submission) {
+        let model = self.settings.ollama_model.trim().to_string();
+        if model.is_empty() {
+            self.notice = Some("Name your Ollama model in the model menu first (for example qwen3). Here's my scripted answer meanwhile.".into());
+            return self.scripted(s);
+        }
+        let (evidence, history) = self.build_context(&s, crate::context::LARGE);
+        let base = self.settings.ollama_base.clone();
+        let req = crate::backends::ollama(&base, &model, &evidence, &history, &s.text);
+        self.start_remote(req, format!("ollama:{model}"));
+    }
+    fn start_remote(&mut self, req: crate::backends::RemoteRequest, model: String) {
+        let label = format!("{} · {}", req.label, req.model);
+        match crate::backends::start(req) {
+            Ok(stream) => {
+                let mut message = self.desk.message("assistant", "", "interrupted");
+                message.provenance.model = Some(model.clone());
+                message.provenance.references = self.desk.references.clone();
+                self.generation = Some(message);
+                self.generation_label = label;
+                self.generation_model = model;
+                self.remote_visible = Default::default();
+                self.remote = Some(stream);
+                self.desk.generating = true;
+                self.desk.stream_failed = false;
+            }
+            Err(e) => {
+                self.notice = Some(e.clone());
+                self.desk.record_answer(&e);
+            }
+        }
+    }
+    fn poll_remote(&mut self) {
+        let Some(stream) = &self.remote else {
+            return;
+        };
+        let events: Vec<crate::backends::Event> = stream.events.borrow_mut().drain(..).collect();
+        if events.is_empty() {
+            return;
+        }
+        self.version += 1;
+        for ev in events {
+            match ev {
+                crate::backends::Event::Delta(t) => {
+                    let text = self.remote_visible.push(&t).to_string();
+                    if let Some(m) = self.generation.as_mut() {
+                        m.text = text;
+                    }
+                }
+                crate::backends::Event::Done => {
+                    let text = self.remote_visible.text.trim().to_string();
+                    self.remote = None;
+                    self.finish_words(&text, "complete");
+                    return;
+                }
+                crate::backends::Event::Error(e) => {
+                    let text = self.remote_visible.text.trim().to_string();
+                    self.remote = None;
+                    let stopped = e.starts_with("stopped");
+                    self.finish_words(&text, "interrupted");
+                    if !stopped {
+                        self.notice = Some(e.clone());
+                        self.desk.record_answer(&e);
+                    }
+                    return;
+                }
+            }
+        }
+    }
+    fn pill(&self) -> String {
+        if !self.desk.ready {
+            return "OPENING".into();
+        }
+        if self.desk.generating || self.remote.is_some() {
+            let who = if self.generation_label.is_empty() {
+                "my model".to_string()
+            } else {
+                self.generation_label.clone()
+            };
+            return format!("WRITING · {}", who.to_uppercase());
+        }
+        match self.settings.backend.as_str() {
+            "words" if self.words.ready => "MY MODEL".into(),
+            "words" if self.words.busy => "MY MODEL · LOADING".into(),
+            "words" => "MY MODEL · NOT LOADED".into(),
+            "provider" => crate::backends::label(&self.settings.provider).to_uppercase(),
+            "ollama" => "OLLAMA".into(),
+            _ => "SCRIPTED".into(),
+        }
+    }
+    fn render_chat(&mut self) {
+        let generating = self.desk.generating || self.remote.is_some();
+        let len = self
+            .generation
+            .as_ref()
+            .filter(|_| generating)
+            .map(|g| g.text.len())
+            .unwrap_or(usize::MAX);
+        if self.chat_drawn == (self.version, len) {
+            return;
+        }
+        self.chat_drawn = (self.version, len);
+        let pill = self.pill();
+        let entities = self.entities_now();
+        let label = if self.generation_label.is_empty() {
+            "my model".to_string()
+        } else {
+            self.generation_label.clone()
+        };
+        let streaming = self
+            .generation
+            .as_ref()
+            .filter(|_| generating)
+            .map(|g| (g.id.as_str(), g.text.as_str(), label.as_str()));
+        let view = crate::chat::View {
+            messages: &self.desk.archive.messages,
+            session: &self.desk.session,
+            streaming,
+            entities: &entities,
+            subject: self.chat_subject.as_deref(),
+            pill,
+            busy: generating,
+            settings: &self.settings,
+            words_status: &self.words.status,
+            words_ready: self.words.ready,
+            words_busy: self.words.busy,
+            peers: &self.desk.memory.status,
+            journal: &self.desk.status,
+            notice: self.notice.as_deref(),
+            forget_confirm: self.desk.forget_confirm,
+        };
+        if let Some(chat) = self.chat.as_mut() {
+            chat.render(&view);
+        }
     }
 }

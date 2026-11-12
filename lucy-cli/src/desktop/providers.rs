@@ -66,14 +66,18 @@ fn write(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
         .map_err(err)?;
     fs::rename(temp, path).map_err(err)
 }
+/// The catalog my room shares (`providers.json` at my origin's root); the local entry takes the
+/// model this machine is configured with.
 pub fn presets() -> Value {
-    json!([
-        {"name":"ollama","endpoint":"http://127.0.0.1:11434","model":model(),"key_env":"","offer":"Local inference"},
-        {"name":"nvidia","endpoint":"https://integrate.api.nvidia.com/v1","key_env":"NVIDIA_API_KEY","offer":"Development access; check account quota","docs":"https://build.nvidia.com/"},
-        {"name":"groq","endpoint":"https://api.groq.com/openai/v1","key_env":"GROQ_API_KEY","offer":"Free plan with model-specific limits","docs":"https://console.groq.com/docs/rate-limits"},
-        {"name":"gemini","endpoint":"https://generativelanguage.googleapis.com/v1beta/openai","key_env":"GEMINI_API_KEY","offer":"Free tier on eligible models; data-use terms differ","docs":"https://ai.google.dev/gemini-api/docs/billing/"},
-        {"name":"openrouter","endpoint":"https://openrouter.ai/api/v1","key_env":"OPENROUTER_API_KEY","model":"openrouter/free","offer":"Free models subject to daily limits","docs":"https://openrouter.ai/pricing/"}
-    ])
+    let mut v: Value = serde_json::from_str(include_str!("../../../providers.json"))
+        .expect("providers.json is the catalog");
+    if let Some(local) = v
+        .as_array_mut()
+        .and_then(|a| a.iter_mut().find(|p| p["name"] == "ollama"))
+    {
+        local["model"] = json!(model());
+    }
+    v
 }
 /// A preset as a provider with no model chosen yet.
 fn preset(name: &str) -> Option<Provider> {

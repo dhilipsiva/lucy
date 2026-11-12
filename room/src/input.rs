@@ -76,6 +76,13 @@ pub fn attach(canvas: &HtmlCanvasElement, q: Queue) {
         let cb =
             Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(move |e: web_sys::KeyboardEvent| {
                 let key = e.key();
+                // The conversation's fields and buttons own their keys (roadmap/N9.md).
+                if e.target()
+                    .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+                    .is_some_and(|t| t.closest("#ask, #ask-return").ok().flatten().is_some())
+                {
+                    return;
+                }
                 // Native links own their keyboard events; Enter must follow the
                 // return link instead of moving focus into the room's composer.
                 if e.target()

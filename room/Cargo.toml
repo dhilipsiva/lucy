@@ -55,6 +55,7 @@ web-sys = { version = "0.3", features = [
   "console", "Cache", "CacheStorage", "ReadableStream", "ReadableStreamDefaultReader", "WorkerLocation", "AbortController", "AbortSignal",
   "Storage", "StorageManager", "Crypto", "HtmlTextAreaElement", "HtmlAnchorElement", "HtmlInputElement", "File", "FileList", "Blob", "BlobPropertyBag", "Url", "FocusEvent", "InputEvent", "CompositionEvent", "DomException",
   "IdbFactory", "IdbOpenDbRequest", "IdbVersionChangeEvent", "IdbDatabase", "IdbObjectStore", "IdbTransaction", "IdbTransactionMode", "IdbRequest", "DomStringList",
+  "HtmlButtonElement", "HtmlSelectElement", "HtmlOptionElement", "HtmlDetailsElement", "NodeList", "Clipboard",
 ] }
 
 [profile.release]

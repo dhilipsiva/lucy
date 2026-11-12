@@ -27,6 +27,33 @@ pub struct Memory {
     pub records: Vec<Record>,
     pub status: Vec<String>,
     pub space: Option<HashSpace>,
+    /// Peers whose signed memory moved on since this browser last synced them.
+    pub newer: Vec<String>,
+}
+/// A page load reads what this browser already holds and checks heads; a sync (the visitor's
+/// action, roadmap/N9.md) downloads each snapshot whose head changed, verified, and caches it
+/// under that head, so an unchanged head costs one small request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fetch {
+    Load,
+    Sync,
+}
+/// GitHub's API and raw hosts, or a loopback stand-in a test names with `?github=`.
+fn github(params: Option<&web_sys::UrlSearchParams>) -> (String, String) {
+    match params.and_then(|p| p.get("github")) {
+        Some(u) if u.starts_with("http://127.0.0.1:") || u.starts_with("http://localhost:") => {
+            let u = u.trim_end_matches('/').to_string();
+            (format!("{u}/api"), format!("{u}/raw"))
+        }
+        _ => (
+            "https://api.github.com".into(),
+            "https://raw.githubusercontent.com".into(),
+        ),
+    }
+}
+async fn cached_records(key: &str) -> Option<Vec<Record>> {
+    let text = journal::cache_get(key).await.ok().flatten()?;
+    serde_json::from_str(&text).ok()
 }
 #[derive(Deserialize)]
 struct Registry {
@@ -158,16 +185,13 @@ impl Memory {
         crate::recall::topic_counts(self.records.iter().map(|r| r.about.clone()))
     }
 }
-async fn snapshot(peer: &Peer) -> Result<Vec<Record>, String> {
+async fn head_of(peer: &Peer, api: &str) -> Result<String, String> {
     if !peer.public || !transport::repository(&peer.repository) {
         return Err("invalid public peer".into());
     }
     let reference: Value = serde_json::from_str(
         &fetch_text_bounded(
-            &format!(
-                "https://api.github.com/repos/{}/git/ref/heads/lucy-memory",
-                peer.repository
-            ),
+            &format!("{api}/repos/{}/git/ref/heads/lucy-memory", peer.repository),
             MANIFEST_BYTES,
         )
         .await?,
@@ -182,10 +206,10 @@ async fn snapshot(peer: &Peer) -> Result<Vec<Record>, String> {
     {
         return Err("invalid memory revision".into());
     }
-    let base = format!(
-        "https://raw.githubusercontent.com/{}/{head}",
-        peer.repository
-    );
+    Ok(head.to_string())
+}
+async fn snapshot_at(peer: &Peer, raw: &str, head: &str) -> Result<Vec<Record>, String> {
+    let base = format!("{raw}/{}/{head}", peer.repository);
     let manifest = Manifest::parse(
         &fetch_text_bounded(&format!("{base}/manifest.json"), MANIFEST_BYTES).await?,
         &peer.repository,
@@ -229,10 +253,11 @@ pub fn parse_snapshot(text: &str, peer: &str) -> Result<Vec<Record>, String> {
     }
     Ok(out)
 }
-pub async fn load(query: &str) -> Memory {
+pub async fn load(query: &str, how: Fetch) -> Memory {
     let mut m = Memory::default();
     let params = web_sys::UrlSearchParams::new_with_str(query).ok();
     let fresh = params.as_ref().and_then(|p| p.get("fresh")).as_deref() != Some("0");
+    let (api, raw) = github(params.as_ref());
     let mut urls = vec![];
     if let Some(u) = params.as_ref().and_then(|p| p.get("registry")) {
         urls.push(u);
@@ -270,20 +295,61 @@ pub async fn load(query: &str) -> Memory {
     for p in peers.into_iter().filter(|p| p.public) {
         let key = format!("public-archive:{}:{}", p.repository, p.source_ref);
         if fresh {
-            match snapshot(&p).await {
-                Ok(records) => {
-                    m.status.push(format!(
-                        "{}: hashed public snapshot · {} records",
-                        p.name,
-                        records.len()
-                    ));
-                    m.records.extend(records);
-                    continue;
+            let pointer = format!("peer-head:v1:{}", p.repository);
+            let synced = journal::cache_get(&pointer).await.ok().flatten();
+            match head_of(&p, &api).await {
+                Ok(head) => {
+                    let short = &head[..7];
+                    let at = format!("peer-snapshot:v1:{}@{head}", p.repository);
+                    if let Some(records) = cached_records(&at).await {
+                        m.status.push(format!(
+                            "{}: fresh · verified snapshot {short} · {} records, kept in this browser",
+                            p.name,
+                            records.len()
+                        ));
+                        m.records.extend(records);
+                        continue;
+                    }
+                    if how == Fetch::Sync {
+                        match snapshot_at(&p, &raw, &head).await {
+                            Ok(records) => {
+                                if let Ok(t) = serde_json::to_string(&records) {
+                                    if let Err(e) = journal::cache_put(&at, &t).await {
+                                        m.status.push(format!("{} cache: {e}", p.name));
+                                    } else {
+                                        if let Some(old) = synced.as_deref().filter(|o| *o != head)
+                                        {
+                                            let _ = journal::cache_remove(&format!(
+                                                "peer-snapshot:v1:{}@{old}",
+                                                p.repository
+                                            ))
+                                            .await;
+                                        }
+                                        let _ = journal::cache_put(&pointer, &head).await;
+                                    }
+                                }
+                                m.status.push(format!(
+                                    "{}: fresh · verified snapshot {short} · {} records",
+                                    p.name,
+                                    records.len()
+                                ));
+                                m.records.extend(records);
+                                continue;
+                            }
+                            Err(e) => m.status.push(format!(
+                                "{}: snapshot {short} refused ({e}); reading the published copy",
+                                p.name
+                            )),
+                        }
+                    } else if synced.as_deref().is_some_and(|s| s != head) {
+                        m.newer.push(p.name.clone());
+                        m.status.push(format!(
+                            "{}: newer memory at {short} since your last sync",
+                            p.name
+                        ));
+                    }
                 }
-                Err(e) => m.status.push(format!(
-                    "{} snapshot unavailable ({e}); trying source archive",
-                    p.name
-                )),
+                Err(e) => m.status.push(format!("{}: head unavailable ({e})", p.name)),
             }
         }
         let mut texts = Vec::new();
@@ -295,10 +361,7 @@ pub async fn load(query: &str) -> Memory {
         {
             let mut candidates = vec![];
             if fresh {
-                candidates.push(format!(
-                    "https://raw.githubusercontent.com/{}/{}/{}",
-                    p.repository, p.source_ref, path
-                ));
+                candidates.push(format!("{raw}/{}/{}/{}", p.repository, p.source_ref, path));
             }
             candidates.push(format!("../public-peers/{}/interactions.nibli", p.name));
             if p.name == "lucy" {

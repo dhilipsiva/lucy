@@ -7,8 +7,11 @@
 #![allow(clippy::too_many_arguments)]
 
 pub mod app;
+pub mod backends;
 pub mod cast;
+pub mod chat;
 pub mod colors;
+pub mod context;
 mod controls;
 pub mod creatures;
 pub mod desk;
@@ -27,6 +30,8 @@ pub mod panel;
 pub mod peers;
 pub mod recall;
 pub mod scene;
+pub mod script;
+pub mod settings;
 pub mod sources;
 pub mod text;
 pub mod util;

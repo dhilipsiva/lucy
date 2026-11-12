@@ -1,0 +1,7 @@
+[
+  {"name":"ollama","endpoint":"http://127.0.0.1:11434","key_env":"","offer":"Local inference"},
+  {"name":"nvidia","endpoint":"https://integrate.api.nvidia.com/v1","key_env":"NVIDIA_API_KEY","offer":"Development access; check account quota","docs":"https://build.nvidia.com/"},
+  {"name":"groq","endpoint":"https://api.groq.com/openai/v1","key_env":"GROQ_API_KEY","offer":"Free plan with model-specific limits","docs":"https://console.groq.com/docs/rate-limits"},
+  {"name":"gemini","endpoint":"https://generativelanguage.googleapis.com/v1beta/openai","key_env":"GEMINI_API_KEY","offer":"Free tier on eligible models; data-use terms differ","docs":"https://ai.google.dev/gemini-api/docs/billing/"},
+  {"name":"openrouter","endpoint":"https://openrouter.ai/api/v1","key_env":"OPENROUTER_API_KEY","model":"openrouter/free","offer":"Free models subject to daily limits","docs":"https://openrouter.ai/pricing/"}
+]

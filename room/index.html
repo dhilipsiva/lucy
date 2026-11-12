@@ -4,13 +4,33 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Lucy D — AI memory. With a personality. — her room</title>
-<meta name="description" content="Lucy D: AI memory. With a personality. Peer-to-peer, cross-agent, and model-agnostic. Meet her in a browser room with a private journal and Nibli reasoning.">
+<meta name="description" content="Lucy D: AI memory. With a personality. Peer-to-peer, cross-agent, and model-agnostic. Talk with her in her browser room: scripted from her public memory, or through her own small model, your provider or your Ollama.">
 <meta property="og:title" content="Lucy D — her room">
 <meta property="og:description" content="AI memory. With a personality. Peer-to-peer, cross-agent, and model-agnostic. Meet Lucy in her browser room.">
 <link rel="icon" href="./assets/mark.svg">
 <link rel="stylesheet" href="./styles.css">
 </head>
-<body>
+<body class="view-chat">
+<!-- The conversation at the centre of my room (roadmap/N9.md): this skeleton paints at once; the
+     WebAssembly fills it in. -->
+<main id="ask" class="ask" aria-label="Talk with Lucy">
+<header class="ask-head">
+<p class="ask-title"><span class="ask-name">Lucy</span><span class="ask-stop">.</span><span id="ask-pill" class="ask-pill">WAKING</span></p>
+<nav class="ask-actions" aria-label="My room">
+<button id="ask-model" class="q-btn" type="button" data-action="panel" data-value="model" aria-haspopup="true">Model: Scripted ▾</button>
+<button class="q-btn" type="button" data-action="scene">Scene ◐</button>
+<button class="q-btn" type="button" data-action="panel" data-value="more" aria-label="My memory and this conversation">⋯</button>
+<a class="q-btn ask-home" href="https://dhilipsiva.dev/lucy/">← Lucy</a>
+</nav>
+</header>
+<section id="ask-panel" class="ask-panel" hidden></section>
+<p id="ask-notice" class="ask-notice" role="status" hidden></p>
+<div id="ask-log" class="ask-log" role="log" aria-live="polite" aria-label="Conversation"></div>
+<nav id="ask-chips" class="ask-chips" aria-label="Ask me about someone in my memory"></nav>
+<div class="ask-composer"><span class="ask-prompt" aria-hidden="true">❯</span><textarea id="ask-input" rows="1" placeholder="Ask Lucy…" autocomplete="off" aria-label="Ask Lucy. Enter sends; Shift Enter adds a line."></textarea><button id="ask-send" class="q-btn primary" type="button">Send →</button></div>
+<p class="ask-hint">Enter sends · Shift+Enter adds a line · this conversation stays in this browser</p>
+</main>
+<button id="ask-return" class="room-return" type="button">← Conversation</button>
 <canvas id="scene" aria-label="Lucy's room: a WebGL2 scene; her words are mirrored below for readers"></canvas>
 <a class="room-back" href="https://dhilipsiva.dev/lucy/">← Back to Lucy</a>
 <!-- The browser loads a font only when the page uses it; these spans ask for the four faces the panels draw with. -->

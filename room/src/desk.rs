@@ -53,6 +53,8 @@ pub struct Desk {
     pub generating: bool,
     pub visible: VecDeque<Message>,
     pub stream_failed: bool,
+    /// Bumped each time my public memory arrives or is synced.
+    pub peers_version: u64,
     local_space: Option<Box<crate::recall::HashSpace>>,
     local_keys: Vec<String>,
     local_indexed: usize,
@@ -71,7 +73,7 @@ impl Desk {
         let e = events.clone();
         let q = query.to_owned();
         wasm_bindgen_futures::spawn_local(async move {
-            let result = crate::peers::load(&q).await;
+            let result = crate::peers::load(&q, crate::peers::Fetch::Load).await;
             e.borrow_mut().push_back(Event::Peers(result));
         });
         Self {
@@ -95,6 +97,7 @@ impl Desk {
             generating: false,
             visible: VecDeque::new(),
             stream_failed: false,
+            peers_version: 0,
             local_space: None,
             local_keys: vec![],
             local_indexed: 0,
@@ -143,7 +146,10 @@ impl Desk {
                             format!("Journal unavailable: {e}. Retry storage before sending.")
                     }
                 },
-                Event::Peers(m) => self.memory = m,
+                Event::Peers(m) => {
+                    self.peers_version += 1;
+                    self.memory = m;
+                }
                 Event::Saved { messages, result } => match result {
                     Ok(()) => {
                         for m in &messages {
@@ -423,6 +429,48 @@ impl Desk {
         i.set_onchange(Some(cb.as_ref().unchecked_ref()));
         cb.forget();
         i.click();
+    }
+    /// Sync from my public peers: every snapshot whose head changed, verified, then cached.
+    pub fn sync(&mut self, query: &str) {
+        self.status = "Syncing from my public peers…".into();
+        let e = self.events.clone();
+        let q = query.to_owned();
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = crate::peers::load(&q, crate::peers::Fetch::Sync).await;
+            e.borrow_mut().push_back(Event::Peers(result));
+        });
+    }
+    /// An archive's text, as the conversation's Import read it: validated whole, then merged.
+    pub fn restore_text(&self, text: String) {
+        let e = self.events.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = async {
+                let a = RoomArchiveV1::parse(text.as_bytes())?;
+                let mut current = journal::load().await?;
+                current.merge(&a)?;
+                journal::save(&a.messages).await?;
+                Ok(a)
+            }
+            .await;
+            e.borrow_mut().push_back(Event::Restored(result));
+        });
+    }
+    /// An answer of mine with who wrote it and what it rests on.
+    pub fn record_reply(
+        &mut self,
+        text: &str,
+        model: &str,
+        revision: Option<&str>,
+        references: Vec<lucy_room_memory::Reference>,
+    ) {
+        if text.is_empty() {
+            return;
+        }
+        let mut m = self.message("assistant", text, "complete");
+        m.provenance.model = Some(model.into());
+        m.provenance.revision = revision.map(String::from);
+        m.provenance.references = references;
+        self.store(m);
     }
     pub fn persist(&self) {
         let e = self.events.clone();

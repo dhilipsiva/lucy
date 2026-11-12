@@ -94,7 +94,7 @@ const clickPanelLabel = async (panel, label) => {
 };
 const out = { chromium: null, node: process.version };
 try { out.chromium = (await send('Browser.getVersion')).product; } catch {}
-await send('Page.navigate', { url: process.env.ROOM_URL || `http://127.0.0.1:${PORT}/room/?fresh=0` }, sessionId);
+await send('Page.navigate', { url: process.env.ROOM_URL || `http://127.0.0.1:${PORT}/room/?fresh=0&view=scene` }, sessionId);
 await waitFor('room document', "document.getElementById('log')!==null");
 await waitFor('the engine', "document.getElementById('log')?.textContent.includes('engine ready')", 90000);
 await waitFor('the wake to finish', "document.getElementById('status')?.textContent.startsWith(\"I'm Lucy\")", 20000);
