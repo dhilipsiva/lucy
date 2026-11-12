@@ -516,7 +516,7 @@ impl Service {
                 }
                 "provider-key" => {
                     providers::save_key(string(&req, "name")?, string(&req, "key")?)?;
-                    Ok(json!({"saved":true}))
+                    providers::list()
                 }
                 "provider-select" => {
                     providers::select(string(&req, "name")?)?;

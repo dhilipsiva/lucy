@@ -191,6 +191,14 @@ assuming a model list is permanent. OpenRouter's `openrouter/free` selects from
 free models. Lucy never silently falls back to another provider or paid model.
 HTTP errors include status and Retry-After, without provider error bodies or keys.
 
+In the window's settings, a hosted provider says whether it already has an API key:
+saved on this computer, or found in its key variable. The key itself is never shown.
+A new key is saved with **Save key**. With a key, the provider's catalog fills a
+searchable model list, and **Use this provider** saves the chosen model and selects
+it. The list offers only catalog IDs (and OpenRouter's documented `openrouter/free`),
+so a saved model the catalog no longer lists is reported and not offered again. The
+local model comes from the host's configuration and is shown, not chosen.
+
 ```sh
 # In Bash, read a key without echoing it or putting it in command history.
 read -rs -p 'NVIDIA API key: ' lucy_provider_key

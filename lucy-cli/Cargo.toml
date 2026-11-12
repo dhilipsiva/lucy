@@ -39,7 +39,7 @@ tokio = { version = "1", features = ["rt", "time", "macros"] }
 nix = { version = "0.30", features = ["socket", "user", "signal", "process", "term"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-gtk4 = { version = "0.10", optional = true }
+gtk4 = { version = "0.10", optional = true, features = ["v4_12"] }
 
 [features]
 desktop-ui = ["dep:gtk4"]

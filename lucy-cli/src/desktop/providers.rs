@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -75,6 +75,19 @@ pub fn presets() -> Value {
         {"name":"openrouter","endpoint":"https://openrouter.ai/api/v1","key_env":"OPENROUTER_API_KEY","model":"openrouter/free","offer":"Free models subject to daily limits","docs":"https://openrouter.ai/pricing/"}
     ])
 }
+/// A preset as a provider with no model chosen yet.
+fn preset(name: &str) -> Option<Provider> {
+    presets()
+        .as_array()?
+        .iter()
+        .find(|p| p["name"] == name)
+        .map(|p| Provider {
+            name: name.into(),
+            endpoint: p["endpoint"].as_str().unwrap_or_default().into(),
+            model: String::new(),
+            key_env: p["key_env"].as_str().unwrap_or_default().into(),
+        })
+}
 pub fn selected() -> Result<Option<Provider>> {
     let config = load()?;
     match config.selected {
@@ -130,28 +143,34 @@ pub(super) fn identity_for(selection: Option<&Provider>) -> Result<String> {
 }
 pub fn list() -> Result<Value> {
     let config = load()?;
+    let directory = directory()?;
     let providers: Vec<_> = config
         .providers
         .values()
         .map(|p| {
             json!({
                 "name":p.name,"endpoint":p.endpoint,"model":p.model,
-                "key_env":p.key_env,"key_available":key(p).is_ok()
+                "key_env":p.key_env,"key_available":key(&directory, p).is_ok()
             })
         })
         .collect();
+    // Each hosted preset says where its key is found, configured or not.
+    let mut presets = presets();
+    for entry in presets.as_array_mut().unwrap() {
+        if let Some(provider) = entry["name"]
+            .as_str()
+            .filter(|name| *name != "ollama")
+            .and_then(preset)
+        {
+            entry["key"] = json!(key_source(&directory, &provider));
+        }
+    }
     Ok(
-        json!({"selected":config.selected.unwrap_or_else(||"ollama".into()),"providers":providers,"presets":presets()}),
+        json!({"selected":config.selected.unwrap_or_else(||"ollama".into()),"providers":providers,"presets":presets}),
     )
 }
 pub fn configure(name: &str, model: &str) -> Result<()> {
-    let presets = presets();
-    let preset = presets
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|p| p["name"] == name)
-        .ok_or("unknown provider preset")?;
+    let preset = preset(name).ok_or("unknown provider preset")?;
     if model.trim().is_empty() || model.chars().any(char::is_control) {
         return Err("choose a model ID from that provider's catalog".into());
     }
@@ -159,10 +178,8 @@ pub fn configure(name: &str, model: &str) -> Result<()> {
     config.providers.insert(
         name.into(),
         Provider {
-            name: name.into(),
-            endpoint: preset["endpoint"].as_str().unwrap().into(),
             model: model.into(),
-            key_env: preset["key_env"].as_str().unwrap().into(),
+            ..preset
         },
     );
     write(
@@ -177,7 +194,7 @@ pub fn select(name: &str) -> Result<()> {
             .providers
             .get(name)
             .ok_or("configure a model for this provider first")?;
-        key(provider)?;
+        key(&directory()?, provider)?;
     }
     config.selected = Some(name.into());
     write(
@@ -201,13 +218,23 @@ pub fn save_key(name: &str, secret: &str) -> Result<()> {
     }
     write(&directory()?.join("keys").join(name), secret.as_bytes())
 }
-fn key(provider: &Provider) -> Result<String> {
+/// Where a hosted provider's API key is found: its variable or a saved file. Never the key.
+pub(super) fn key_source(directory: &Path, provider: &Provider) -> Option<&'static str> {
+    if std::env::var(&provider.key_env).is_ok_and(|value| !value.trim().is_empty()) {
+        return Some("environment");
+    }
+    key(directory, provider)
+        .ok()
+        .filter(|key| !key.is_empty())
+        .map(|_| "saved")
+}
+fn key(directory: &Path, provider: &Provider) -> Result<String> {
     if let Ok(value) = std::env::var(&provider.key_env)
         && !value.trim().is_empty()
     {
         return Ok(value.trim().into());
     }
-    let path = directory()?.join("keys").join(&provider.name);
+    let path = directory.join("keys").join(&provider.name);
     if path.is_symlink() {
         return Err("refusing symlinked API key".into());
     }
@@ -225,13 +252,7 @@ fn key(provider: &Provider) -> Result<String> {
         .map_err(err)
 }
 pub fn models(name: &str) -> Result<Value> {
-    let presets = presets();
-    let preset = presets
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|p| p["name"] == name)
-        .ok_or("unknown provider")?;
+    let provider = preset(name).ok_or("unknown provider")?;
     if name == "ollama" {
         let (code, bytes, _) = net::request(
             "GET",
@@ -247,15 +268,9 @@ pub fn models(name: &str) -> Result<Value> {
         }
         return serde_json::from_slice(&bytes).map_err(err);
     }
-    let provider = Provider {
-        name: name.into(),
-        endpoint: preset["endpoint"].as_str().unwrap().into(),
-        model: String::new(),
-        key_env: preset["key_env"].as_str().unwrap().into(),
-    };
     let headers = vec![(
         "Authorization".into(),
-        format!("Bearer {}", key(&provider)?),
+        format!("Bearer {}", key(&directory()?, &provider)?),
     )];
     let (code, bytes, retry) = net::request(
         "GET",
@@ -280,7 +295,13 @@ pub fn chat(
     tools: Value,
     cancel: &AtomicBool,
 ) -> Result<Value> {
-    complete(provider, &key(provider)?, messages, tools, cancel)
+    complete(
+        provider,
+        &key(&directory()?, provider)?,
+        messages,
+        tools,
+        cancel,
+    )
 }
 pub(super) fn complete(
     provider: &Provider,

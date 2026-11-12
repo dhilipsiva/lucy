@@ -7,6 +7,7 @@ use gtk4::{self as gtk, gdk, gio, glib, pango, prelude::*};
 use serde_json::{Value, json};
 use std::{
     cell::{Cell, RefCell},
+    collections::BTreeMap,
     path::{Path, PathBuf},
     rc::Rc,
     sync::mpsc,
@@ -20,6 +21,8 @@ const PROVIDERS: [(&str, &str); 5] = [
     ("gemini", "Gemini"),
     ("openrouter", "OpenRouter"),
 ];
+/// The model list's first entry for a hosted provider, until a model is chosen.
+const CHOOSE: &str = "Choose a model…";
 const NOTICE: &str = "Local Ollama is the default. Choosing a hosted provider sends your prompts, retrieved memories and tool results to it. Free access depends on the model and account; Lucy does not switch providers automatically.";
 /// QUINE's single accent, for the few marks set in markup rather than the stylesheet.
 const EMBER: &str = "#F2542D";
@@ -74,12 +77,28 @@ struct Window {
     finished: RefCell<Vec<String>>,
     entry: gtk::TextView,
     send: gtk::Button,
+    settings: gtk::Popover,
     provider: gtk::DropDown,
-    model: gtk::Entry,
+    /// Offers `models`: for a hosted provider, `CHOOSE` and then its catalog.
+    model: gtk::DropDown,
+    models: gtk::StringList,
+    model_status: gtk::Label,
+    reload: gtk::Button,
+    key_row: gtk::Box,
+    key_status: gtk::Label,
     key: gtk::PasswordEntry,
+    choose: gtk::Button,
     known: RefCell<Value>,
-    catalog: gtk::ListBox,
-    catalog_area: gtk::Box,
+    /// Catalogs fetched while the window is open, by provider.
+    catalogs: RefCell<BTreeMap<String, Vec<String>>>,
+}
+
+/// A provider's name as the settings list shows it.
+fn title(id: &str) -> &str {
+    PROVIDERS
+        .iter()
+        .find(|(known, _)| *known == id)
+        .map_or(id, |(_, name)| name)
 }
 
 fn label(text: &str, class: &str) -> gtk::Label {
@@ -613,9 +632,7 @@ impl Window {
         } else {
             0
         };
-        for (key, value) in self.client.as_object().unwrap() {
-            request[key] = value.clone();
-        }
+        let request = view::addressed(request, &self.client);
         if kind == "chat" {
             self.banner.set_reveal_child(false);
             self.working(Some(match request["op"].as_str() {
@@ -628,21 +645,20 @@ impl Window {
         std::thread::spawn(move || {
             let result = if kind == "select" {
                 (|| {
-                    let name = request["name"].clone();
-                    if request["key"].as_str().is_some_and(|key| !key.is_empty()) {
-                        let mut save = request.clone();
-                        save["op"] = json!("provider-key");
-                        call(save)?;
-                    }
-                    request.as_object_mut().unwrap().remove("key");
-                    if name != "ollama" {
+                    if request["name"] != "ollama" {
                         let mut configure = request.clone();
                         configure["op"] = json!("provider-config");
                         call(configure)?;
                     }
-                    request["op"] = json!("provider-select");
                     call(request)
                 })()
+            } else if kind == "catalog" {
+                // Tagged with its provider, so a late catalog cannot fill another's list.
+                let name = request["name"].clone();
+                Ok(match call(request) {
+                    Ok(catalog) => json!({"name":name,"models":view::catalog(&catalog)}),
+                    Err(error) => json!({"name":name,"error":error}),
+                })
             } else {
                 call(request)
             };
@@ -683,19 +699,22 @@ impl Window {
 
     fn providers(&self, result: &Value, chosen: bool) {
         let selected = result["selected"].as_str().unwrap_or("ollama");
-        if let Some(index) = PROVIDERS.iter().position(|(id, _)| *id == selected) {
-            self.provider.set_selected(index as u32);
-        }
+        // Known first: changing the provider shown reads it.
         *self.known.borrow_mut() = result.clone();
+        let index = PROVIDERS
+            .iter()
+            .position(|(id, _)| *id == selected)
+            .unwrap_or(0) as u32;
+        if self.provider.selected() == index {
+            self.show_provider();
+        } else {
+            self.provider.set_selected(index);
+        }
         let model = self.configured(selected);
-        self.model.set_text(&model);
         let name = if selected == "ollama" {
             "Local".to_owned()
         } else {
-            PROVIDERS
-                .iter()
-                .find(|(id, _)| *id == selected)
-                .map_or(selected.to_owned(), |(_, name)| (*name).to_owned())
+            title(selected).to_owned()
         };
         let full = super::visible(&format!("{name} · {model}"));
         let short: String = full.chars().take(30).collect();
@@ -731,23 +750,131 @@ impl Window {
             })
     }
 
+    /// The provider in the settings list, which need not be the one in use.
+    fn current(&self) -> &'static str {
+        PROVIDERS[self.provider.selected() as usize % PROVIDERS.len()].0
+    }
+
+    /// A hosted preset's field from the service's last provider list.
+    fn preset(&self, name: &str, field: &str) -> Option<String> {
+        self.known.borrow()["presets"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|p| p["name"] == name)
+            .and_then(|p| p[field].as_str())
+            .map(String::from)
+    }
+
+    /// The model chosen in settings. A hosted provider's first entry is `CHOOSE`.
+    fn chosen_model(&self) -> Option<String> {
+        let index = self.model.selected();
+        if index == gtk::INVALID_LIST_POSITION || (self.current() != "ollama" && index == 0) {
+            return None;
+        }
+        self.models.string(index).map(String::from)
+    }
+
+    fn offer(&self, items: &[&str], selected: u32) {
+        self.models.splice(0, self.models.n_items(), items);
+        self.model.set_selected(selected);
+        self.choose.set_sensitive(self.chosen_model().is_some());
+    }
+
+    /// Settings for the provider in the list: its key, and its models once it has one.
+    /// Catalogs are fetched only while the settings are open.
+    fn show_provider(&self) {
+        let name = self.current();
+        self.key_row.set_visible(name != "ollama");
+        if name == "ollama" {
+            // The host's configuration chooses the local model.
+            self.offer(&[self.local_model.as_str()], 0);
+            self.model.set_sensitive(false);
+            self.reload.set_visible(false);
+            self.model_status
+                .set_text("The local model is set by this computer's configuration.");
+            return;
+        }
+        let source = self.preset(name, "key");
+        let key_env = self.preset(name, "key_env").unwrap_or_default();
+        self.key_status
+            .set_text(&view::key_note(source.as_deref(), &key_env));
+        self.key.set_placeholder_text(Some(if source.is_some() {
+            "Paste a new key to replace it"
+        } else {
+            "API key (saved locally)"
+        }));
+        self.model.set_sensitive(true);
+        let cached = self.catalogs.borrow().get(name).cloned();
+        if let Some(ids) = cached {
+            self.show_catalog(name, &ids);
+            return;
+        }
+        self.offer(&[CHOOSE], 0);
+        self.reload.set_visible(false);
+        if source.is_none() {
+            self.model_status
+                .set_text("Save an API key to list this provider's models.");
+        } else if self.settings.is_visible() {
+            self.model_status
+                .set_text(&format!("Loading {}'s models…", title(name)));
+            self.work(json!({"op":"provider-models","name":name}), "catalog");
+        } else {
+            self.model_status.set_text("");
+        }
+    }
+
+    fn show_catalog(&self, name: &str, ids: &[String]) {
+        let saved = self.configured(name);
+        let mut items = vec![CHOOSE];
+        items.extend(ids.iter().map(String::as_str));
+        let position = ids.iter().position(|id| *id == saved);
+        self.offer(&items, position.map_or(0, |p| p as u32 + 1));
+        self.reload.set_visible(true);
+        self.model_status.set_text(&if ids.is_empty() {
+            "The provider sent no model list.".to_owned()
+        } else if position.is_none() && !saved.is_empty() {
+            format!(
+                "The saved model {saved} is not in {}'s catalog. Choose one.",
+                title(name)
+            )
+        } else {
+            format!("{} models from {}.", ids.len(), title(name))
+        });
+    }
+
     fn fill_catalog(&self, result: &Value) {
-        while let Some(row) = self.catalog.first_child() {
-            self.catalog.remove(&row);
+        let name = result["name"].as_str().unwrap_or_default();
+        if let Some(error) = result["error"].as_str() {
+            if name == self.current() {
+                self.offer(&[CHOOSE], 0);
+                self.model_status.set_text(&super::visible(error));
+                self.reload.set_visible(true);
+            }
+            return;
         }
-        let names = view::catalog(result);
-        for name in &names {
-            let row = label(name, "mono");
-            row.set_wrap(false);
-            row.set_ellipsize(pango::EllipsizeMode::Middle);
-            row.set_tooltip_text(Some(name));
-            self.catalog.append(&row);
+        let listed = result["models"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|id| id.as_str().map(String::from))
+            .collect();
+        let ids = view::model_choices(listed, self.preset(name, "model").as_deref());
+        self.catalogs.borrow_mut().insert(name.into(), ids);
+        if name == self.current() {
+            self.show_provider();
         }
-        if names.is_empty() {
-            self.catalog
-                .append(&label("The provider sent no model list.", "muted"));
+    }
+
+    fn save_key(&self) {
+        let key = self.key.text();
+        if key.trim().is_empty() {
+            return;
         }
-        self.catalog_area.set_visible(true);
+        let request = json!({"op":"provider-key","name":self.current(),"key":key.as_str()});
+        self.key.set_text("");
+        self.key_status.set_text("Saving the key…");
+        self.work(request, "key");
     }
 
     fn finish(self: &Rc<Self>, reply: Reply) {
@@ -757,6 +884,10 @@ impl Window {
         }
         let result = match reply.result {
             Ok(result) => result,
+            Err(error) if reply.kind == "key" => {
+                self.key_status.set_text(&super::visible(&error));
+                return;
+            }
             Err(error) => {
                 if conversation {
                     self.working(None);
@@ -780,6 +911,13 @@ impl Window {
             }
             "catalog" => {
                 self.fill_catalog(&result);
+                return;
+            }
+            "key" => {
+                // A new key may list other models; the provider in use stays as it is.
+                *self.known.borrow_mut() = result;
+                self.catalogs.borrow_mut().clear();
+                self.show_provider();
                 return;
             }
             "control" => {
@@ -848,7 +986,7 @@ fn follow_scheme(settings: &gtk::Settings, provider: &gtk::CssProvider) {
 
 fn style() {
     let provider = gtk::CssProvider::new();
-    provider.load_from_data(include_str!("ui.css"));
+    provider.load_from_string(include_str!("ui.css"));
     if let Some(settings) = gtk::Settings::default()
         && settings
             .find_property("gtk-interface-color-scheme")
@@ -932,13 +1070,42 @@ fn empty_state(workspace: &Path, entry: &gtk::TextView) -> gtk::Box {
 struct Settings {
     popover: gtk::Popover,
     provider: gtk::DropDown,
-    model: gtk::Entry,
+    key_row: gtk::Box,
+    key_status: gtk::Label,
     key: gtk::PasswordEntry,
-    browse: gtk::Button,
+    save_key: gtk::Button,
+    model: gtk::DropDown,
+    models: gtk::StringList,
+    model_status: gtk::Label,
+    reload: gtk::Button,
     choose: gtk::Button,
-    catalog: gtk::ListBox,
-    search: gtk::SearchEntry,
-    catalog_area: gtk::Box,
+}
+
+/// Model IDs can be long: each shows on one line, shortened in the middle, whole on hover.
+fn one_line() -> gtk::SignalListItemFactory {
+    let factory = gtk::SignalListItemFactory::new();
+    factory.connect_setup(|_, item| {
+        let row = label("", "");
+        row.set_wrap(false);
+        row.set_ellipsize(pango::EllipsizeMode::Middle);
+        row.set_max_width_chars(40);
+        if let Some(item) = item.downcast_ref::<gtk::ListItem>() {
+            item.set_child(Some(&row));
+        }
+    });
+    factory.connect_bind(|_, item| {
+        let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+            return;
+        };
+        if let (Some(row), Some(id)) = (
+            item.child().and_downcast::<gtk::Label>(),
+            item.item().and_downcast::<gtk::StringObject>(),
+        ) {
+            row.set_text(&id.string());
+            row.set_tooltip_text(Some(&id.string()));
+        }
+    });
+    factory
 }
 
 fn settings() -> Settings {
@@ -948,49 +1115,63 @@ fn settings() -> Settings {
     let names: Vec<&str> = PROVIDERS.iter().map(|(_, name)| *name).collect();
     let provider = gtk::DropDown::from_strings(&names);
     content.append(&provider);
-    let model = gtk::Entry::builder()
-        .placeholder_text("Model ID from the provider's catalog")
+    // A hosted provider lists its models only with a key, so the key comes first.
+    let key_row = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    let key_status = label("", "muted");
+    key_row.append(&key_status);
+    let key_entry = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let key = gtk::PasswordEntry::builder()
+        .placeholder_text("API key (saved locally)")
+        .show_peek_icon(true)
+        .hexpand(true)
+        .build();
+    let save_key = gtk::Button::with_label("Save key");
+    key_entry.append(&key);
+    key_entry.append(&save_key);
+    key_row.append(&key_entry);
+    key_row.set_visible(false);
+    content.append(&key_row);
+    let models = gtk::StringList::new(&[]);
+    let model = gtk::DropDown::builder()
+        .model(&models)
+        .expression(gtk::PropertyExpression::new(
+            gtk::StringObject::static_type(),
+            None::<gtk::Expression>,
+            "string",
+        ))
+        .enable_search(true)
+        .search_match_mode(gtk::StringFilterMatchMode::Substring)
+        .factory(&one_line())
         .build();
     content.append(&model);
-    let key = gtk::PasswordEntry::builder()
-        .placeholder_text("API key (saved locally; leave blank to keep it)")
-        .show_peek_icon(true)
-        .build();
-    key.set_visible(false);
-    content.append(&key);
+    let model_status = label("", "muted");
+    content.append(&model_status);
     let notice = label(NOTICE, "note");
     notice.set_max_width_chars(48);
     content.append(&notice);
     let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     buttons.set_halign(gtk::Align::End);
-    let browse = gtk::Button::with_label("Browse models");
+    let reload = gtk::Button::with_label("Reload models");
+    reload.set_visible(false);
     let choose = gtk::Button::with_label("Use this provider");
     choose.add_css_class("use");
-    buttons.append(&browse);
+    buttons.append(&reload);
     buttons.append(&choose);
     content.append(&buttons);
-    let catalog_area = gtk::Box::new(gtk::Orientation::Vertical, 6);
-    let search = gtk::SearchEntry::builder()
-        .placeholder_text("Filter models")
-        .build();
-    catalog_area.append(&search);
-    let catalog = gtk::ListBox::new();
-    catalog.set_activate_on_single_click(true);
-    catalog_area.append(&scroll(&catalog, 220));
-    catalog_area.set_visible(false);
-    content.append(&catalog_area);
     let popover = gtk::Popover::builder().child(&content).build();
     popover.add_css_class("settings");
     Settings {
         popover,
         provider,
-        model,
+        key_row,
+        key_status,
         key,
-        browse,
+        save_key,
+        model,
+        models,
+        model_status,
+        reload,
         choose,
-        catalog,
-        search,
-        catalog_area,
     }
 }
 
@@ -1060,13 +1241,15 @@ fn build(app: &gtk::Application, client: &Value, workspace: &Path, handoff: Opti
     let Settings {
         popover,
         provider,
-        model,
+        key_row,
+        key_status,
         key,
-        browse,
+        save_key,
+        model,
+        models,
+        model_status,
+        reload,
         choose,
-        catalog,
-        search,
-        catalog_area,
     } = settings();
     let model_button = gtk::MenuButton::builder()
         .label("Local")
@@ -1201,12 +1384,18 @@ fn build(app: &gtk::Application, client: &Value, workspace: &Path, handoff: Opti
         finished: RefCell::new(Vec::new()),
         entry: entry.clone(),
         send: send.clone(),
+        settings: popover.clone(),
         provider: provider.clone(),
-        model,
+        model: model.clone(),
+        models,
+        model_status,
+        reload: reload.clone(),
+        key_row,
+        key_status,
         key: key.clone(),
+        choose: choose.clone(),
         known: RefCell::new(Value::Null),
-        catalog: catalog.clone(),
-        catalog_area,
+        catalogs: RefCell::new(BTreeMap::new()),
     });
 
     // New content scrolls into view; opening a memory list or a raw request does not. The
@@ -1267,37 +1456,27 @@ fn build(app: &gtk::Application, client: &Value, workspace: &Path, handoff: Opti
     dismiss.connect_clicked(move |_| banner.set_reveal_child(false));
 
     let s = state.clone();
-    provider.connect_selected_notify(move |provider| {
-        let name = PROVIDERS[provider.selected() as usize % PROVIDERS.len()].0;
-        s.key.set_visible(name != "ollama");
-        s.model.set_text(&s.configured(name));
-    });
+    popover.connect_show(move |_| s.show_provider());
     let s = state.clone();
-    browse.connect_clicked(move |_| {
-        let name = PROVIDERS[s.provider.selected() as usize % PROVIDERS.len()].0;
-        s.work(json!({"op":"provider-models","name":name}), "catalog");
+    provider.connect_selected_notify(move |_| s.show_provider());
+    let s = state.clone();
+    model.connect_selected_notify(move |_| s.choose.set_sensitive(s.chosen_model().is_some()));
+    let s = state.clone();
+    key.connect_activate(move |_| s.save_key());
+    let s = state.clone();
+    save_key.connect_clicked(move |_| s.save_key());
+    let s = state.clone();
+    reload.connect_clicked(move |_| {
+        s.catalogs.borrow_mut().remove(s.current());
+        s.show_provider();
     });
     let s = state.clone();
     choose.connect_clicked(move |_| {
-        let name = PROVIDERS[s.provider.selected() as usize % PROVIDERS.len()].0;
-        let request = json!({"op":"provider-select","name":name,
-            "model":s.model.text().as_str(),"key":s.key.text().as_str()});
-        s.key.set_text("");
-        s.work(request, "select");
-    });
-    let filter = search.clone();
-    catalog.set_filter_func(move |row| {
-        let wanted = filter.text().to_lowercase();
-        row.child()
-            .and_downcast::<gtk::Label>()
-            .is_some_and(|label| label.text().to_lowercase().contains(&wanted))
-    });
-    let list = catalog.clone();
-    search.connect_search_changed(move |_| list.invalidate_filter());
-    let s = state.clone();
-    catalog.connect_row_activated(move |_, row| {
-        if let Some(label) = row.child().and_downcast::<gtk::Label>() {
-            s.model.set_text(&label.text());
+        if let Some(model) = s.chosen_model() {
+            s.work(
+                json!({"op":"provider-select","name":s.current(),"model":model}),
+                "select",
+            );
         }
     });
 

@@ -580,7 +580,8 @@ window.lucy button.send.stop:hover {
   box-shadow: none;
 }
 
-window.lucy button.send:disabled {
+window.lucy button.send:disabled,
+window.lucy popover.settings button.use:disabled {
   opacity: 0.45;
 }
 

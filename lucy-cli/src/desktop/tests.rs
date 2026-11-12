@@ -1753,6 +1753,47 @@ fn hosted_transport_preserves_tool_ids_and_omits_local_only_image_fields() {
 }
 
 #[test]
+fn a_key_is_reported_by_where_it_is_found_and_only_when_usable() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let temp = tempfile::tempdir().unwrap();
+    let provider = providers::Provider {
+        name: "nvidia".into(),
+        endpoint: String::new(),
+        model: String::new(),
+        key_env: "LUCY_TEST_KEY_SOURCE_UNSET".into(),
+    };
+    let found = || providers::key_source(temp.path(), &provider);
+    assert_eq!(found(), None);
+    let keys = temp.path().join("keys");
+    std::fs::create_dir(&keys).unwrap();
+    let file = keys.join("nvidia");
+    let mode = |mode| std::fs::set_permissions(&file, std::fs::Permissions::from_mode(mode));
+    std::fs::write(&file, "").unwrap();
+    mode(0o600).unwrap();
+    assert_eq!(found(), None, "an empty key is no key");
+    std::fs::write(&file, "fixture-key").unwrap();
+    mode(0o644).unwrap();
+    assert_eq!(found(), None, "a readable key is refused");
+    mode(0o600).unwrap();
+    assert_eq!(found(), Some("saved"));
+    std::fs::remove_file(&file).unwrap();
+    let elsewhere = temp.path().join("elsewhere");
+    std::fs::write(&elsewhere, "fixture-key").unwrap();
+    std::fs::set_permissions(&elsewhere, std::fs::Permissions::from_mode(0o600)).unwrap();
+    symlink(&elsewhere, &file).unwrap();
+    assert_eq!(found(), None, "a symlinked key is refused");
+    // PATH stands in for a key variable that is set; the test does not change the environment.
+    let from_environment = providers::Provider {
+        key_env: "PATH".into(),
+        ..provider.clone()
+    };
+    assert_eq!(
+        providers::key_source(temp.path(), &from_environment),
+        Some("environment")
+    );
+}
+
+#[test]
 fn rate_limits_are_returned_without_fallback_or_leaking_provider_bodies() {
     let (endpoint, received, worker) = server(
         "429 Too Many Requests",

@@ -378,7 +378,8 @@ pub fn task(status: &Value) -> Option<TaskView> {
     })
 }
 
-/// Model IDs from a provider catalog: Ollama's `models[].name` or `data[].id`.
+/// Model IDs from a provider catalog: Ollama's `models[].name` or `data[].id`. An ID that
+/// would need escaping to be shown cannot be shown or saved as it is, so it is left out.
 pub fn catalog(value: &Value) -> Vec<String> {
     let mut names: Vec<String> = value["models"]
         .as_array()
@@ -392,11 +393,45 @@ pub fn catalog(value: &Value) -> Vec<String> {
                 .flatten()
                 .filter_map(|m| m["id"].as_str()),
         )
-        .map(visible)
+        .filter(|id| !id.is_empty() && visible(id) == *id)
+        .map(String::from)
         .collect();
     names.sort();
     names.dedup();
     names
+}
+
+/// A request with the window's client fields (source, session, control) added. The request's
+/// own fields stay: the client also carries the local model, which once replaced the model
+/// chosen for a hosted provider.
+pub fn addressed(mut request: Value, client: &Value) -> Value {
+    if let (Some(fields), Some(client)) = (request.as_object_mut(), client.as_object()) {
+        for (key, value) in client {
+            fields.entry(key.clone()).or_insert_with(|| value.clone());
+        }
+    }
+    request
+}
+
+/// The models offered for a hosted provider: its catalog, and first the preset's own default
+/// (OpenRouter's `openrouter/free` router) when the catalog leaves it out. A saved model the
+/// catalog does not list is not offered again.
+pub fn model_choices(mut catalog: Vec<String>, preset: Option<&str>) -> Vec<String> {
+    if let Some(default) =
+        preset.filter(|id| !id.is_empty() && visible(id) == *id && !catalog.iter().any(|c| c == id))
+    {
+        catalog.insert(0, default.into());
+    }
+    catalog
+}
+
+/// Whether a hosted provider already has an API key, from `providers::key_source`.
+pub fn key_note(source: Option<&str>, key_env: &str) -> String {
+    match source {
+        Some("environment") => format!("✓ API key from {}", visible(key_env)),
+        Some(_) => "✓ API key saved on this computer".into(),
+        None => "No API key yet. Paste one below.".into(),
+    }
 }
 
 /// A reply's retrieved memories: (source · short ID, excerpt).
@@ -627,6 +662,10 @@ mod tests {
             catalog(&json!({"data":[{"id":"openrouter/free"}]})),
             ["openrouter/free"]
         );
+        assert_eq!(
+            catalog(&json!({"data":[{"id":"meta/llama"},{"id":"fake\u{202e}lamma"},{"id":""}]})),
+            ["meta/llama"]
+        );
         assert!(catalog(&json!({"unexpected":true})).is_empty());
         assert_eq!(
             memories(
@@ -636,6 +675,56 @@ mod tests {
                 "claude · 0123456789ab…".to_owned(),
                 "We chose\\u{202e}".to_owned()
             )]
+        );
+    }
+
+    #[test]
+    fn a_requests_own_model_is_kept_when_the_client_is_added() {
+        let client = json!({"source":"local","session":"s","control":"c","model":"qwen3.6:35b"});
+        let request = addressed(
+            json!({"op":"provider-select","name":"nvidia","model":"meta/llama"}),
+            &client,
+        );
+        assert_eq!(request["model"], "meta/llama");
+        assert_eq!(request["session"], "s");
+        assert_eq!(request["control"], "c");
+        assert_eq!(
+            addressed(json!({"op":"chat"}), &client)["model"],
+            "qwen3.6:35b"
+        );
+    }
+
+    #[test]
+    fn hosted_models_come_from_the_catalog_and_the_preset_only() {
+        let listed = || {
+            vec![
+                "deepseek-ai/deepseek-v4.1-flash".to_owned(),
+                "meta/llama".to_owned(),
+            ]
+        };
+        assert_eq!(model_choices(listed(), None), listed());
+        assert_eq!(model_choices(listed(), Some("meta/llama")), listed());
+        assert_eq!(
+            model_choices(listed(), Some("openrouter/free"))[0],
+            "openrouter/free"
+        );
+        assert_eq!(model_choices(listed(), Some("bad\u{202e}id")), listed());
+        assert_eq!(model_choices(listed(), Some("")), listed());
+    }
+
+    #[test]
+    fn key_notes_say_where_a_key_is_without_showing_it() {
+        assert_eq!(
+            key_note(Some("saved"), "NVIDIA_API_KEY"),
+            "✓ API key saved on this computer"
+        );
+        assert_eq!(
+            key_note(Some("environment"), "NVIDIA_API_KEY"),
+            "✓ API key from NVIDIA_API_KEY"
+        );
+        assert_eq!(
+            key_note(None, "NVIDIA_API_KEY"),
+            "No API key yet. Paste one below."
         );
     }
 }
