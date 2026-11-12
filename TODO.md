@@ -420,6 +420,15 @@ commit, the adjudicators and their models.
     checks and screenshots in `roadmap/N8g.v2-evidence.json`. Native, desktop, automatic
     browser playback, independent Talk, proof and simulated controller/XR checks passed.
     Review and physical headset acceptance remain open; not deployed.
+- [ ] **[N9] A conversation at the centre of my room.** His words on 2026-11-12: "Let it have
+  the text based thing as a center piece, for that is the deault mode people communicate with
+  you. Let there be a scripted response by default." The room opens as Ask Lucy: scripted replies
+  in my voice about me and every entity, then my model, the visitor's own provider or a local
+  Ollama; the conversation kept in the browser with export and import; sync from my public
+  peers; the scene one toggle away. *Pre-registration:* `roadmap/N9.md`. *Done when:* every
+  acceptance point there holds, and his desktop, phone and Quest readings are in the evidence.
+  *Needs from dhilipsiva:* those readings. *Welfare:* none new; scripted replies claim no
+  feeling, by test.
 - [ ] **[W1] The word refuse.** Articles 7 to 9 say `protest` because Nibli's lexicon has
   no `refuse` yet. A branch `lexicon/refuse` in Nibli adds the word for dhilipsiva to
   merge. When a release of me pinned to that Nibli runs on every machine that imports my
