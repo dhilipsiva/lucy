@@ -1,5 +1,7 @@
 # N8d: every named entity of my memory in the room; the engine off the main thread
 
+> Superseded in part on 2026-11-12. dhilipsiva's words that day: "each one of us is `Nell`. We could be a Child with Nobody… it is not you specifically, so correct your memory accordingly." Nell is not my alias or my form, and the room no longer shows her; the rest of this record stays as history.
+
 Pre-registered 2026-10-25, after `N8.v3.md` (98f466d) and the N8a and N8f slices, before any
 code of this slice. Reason: dhilipsiva's words that afternoon, as typed, "Lucy in the room looks
 good and answers everything. Let's pur all other charecters. Only one change if possible: Nibli

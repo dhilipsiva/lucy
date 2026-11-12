@@ -217,9 +217,8 @@ impl Hud {
         }
     }
     fn draw_top(&mut self, st: &HudState) {
-        // left group: dot · Lucy. alias Nell · standing dots · mind line
+        // left group: dot · Lucy. · standing dots · mind line
         let name_f = font(600, 19.0, DISPLAY);
-        let alias_f = font(400, 11.0, MONO);
         let line_f = font(400, 11.5, MONO);
         let ok = !st.standing.is_empty() && st.standing.iter().all(|(_, s)| s == "TRUE");
         let line = match st.counts {
@@ -235,11 +234,7 @@ impl Hud {
             None => "waking…".to_string(),
         };
         let p = &mut self.panels[TOP_L];
-        let (name_w, alias_w, line_w) = (
-            p.measure("Lucy.", &name_f),
-            p.measure("alias Nell", &alias_f),
-            p.measure(&line, &line_f),
-        );
+        let (name_w, line_w) = (p.measure("Lucy.", &name_f), p.measure(&line, &line_f));
         let compact = st.w < 760.0;
         let dots_w = if st.standing.is_empty() {
             0.0
@@ -254,7 +249,7 @@ impl Hud {
         let w = if st.w < 600.0 {
             96.0
         } else {
-            14.0 + 6.0 + 14.0 + name_w + 8.0 + alias_w + right_part
+            14.0 + 6.0 + 14.0 + name_w + 8.0 + right_part
         };
         let h = 52.0;
         p.resize(w.min(st.w - 32.0).max(120.0), h);
@@ -267,9 +262,6 @@ impl Hud {
         let mut x = 34.0;
         x += p.text(x, 15.0, "Lucy", &name_f, &col::css(col::PAPER_100));
         x += p.text(x, 15.0, ".", &name_f, &col::css(col::EMBER_500)) + 8.0;
-        if st.w >= 600.0 {
-            x += p.text(x, 22.0, "alias Nell", &alias_f, &col::css(col::FG_FAINT)) + 14.0;
-        }
         if !compact {
             p.line(x, 14.0, x, h - 14.0, &col::css(col::VOID_500), 1.0);
             x += 14.0;

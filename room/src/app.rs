@@ -1111,12 +1111,12 @@ impl App {
             Some(q) => self.ask_text(q, "cast", Some(i)),
             None => {
                 let body = cast::description_text(&e);
-                let title = format!("{} is my alias in this room: {}.", e.name, e.kind);
-                self.say(&title, Verdict::Recall, Some("ALIAS"));
+                let title = format!("{} · {}", e.name, e.kind);
+                self.say(&title, Verdict::Recall, Some("FROM MEMORY"));
                 self.answer = Some(AnswerCard {
                     verdict: Verdict::Recall,
-                    label: Some("ALIAS".into()),
-                    meta: "no query: no fact of my memory names her".into(),
+                    label: Some("FROM MEMORY".into()),
+                    meta: "what my memory holds".into(),
                     title: title.clone(),
                     query: String::new(),
                     body: body.clone(),

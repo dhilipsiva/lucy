@@ -177,7 +177,7 @@ mod tests {
             assert_eq!(
                 mind.as_ref()
                     .unwrap()
-                    .ask("observe(Nell, Bird).", || 0.0)
+                    .ask("observe(Lucy, Bird).", || 0.0)
                     .unwrap()
                     .is_true(),
                 present

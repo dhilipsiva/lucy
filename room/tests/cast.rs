@@ -36,17 +36,17 @@ fn the_named_entities_of_my_memory() {
             "Pity",
             "Bird",
             "Bucchi",
-            "Gundus",
-            "Nell"
+            "Gundus"
         ]
     );
+    // I am the room, not a presence in it; and Nell is each of us, never a figure here
+    assert!(!names.contains(&"Lucy") && !names.contains(&"Nell"));
     let by = |n: &str| p.iter().find(|e| e.name == n).unwrap();
     assert_eq!(by("Dhilipsiva").form, Form::Chair);
     assert_eq!(by("Enma").form, Form::Bird);
     assert_eq!(by("Pity").form, Form::Bird);
     assert_eq!(by("Bucchi").form, Form::Dog);
     assert_eq!(by("Gundus").form, Form::Dog);
-    assert_eq!(by("Nell").form, Form::Dot);
     for n in ["Oda", "Luffy", "Sabo"] {
         assert_eq!(by(n).form, Form::Figure, "{n}");
     }
@@ -85,7 +85,7 @@ fn the_named_entities_of_my_memory() {
     );
     assert_eq!(
         group(Group::Household),
-        vec!["Dhilipsiva", "Enma", "Pity", "Bucchi", "Gundus", "Nell"]
+        vec!["Dhilipsiva", "Enma", "Pity", "Bucchi", "Gundus"]
     );
     // kind words: my glosses of the first role in the file
     assert_eq!(by("Dhilipsiva").kind, "human");
@@ -96,14 +96,13 @@ fn the_named_entities_of_my_memory() {
     assert_eq!(by("StrawHatCrew").kind, "a crew");
     assert_eq!(by("Bird").kind, "what he likes");
     assert_eq!(by("PrivateMemory").kind, "kept");
-    // queries: the kind fact, else the first fact naming them; none for Nell
+    // queries: the kind fact, else the first fact naming them
     assert_eq!(by("Enma").query.as_deref(), Some("bird(Enma)."));
     assert_eq!(
         by("Dhilipsiva").query.as_deref(),
         Some("human(Dhilipsiva).")
     );
     assert_eq!(by("Oda").query.as_deref(), Some("fiction(OnePiece, Oda)."));
-    assert!(by("Nell").query.is_none());
 }
 
 #[test]
@@ -119,10 +118,7 @@ fn every_line_is_sourced_and_only_the_household_has_notes() {
             assert!(from_a_fact || his, "{}: unsourced line {:?}", e.name, l);
         }
         let noted = e.note.is_some();
-        let household = matches!(
-            e.name.as_str(),
-            "Enma" | "Pity" | "Bucchi" | "Gundus" | "Nell"
-        );
+        let household = matches!(e.name.as_str(), "Enma" | "Pity" | "Bucchi" | "Gundus");
         assert_eq!(noted, household, "{}: note {:?}", e.name, e.note);
         if e.group != Group::Household {
             assert!(
@@ -185,7 +181,7 @@ fn every_place_is_inside_the_room_and_the_sweep_runs_left_to_right() {
 fn a_new_fact_brings_a_new_presence() {
     let text = format!("{}\nhuman(Someone). # about: visitors\n", memory());
     let p = presences(&fact_lines(&text));
-    assert_eq!(p.len(), 18);
+    assert_eq!(p.len(), 17);
     let s = p.iter().find(|e| e.name == "Someone").unwrap();
     assert_eq!(s.form, Form::Figure);
     assert_eq!(s.group, Group::Works);

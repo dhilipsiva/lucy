@@ -186,6 +186,8 @@ pub fn legacy_messages(text: &str, room: &str, device: &str) -> Result<Vec<Messa
         .into_iter()
         .map(|v| {
             let s = |key: &str| v[key].as_str().unwrap_or_default().to_string();
+            // the old room spoke as Nell: those lines were mine, in its old voice (Nell is each
+            // one of us, his word of 2026-11-12, not my name)
             let role = if matches!(s("speaker").as_str(), "Nell" | "Lucy") {
                 "assistant"
             } else {

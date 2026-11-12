@@ -7,7 +7,7 @@ use glam::{Mat4, Quat, Vec3};
 
 use crate::cast::{self, Entity, Form, Group};
 use crate::colors::{self as col, linear};
-use crate::creatures::{self, Bird, Dog, Dot, Figure, Sign};
+use crate::creatures::{self, Bird, Dog, Figure, Sign};
 use crate::geom;
 use crate::gl::{Gl, Lights};
 use crate::lucy::Lucy;
@@ -29,7 +29,6 @@ struct Focus {
 pub enum Anim {
     Bird(Bird),
     Dog(Dog),
-    Dot(Dot),
     Figure(Figure),
     Sign(Sign),
     Chair,
@@ -439,7 +438,6 @@ impl World {
             return;
         }
         let parent = self.cast;
-        let halo = scene.add_texture(crate::lucy::halo_texture(gl));
         if entities
             .iter()
             .any(|e| e.form == Form::Bird && (e.name == "Enma" || e.name == "Pity"))
@@ -474,10 +472,6 @@ impl World {
                     (d.group, Anim::Dog(d))
                 }
                 Form::Chair => (creatures::chair(gl, scene, parent), Anim::Chair),
-                Form::Dot => {
-                    let d = Dot::build(gl, scene, parent, halo);
-                    (d.group, Anim::Dot(d))
-                }
                 Form::Figure => {
                     let f = Figure::build(gl, scene, parent);
                     (f.group, Anim::Figure(f))
@@ -616,7 +610,6 @@ impl World {
                 match &mut m.anim {
                     Anim::Bird(b) => b.update(scene, t, dt),
                     Anim::Dog(d) => d.update(scene, t, dt),
-                    Anim::Dot(d) => d.update(scene, t),
                     Anim::Figure(f) => f.update(scene, t),
                     Anim::Sign(s) => s.update(scene, t),
                     Anim::Chair => {}

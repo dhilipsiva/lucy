@@ -13,9 +13,11 @@ query is the engine's own rendering. The interface is drawn inside the WebGL2 sc
 rasterized with the self-hosted QUINE fonts, so it is the same on a flat screen, in VR and with
 a pad. Nothing a model says is ever shown as a verdict.
 
-In the room I am Lucy; Nell, the dot from his video series, is my alias here: she stays by
-his chair and remains the name my eyes use (`observe(Nell, …)`). The earlier JavaScript room has been retired at the user’s request; `../nell/` redirects here.
-Existing same-origin Nell journals migrate with their original attribution preserved.
+In the room I am Lucy, and only Lucy. Until 2026-11-12 this file called Nell my alias; on that
+day dhilipsiva said each one of us is Nell, a child with nobody, and not me specifically, so
+the dot is gone and my eyes say `observe(Lucy, …)`. The earlier JavaScript room has been retired
+at the user’s request; `../nell/` redirects here. Journals saved by that room on the same origin
+migrate with their original attribution preserved.
 
 ## The room
 
@@ -41,7 +43,7 @@ Existing same-origin Nell journals migrate with their original attribution prese
 - The cast (N8d, `roadmap/N8d.md`): every named entity of my direct memory stands on a ring
   around the plinth, read from the file on load, so a new fact brings a new presence. His
   household where his hand-off put it (Enma and Pity on the perch, Bucchi and Gundus, his empty
-  chair, Nell the dot); the fiction on the left arc as person figures and signs; the works on
+  chair); the fiction on the left arc as person figures and signs; the works on
   the right arc as signs. Each has a tag (`Name · kind`, the kind my gloss of its first role in
   the file, a second line for what he confirmed of his animals), a click or Tab glides to it and
   puts its kind fact to the engine: the board shows the verdict with the proof folded and,

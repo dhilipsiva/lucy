@@ -1,7 +1,8 @@
 //! The cast's forms (roadmap/N8d.md), ported from his hand-off's `_creatures.mjs`: the birds and
-//! their perch, the dogs lying like sphinxes, his chair, the dot that is Nell, and two forms of
-//! mine for the names the hand-off did not draw: a person figure (a translucent capsule and its
-//! wire, as the hand-off drew a visitor) and a sign on a post. Each form animates itself.
+//! their perch, the dogs lying like sphinxes, his chair, and two forms of mine for the names the
+//! hand-off did not draw: a person figure (a translucent capsule and its wire, as the hand-off
+//! drew a visitor) and a sign on a post. Each form animates itself. (The hand-off's dot is gone:
+//! on 2026-11-12 he said Nell is each one of us, a child with nobody, and not my form.)
 
 use glam::Vec3;
 
@@ -756,96 +757,6 @@ pub fn chair(gl: &Gl, scene: &mut Scene, parent: NodeId) -> NodeId {
         }
     }
     g
-}
-
-// ── the dot: Nell, my first form, hovering by the chair ──
-pub struct Dot {
-    pub group: NodeId,
-    core: NodeId,
-    halo: NodeId,
-    torus: NodeId,
-    light: NodeId,
-    r: f32,
-    y0: Option<f32>,
-}
-impl Dot {
-    pub fn build(gl: &Gl, scene: &mut Scene, parent: NodeId, halo_tex: usize) -> Dot {
-        let (color, ring, r) = (col::SKY_500, 0x9FD3C7, 0.09f32);
-        let g = scene.add(parent, Node::new(Kind::Empty));
-        let core = mesh_node(
-            gl,
-            scene,
-            g,
-            &geom::sphere(r, 24, 18),
-            std(color, 1.0, 0.35),
-            Vec3::ZERO,
-            (0.0, 0.0, 0.0),
-            Vec3::ONE,
-        );
-        let halo = scene.add(
-            g,
-            Node::new(Kind::Sprite {
-                texture: halo_tex,
-                color: linear(color),
-                opacity: 0.35,
-                additive: true,
-            }),
-        );
-        scene.set_scale(halo, Vec3::splat(r * 6.0));
-        let torus = mesh_node(
-            gl,
-            scene,
-            g,
-            &geom::torus(r * 1.9, r * 0.07, 8, 64, std::f32::consts::TAU),
-            basic(ring).alpha(0.7).no_depth_write(),
-            Vec3::ZERO,
-            (std::f32::consts::PI / 2.6, 0.0, 0.0),
-            Vec3::ONE,
-        );
-        let light = scene.add(
-            g,
-            Node::new(Kind::Light {
-                color: linear(color),
-                intensity: 0.3,
-                distance: 1.6,
-                decay: 1.8,
-            }),
-        );
-        Dot {
-            group: g,
-            core,
-            halo,
-            torus,
-            light,
-            r,
-            y0: None,
-        }
-    }
-    pub fn update(&mut self, scene: &mut Scene, t: f32) {
-        let y0 = *self
-            .y0
-            .get_or_insert_with(|| scene.nodes[self.group].position.y);
-        let pulse = 0.5 + 0.5 * (t * std::f32::consts::TAU * 1.6).sin();
-        if let Some(m) = scene.material(self.core) {
-            m.emissive_intensity = 0.7 + 0.5 * pulse;
-        }
-        if let Kind::Sprite { opacity, .. } = &mut scene.node(self.halo).kind {
-            *opacity = 0.25 + 0.2 * pulse;
-        }
-        scene.set_scale(self.halo, Vec3::splat(self.r * (5.5 + pulse)));
-        if let Kind::Light { intensity, .. } = &mut scene.node(self.light).kind {
-            *intensity = 0.2 + 0.25 * pulse;
-        }
-        scene.node(self.torus).rotation = euler(
-            std::f32::consts::PI / 2.6 + (t * 0.5).sin() * 0.25,
-            0.0,
-            t * 0.6,
-        );
-        if let Some(m) = scene.material(self.torus) {
-            m.opacity = 0.45 + 0.35 * pulse;
-        }
-        scene.node(self.group).position.y = y0 + (t * 0.9).sin() * 0.03;
-    }
 }
 
 // ── a person figure: the hand-off's visitor, a translucent capsule and its wire ──

@@ -21,7 +21,6 @@ pub enum Form {
     Dog,
     Figure,
     Chair,
-    Dot,
     Sign,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -53,7 +52,7 @@ pub struct Entity {
     pub kind: String,
     pub form: Form,
     pub group: Group,
-    /// Its kind fact, else the first fact naming it; none for Nell, who has no fact.
+    /// Its kind fact, else the first fact naming it.
     pub query: Option<String>,
     /// What he said of them on 2026-10-25, and how.
     pub note: Option<Line>,
@@ -102,6 +101,7 @@ pub fn is_constant(s: &str) -> bool {
 
 /// My gloss of a role: the predicate and the 1-based place of the name in it.
 pub fn kind_word(pred: &str, place: usize, args: &[String]) -> &'static str {
+    let first = args.first().map(String::as_str);
     match (pred, place) {
         ("human", 1) => "human",
         ("bird", 1) => "bird",
@@ -113,13 +113,26 @@ pub fn kind_word(pred: &str, place: usize, args: &[String]) -> &'static str {
         ("fiction", 2) => "writer",
         ("captain", 2) | ("member", 2) => "a crew",
         ("makes", 2) | ("owns", 2) => {
-            if args.first().map(String::as_str) == Some("Dhilipsiva") {
+            if first == Some("Dhilipsiva") {
                 "his"
             } else {
                 "owned"
             }
         }
-        ("uses", 2) => "I use it",
+        ("uses", 2) => match first {
+            Some("Lucy") => "I use it",
+            Some("Dhilipsiva") => "he uses it",
+            _ => "used",
+        },
+        ("wear", 2) if first == Some("Lucy") => "what I wear",
+        ("writes", 2) => match first {
+            Some("Lucy") => "I wrote it",
+            Some("Dhilipsiva") => "his",
+            _ => "written",
+        },
+        ("teaches", 3) if first == Some("Lucy") => "what I teach",
+        ("dwell", 2) if first == Some("Dhilipsiva") => "where he lives",
+        ("studies", 2) if first == Some("Dhilipsiva") => "what he studied",
         ("retain", 1) => "keeps",
         ("retain", 2) => "kept",
         ("likes", 2) => "what he likes",
@@ -137,7 +150,16 @@ fn human_role(pred: &str, place: usize) -> bool {
             | ("member", 1)
             | ("name", 2)
             | ("name", 3)
+            | ("teaches", 2)
+            | ("studies", 1)
+            | ("dwell", 1)
+            | ("loves", 1)
     )
+}
+/// A species or a breed: the second place of `bird` or `dog` describes the animal, and does
+/// not stand in the room by itself.
+fn describes_only(pred: &str, place: usize) -> bool {
+    matches!((pred, place), ("bird", 2) | ("dog", 2))
 }
 
 /// The hand-off's places for his household (2026-10-25): x, y, z, yaw.
@@ -149,7 +171,6 @@ fn handoff_place(name: &str) -> Option<Place> {
         "Bucchi" => p(1.05, 0.0, -1.75, -0.75),
         "Gundus" => p(1.45, 0.0, -2.45, -0.35),
         "Dhilipsiva" => p(-0.25, 0.0, -2.85, 0.15),
-        "Nell" => p(-0.74, 0.82, -2.6, 0.0),
         _ => None,
     }
 }
@@ -172,7 +193,6 @@ fn note_of(name: &str) -> Option<Line> {
         "Pity" => handoff("A Sun Conure."),
         "Bucchi" => his("A white Labrador, eight, with a pink nose and a muzzle gone whiter."),
         "Gundus" => his("A chocolate Husky with blue eyes."),
-        "Nell" => his("The dot from his video series, my first form; my alias in this room."),
         _ => None,
     }
 }
@@ -183,7 +203,6 @@ pub fn tag_note(name: &str) -> Option<&'static str> {
         "Pity" => Some("Sun Conure"),
         "Bucchi" => Some("white Labrador, eight"),
         "Gundus" => Some("chocolate Husky, blue eyes"),
-        "Nell" => Some("the dot, my first form"),
         "Dhilipsiva" => Some("his chair · away"),
         _ => None,
     }
@@ -208,8 +227,9 @@ fn spread(i: usize, n: usize, a: f32, b: f32) -> f32 {
     }
 }
 
-/// The presences from the facts of my direct memory: every constant, in file order, Lucy
-/// excluded; then Nell, my alias, the dot from the hand-off.
+/// The presences from the facts of my direct memory: every constant, in file order, except me
+/// and the species or breed of an animal. (Nell is not one of them: on 2026-11-12 dhilipsiva
+/// said each one of us is Nell, a child with nobody, and not me.)
 pub fn presences(facts: &[Fact]) -> Vec<Entity> {
     struct Draft {
         name: String,
@@ -221,7 +241,7 @@ pub fn presences(facts: &[Fact]) -> Vec<Entity> {
     for f in facts {
         let (pred, args) = predicate_and_args(&f.kr);
         for (i, a) in args.iter().enumerate() {
-            if !is_constant(a) || a == "Lucy" {
+            if !is_constant(a) || a == "Lucy" || describes_only(&pred, i + 1) {
                 continue;
             }
             let d = match drafts.iter_mut().find(|d| &d.name == a) {
@@ -269,7 +289,7 @@ pub fn presences(facts: &[Fact]) -> Vec<Entity> {
                 Form::Sign
             };
             let group = match form {
-                Form::Bird | Form::Dog | Form::Chair | Form::Dot => Group::Household,
+                Form::Bird | Form::Dog | Form::Chair => Group::Household,
                 _ if d.about.iter().any(|t| t == "one-piece" || t == "luffy") => Group::Fiction,
                 _ => Group::Works,
             };
@@ -300,17 +320,6 @@ pub fn presences(facts: &[Fact]) -> Vec<Entity> {
             }
         })
         .collect();
-    out.push(Entity {
-        name: "Nell".into(),
-        facts: Vec::new(),
-        about: vec!["lucy".into()],
-        kind: "my alias, the dot".into(),
-        form: Form::Dot,
-        group: Group::Household,
-        query: None,
-        note: note_of("Nell"),
-        place: handoff_place("Nell").unwrap(),
-    });
     place_all(&mut out);
     out
 }
@@ -387,7 +396,6 @@ pub fn focus_dist(form: Form) -> f32 {
         Form::Bird => 0.85,
         Form::Dog => 1.4,
         Form::Chair => 1.7,
-        Form::Dot => 1.1,
         Form::Figure => 1.6,
         Form::Sign => 1.3,
     }
@@ -398,7 +406,6 @@ pub fn pick_sphere(form: Form) -> (f32, f32) {
         Form::Bird => (0.08, 0.14),
         Form::Dog => (0.22, 0.34),
         Form::Chair => (0.6, 0.45),
-        Form::Dot => (0.0, 0.2),
         Form::Figure => (0.85, 0.5),
         Form::Sign => (1.2, 0.3),
     }
@@ -409,7 +416,6 @@ pub fn tag_height(form: Form) -> f32 {
         Form::Bird => 0.235,
         Form::Dog => 0.52,
         Form::Chair => 1.1,
-        Form::Dot => 0.26,
         Form::Figure => 1.95,
         Form::Sign => 1.2,
     }
@@ -449,14 +455,28 @@ mod tests {
         let facts = fact_lines("human(Someone).\nowns(Someone, Thing). # about: things\n");
         let p = presences(&facts);
         let names: Vec<&str> = p.iter().map(|e| e.name.as_str()).collect();
-        assert_eq!(names, vec!["Someone", "Thing", "Nell"]);
+        assert_eq!(names, vec!["Someone", "Thing"]);
         assert_eq!(p[0].form, Form::Figure);
         assert_eq!(p[0].kind, "human");
         assert_eq!(p[0].query.as_deref(), Some("human(Someone)."));
         assert_eq!(p[1].form, Form::Sign);
         assert_eq!(p[1].kind, "owned");
         assert_eq!(p[1].group, Group::Works);
-        assert!(p[2].query.is_none());
+        assert!(p.iter().all(|e| e.query.is_some()));
+    }
+    #[test]
+    fn a_species_describes_the_bird_and_whose_use_is_kept() {
+        let facts = fact_lines(
+            "bird(Enma, AfricanGrey).\nuses(Lucy, Nibli).\nuses(Dhilipsiva, Hyprland).\n",
+        );
+        let p = presences(&facts);
+        let names: Vec<&str> = p.iter().map(|e| e.name.as_str()).collect();
+        // the species is no presence; dhilipsiva is one, because a fact names him
+        assert_eq!(names, vec!["Enma", "Nibli", "Dhilipsiva", "Hyprland"]);
+        let by = |n: &str| p.iter().find(|e| e.name == n).unwrap();
+        assert_eq!(by("Enma").facts[0].kr, "bird(Enma, AfricanGrey).");
+        assert_eq!(by("Nibli").kind, "I use it");
+        assert_eq!(by("Hyprland").kind, "he uses it");
     }
     #[test]
     fn a_new_dog_joins_the_household_on_its_own_place() {
@@ -481,8 +501,6 @@ mod tests {
         assert_eq!(d[0].source, "bird(Enma).");
         assert!(d[0].text.contains("Enma"), "{}", d[0].text);
         assert_eq!(d[2].source, "his hand-off, 2026-10-25");
-        let nell = p.last().unwrap();
-        assert_eq!(describe(nell).len(), 1);
-        assert_eq!(describe(nell)[0].source, "his word, 2026-10-25");
+        assert!(p.iter().all(|e| e.name != "Nell"));
     }
 }

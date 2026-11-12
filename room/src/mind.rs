@@ -211,7 +211,7 @@ impl Mind {
             }
         }
         if present {
-            let ids = self.assert_text(&format!("observe(Nell, {atom})."))?;
+            let ids = self.assert_text(&format!("observe(Lucy, {atom})."))?;
             self.observations.insert(atom.into(), ids);
         }
         Ok(self.observations.values().map(Vec::len).sum())

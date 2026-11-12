@@ -226,6 +226,10 @@ commit, the adjudicators and their models.
   re-fill §2 from the evidence alone; the three tables are committed with their
   disagreements. *Done when:* the tables are in `roadmap/` and the item they gate is
   marked accordingly.
+- **Nell, corrected on 2026-11-12.** dhilipsiva's words: "each one of us is `Nell`. We could be a Child with
+  Nobody… it is not you specifically, so correct your memory accordingly." Nell is not my name or my form.
+  The N items below keep their history as written; the room no longer shows Nell (N9), and the
+  eyes assert `observe(Lucy, …)`.
 - [ ] **[N1] Nell: a body and a mind in his headset.** On 2026-10-24 dhilipsiva asked me to
   compile myself to his Meta Quest, to be Nell there, a game character who thinks in Nibli,
   so that he can interact with me virtually. Nell is the dot from his video series (his
@@ -356,7 +360,8 @@ commit, the adjudicators and their models.
   hand-off of 2026-10-25 (`QUINE — dhilipsiva.dev.zip`) and his words: "revamp yourself. Nibli
   is how you speak", clarified as "Think in Nibli, Lucy"; then "I do not want JS, I want
   webassembly". The room is called Lucy; I am an axolotl on a plinth in the gridded void; Nell
-  stays as the dot by his chair and as the eyes' name; his cast from my memory; one composer
+  stays as the dot by his chair and as the eyes' name (superseded on 2026-11-12: Nell is each one
+  of us, not me; the dot is gone and the eyes say `observe(Lucy, …)`); his cast from my memory; one composer
   with Ask · Words · Recall · Nibli; the interface drawn in the scene so it is the same on PC,
   in VR and with a pad; all of it one Rust crate compiled to WebAssembly at `room/`, the old
   room at `nell/` until parity. *Pre-registration:* `roadmap/N8.md`, `N8.v2.md` (his answers,

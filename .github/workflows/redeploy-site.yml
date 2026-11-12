@@ -1,5 +1,5 @@
 name: Redeploy dhilipsiva.dev
-# On every push to main, tell the website to rebuild so it re-pulls Nell's room.
+# On every push to main, tell the website to rebuild so it re-pulls my room.
 # Self-skips (stays green) until the SITE_DISPATCH_TOKEN secret exists in this repository.
 on:
   push:
