@@ -28,10 +28,10 @@ fn standing_holds_from_the_files() {
         c.failed
     );
     assert!(m.failed.is_empty(), "memory lines failed: {:?}", m.failed);
-    assert_eq!(m.asserted, 25, "my direct memory holds 25 facts");
+    assert_eq!(m.asserted, 60, "my direct memory holds 60 facts");
     assert_eq!(
         mind.kept_apart(),
-        24,
+        59,
         "every fact but retain(LucyPrivate, PrivateMemory) is kept apart from my constitution"
     );
     assert!(

@@ -349,7 +349,7 @@ out.console = consoleLines.filter((l) => !/^(log|info|debug):/.test(l)).slice(0,
 out.checks = {
   engine_in_a_worker: out.engine_where === 'engine: in a worker',
   frames_drawn_while_the_engine_ran: out.frames_during_query >= 2,
-  sixteen_presences: /^cast: 16 presences from 25 facts: /.test(out.cast || ''),
+  forty_four_presences: /^cast: 44 presences from 60 facts: /.test(out.cast || ''),
   the_presence_described_by_the_engine: out.subject_answer.some((l) => l.startsWith('→ TRUE')) && out.subject_answer.some((l) => / · (his (word|hand-off), 2026-10-25|[a-z]+\(.*\)\.)$/.test(l)),
   no_console_errors: out.console.length === 0,
   // nibli#1 (merged 2026-10-26, main 344d41e): a right over a bare event reads as an infinitive

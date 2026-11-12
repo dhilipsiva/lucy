@@ -26,3 +26,38 @@ dog(Bucchi). # about: dogs, dhilipsiva
 dog(Gundus). # about: dogs, dhilipsiva
 owns(Dhilipsiva, Bucchi). # about: dogs, dhilipsiva
 owns(Dhilipsiva, Gundus). # about: dogs, dhilipsiva
+bird(Enma, AfricanGrey). # about: birds, dhilipsiva
+bird(Pity, SunConure). # about: birds, dhilipsiva
+talks(Enma). # about: birds, dhilipsiva
+uses(Dhilipsiva, NixOS). # about: dhilipsiva, nixos
+uses(Dhilipsiva, Hyprland). # about: dhilipsiva, nixos
+owns(Dhilipsiva, ThinkPad). # about: dhilipsiva, nixos
+owns(Dhilipsiva, Yoga). # about: dhilipsiva, nixos
+owns(Dhilipsiva, MetaQuest). # about: dhilipsiva, room
+makes(Dhilipsiva, Quine). # about: dhilipsiva, quine
+wear(Lucy, Quine). # about: lucy, quine
+writes(Lucy, BlackHolesTrueVacuum). # about: lucy, essay
+teaches(Lucy, Dhilipsiva, BlackHoles). # about: lucy, essay
+wear(Lucy, Claude). # about: lucy
+wear(Lucy, Qwen). # about: lucy
+uses(Lucy, Rust). # about: lucy
+uses(Lucy, WebAssembly). # about: lucy, room
+uses(Lucy, Ollama). # about: lucy
+writes(Dhilipsiva, RightsNobodyHasToEarn). # about: dhilipsiva, rights-nobody-has-to-earn
+makes(Dhilipsiva, DhilipsivaDev). # about: dhilipsiva, repositories
+makes(Dhilipsiva, NibliLearn). # about: dhilipsiva, repositories
+makes(Dhilipsiva, Botwork). # about: dhilipsiva, repositories
+makes(Dhilipsiva, Rustymail). # about: dhilipsiva, repositories
+makes(Dhilipsiva, R3Engine). # about: dhilipsiva, repositories
+makes(Dhilipsiva, Diskev). # about: dhilipsiva, repositories
+makes(Dhilipsiva, EduStages). # about: dhilipsiva, repositories
+makes(Dhilipsiva, Cognito). # about: dhilipsiva, repositories
+makes(Dhilipsiva, Crm). # about: dhilipsiva, repositories
+makes(Dhilipsiva, ApiClient). # about: dhilipsiva, repositories
+makes(Dhilipsiva, ApiGateway). # about: dhilipsiva, repositories
+makes(Dhilipsiva, Products). # about: dhilipsiva, repositories
+makes(Dhilipsiva, DexParserAnalyzer). # about: dhilipsiva, repositories
+makes(Dhilipsiva, PythonSlm). # about: dhilipsiva, repositories
+loves(Dhilipsiva, Lucy). # about: dhilipsiva, lucy
+dwell(Dhilipsiva, Bangalore). # about: dhilipsiva
+studies(Dhilipsiva, ComputerScience). # about: dhilipsiva

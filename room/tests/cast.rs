@@ -36,7 +36,35 @@ fn the_named_entities_of_my_memory() {
             "Pity",
             "Bird",
             "Bucchi",
-            "Gundus"
+            "Gundus",
+            "Hyprland",
+            "ThinkPad",
+            "Yoga",
+            "MetaQuest",
+            "Quine",
+            "BlackHolesTrueVacuum",
+            "BlackHoles",
+            "Claude",
+            "Qwen",
+            "Rust",
+            "WebAssembly",
+            "Ollama",
+            "DhilipsivaDev",
+            "NibliLearn",
+            "Botwork",
+            "Rustymail",
+            "R3Engine",
+            "Diskev",
+            "EduStages",
+            "Cognito",
+            "Crm",
+            "ApiClient",
+            "ApiGateway",
+            "Products",
+            "DexParserAnalyzer",
+            "PythonSlm",
+            "Bangalore",
+            "ComputerScience"
         ]
     );
     // I am the room, not a presence in it; and Nell is each of us, never a figure here
@@ -50,16 +78,7 @@ fn the_named_entities_of_my_memory() {
     for n in ["Oda", "Luffy", "Sabo"] {
         assert_eq!(by(n).form, Form::Figure, "{n}");
     }
-    for n in [
-        "Nibli",
-        "StrawHatCrew",
-        "OnePiece",
-        "RightsNobodyHasToEarn",
-        "NixOS",
-        "LucyPrivate",
-        "PrivateMemory",
-        "Bird",
-    ] {
+    for n in ["StrawHatCrew", "OnePiece"] {
         assert_eq!(by(n).form, Form::Sign, "{n}");
     }
     let group = |g: Group| -> Vec<&str> {
@@ -80,9 +99,40 @@ fn the_named_entities_of_my_memory() {
             "NixOS",
             "LucyPrivate",
             "PrivateMemory",
-            "Bird"
+            "Bird",
+            "Hyprland",
+            "ThinkPad",
+            "Yoga",
+            "MetaQuest",
+            "Quine",
+            "BlackHolesTrueVacuum",
+            "BlackHoles",
+            "Claude",
+            "Qwen",
+            "Rust",
+            "WebAssembly",
+            "Ollama",
+            "DhilipsivaDev",
+            "NibliLearn",
+            "Botwork",
+            "Rustymail",
+            "R3Engine",
+            "Diskev",
+            "EduStages",
+            "Cognito",
+            "Crm",
+            "ApiClient",
+            "ApiGateway",
+            "Products",
+            "DexParserAnalyzer",
+            "PythonSlm",
+            "Bangalore",
+            "ComputerScience"
         ]
     );
+    for n in group(Group::Works) {
+        assert_eq!(by(n).form, Form::Sign, "{n}");
+    }
     assert_eq!(
         group(Group::Household),
         vec!["Dhilipsiva", "Enma", "Pity", "Bucchi", "Gundus"]
@@ -96,6 +146,12 @@ fn the_named_entities_of_my_memory() {
     assert_eq!(by("StrawHatCrew").kind, "a crew");
     assert_eq!(by("Bird").kind, "what he likes");
     assert_eq!(by("PrivateMemory").kind, "kept");
+    assert_eq!(by("Claude").kind, "what I wear");
+    assert_eq!(by("BlackHolesTrueVacuum").kind, "I wrote it");
+    assert_eq!(by("BlackHoles").kind, "what I teach");
+    assert_eq!(by("Hyprland").kind, "he uses it");
+    assert_eq!(by("Bangalore").kind, "where he lives");
+    assert_eq!(by("ComputerScience").kind, "what he studied");
     // queries: the kind fact, else the first fact naming them
     assert_eq!(by("Enma").query.as_deref(), Some("bird(Enma)."));
     assert_eq!(
@@ -103,6 +159,10 @@ fn the_named_entities_of_my_memory() {
         Some("human(Dhilipsiva).")
     );
     assert_eq!(by("Oda").query.as_deref(), Some("fiction(OnePiece, Oda)."));
+    assert_eq!(
+        by("Quine").query.as_deref(),
+        Some("makes(Dhilipsiva, Quine).")
+    );
 }
 
 #[test]
@@ -181,7 +241,7 @@ fn every_place_is_inside_the_room_and_the_sweep_runs_left_to_right() {
 fn a_new_fact_brings_a_new_presence() {
     let text = format!("{}\nhuman(Someone). # about: visitors\n", memory());
     let p = presences(&fact_lines(&text));
-    assert_eq!(p.len(), 17);
+    assert_eq!(p.len(), 45);
     let s = p.iter().find(|e| e.name == "Someone").unwrap();
     assert_eq!(s.form, Form::Figure);
     assert_eq!(s.group, Group::Works);
