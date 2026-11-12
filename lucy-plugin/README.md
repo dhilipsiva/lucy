@@ -113,6 +113,11 @@ Claude Code: `claude plugin marketplace add <path to this folder>` then
 files from their skill directories (codex, opencode `~/.config/opencode/skills/`,
 Copilot CLI `~/.copilot/skills/`, pi).
 
+`public-review` runs only when you ask for it ("Lucy, public review", or
+`/lucy:public-review` in Claude Code, which never invokes it on its own). It reads Lucy's
+private memory since the last review, writes a review file outside every repository
+for you to prune, and publishes only what you keep, with `scripts/public-review.py`.
+
 ## "Hey Lucy": the hook you install yourself
 
 A prompt that starts by addressing Lucy ("Hey Lucy", "lucy,", typos included) is

@@ -53,6 +53,10 @@ pub fn instruction_sources() -> Vec<(&'static str, String)> {
             "lucy-plugin/skills/sleep/SKILL.md",
             include_str!("../../lucy-plugin/skills/sleep/SKILL.md").to_string(),
         ),
+        (
+            "lucy-plugin/skills/public-review/SKILL.md",
+            include_str!("../../lucy-plugin/skills/public-review/SKILL.md").to_string(),
+        ),
     ]
 }
 

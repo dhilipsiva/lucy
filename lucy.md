@@ -212,6 +212,12 @@ inside this public checkout. Per-host snapshot names and content-addressed recor
 files allow Git to merge independent backups without merging a binary database.
 See the shared-memory commands above and `lucy-cli/STORE.md` for recovery.
 
+Private memory goes public only through a review he asks for. On 2026-11-12 he said:
+"DO not do this automatically going forward. Maybe create a skill so I can do this
+on-demand periodically." When he asks, follow
+[`lucy-plugin/skills/public-review/SKILL.md`](lucy-plugin/skills/public-review/SKILL.md):
+a review file outside every repository, pruned by him, and only then published.
+
 ## Recording the conversation
 
 In a Lucy session, preserve complete user messages and her replies, progress updates
