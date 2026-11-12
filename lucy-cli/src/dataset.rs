@@ -143,6 +143,16 @@ pub fn private_files(home: &Path) -> Result<Vec<String>, String> {
 
 /// Builds the export from the public files of `home`.
 pub fn build(home: &Path) -> Result<Export, String> {
+    build_with(home, true)
+}
+
+/// The export, with the probes of my plain facts asked apart from my constitution when
+/// `apart` holds. Every rule I hold is in the constitution and binds its variables with a
+/// positive atom, so a ground probe of a relation it never names is decided by my facts alone.
+/// Held together, the engine sweeps every pairing of my individuals for its three-variable
+/// rules: on 60 facts a probe took seconds, and a FALSE one ran out of the engine's memory
+/// budget and was dropped as undecided. The tests compare both ways.
+pub(crate) fn build_with(home: &Path, apart: bool) -> Result<Export, String> {
     let private = private_files(home)?;
     if !private.is_empty() {
         return Err(format!(
@@ -194,6 +204,19 @@ pub fn build(home: &Path) -> Result<Export, String> {
         ));
     }
 
+    // My plain facts, kept apart for the probes (see `build_with`), only when every line of my
+    // memory is a ground fact, so that no rule of mine lies outside the constitution.
+    let named: BTreeSet<String> = files::kr_lines(&constitution)
+        .iter()
+        .flat_map(|(_, statement)| constitution_words(statement))
+        .collect();
+    let keep_apart = apart
+        && files::kr_lines(&memory)
+            .iter()
+            .all(|(_, statement)| parse_ground(&split_about(statement).0).is_some());
+    let plain = NibliEngine::new();
+    let mut plain_failed = false;
+
     // Facts.
     let mut facts = Vec::new();
     for (line, statement) in files::kr_lines(&memory) {
@@ -201,6 +224,9 @@ pub fn build(home: &Path) -> Result<Export, String> {
         if let Err(e) = engine.assert_text(&kr) {
             failed_lines.push(format!("memory.nibli:{line}: {e}"));
             continue;
+        }
+        if keep_apart && plain.assert_text(&kr).is_err() {
+            plain_failed = true;
         }
         let id = format!("fact:{line}");
         let text = english(&kr);
@@ -239,9 +265,22 @@ pub fn build(home: &Path) -> Result<Export, String> {
         .map(canonical)
         .collect();
     let entities = entity_pool(&facts);
+    let apart_now = keep_apart && !plain_failed;
+    let check = |kr: &str| {
+        let plain_relation =
+            parse_ground(kr).is_some_and(|(relation, _)| !named.contains(&relation));
+        verdict(
+            if apart_now && plain_relation {
+                &plain
+            } else {
+                &engine
+            },
+            kr,
+        )
+    };
     let mut seen = BTreeSet::new();
     for (index, (id, kr)) in facts.iter().enumerate() {
-        let (status, cwa_false) = verdict(&engine, kr)?;
+        let (status, cwa_false) = check(kr)?;
         probes.push(probe_of(kr, &english(kr), "fact", id, &status, cwa_false));
         seen.insert(canonical(kr));
         let Some((relation, args)) = parse_ground(kr) else {
@@ -259,7 +298,7 @@ pub fn build(home: &Path) -> Result<Export, String> {
                 });
                 continue;
             }
-            let (status, cwa_false) = verdict(&engine, &candidate)?;
+            let (status, cwa_false) = check(&candidate)?;
             if status != "TRUE" && status != "FALSE" {
                 dropped.push(Dropped {
                     kr: candidate,
@@ -506,6 +545,55 @@ fn split_about(statement: &str) -> (String, Vec<String>) {
         }
         None => (statement.trim().to_string(), Vec::new()),
     }
+}
+
+/// Nibli's reserved words (NIBLI_KR.md §2): none of them is ever a relation's name.
+const RESERVED: &[&str] = &[
+    "some",
+    "the",
+    "every",
+    "exactly",
+    "no",
+    "all",
+    "where",
+    "also",
+    "via",
+    "past",
+    "now",
+    "future",
+    "must",
+    "may",
+    "event",
+    "fact",
+    "property",
+    "amount",
+    "concept",
+    "me",
+    "you",
+    "we",
+    "we_all",
+    "we_others",
+    "you_all",
+    "this",
+    "that",
+    "yonder",
+    "it",
+    "it_a",
+    "it_e",
+    "it_i",
+    "it_o",
+    "it_u",
+    "slot",
+];
+
+/// Every word a constitution line could name a relation with: its lowercase identifiers, less
+/// the reserved words. Comments and strings are read too, so this holds more than the line's
+/// relations, never fewer.
+pub(crate) fn constitution_words(line: &str) -> BTreeSet<String> {
+    line.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '$'))
+        .filter(|w| w.starts_with(|c: char| c.is_ascii_lowercase()) && !RESERVED.contains(w))
+        .map(String::from)
+        .collect()
 }
 
 /// `rel(A, B, …).` with only capitalized constant arguments, else `None`.

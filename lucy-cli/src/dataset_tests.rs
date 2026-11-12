@@ -218,6 +218,36 @@ fn dataset_probes_carry_the_engines_verdicts() {
 }
 
 #[test]
+fn probes_asked_apart_from_the_constitution_match_the_whole() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = public_home(dir.path());
+    let mut memory = std::fs::read_to_string(home.join("memory.nibli")).unwrap();
+    memory.push_str(
+        "bird(Enma). # about: birds\nowns(Dhilipsiva, Enma).\ndog(Bucchi).\nowns(Dhilipsiva, Bucchi).\n",
+    );
+    std::fs::write(home.join("memory.nibli"), memory).unwrap();
+    let apart = crate::dataset::build_with(&home, true).unwrap();
+    let whole = crate::dataset::build_with(&home, false).unwrap();
+    assert_eq!(apart.probes, whole.probes);
+    assert_eq!(apart.dropped, whole.dropped);
+    assert!(
+        apart.probes.iter().any(|p| p.expect == "unknown"),
+        "the mutations yield not-derivable probes"
+    );
+}
+
+#[test]
+fn constitution_words_name_its_relations_and_leave_out_reserved_words() {
+    let w = crate::dataset::constitution_words(
+        "all $e, $h: grant($e, Storage, $h) & ~leave($e, $h, Eviction) -> obliged($h, event { retain() }).",
+    );
+    assert_eq!(
+        w.into_iter().collect::<Vec<_>>(),
+        ["grant", "leave", "obliged", "retain"]
+    );
+}
+
+#[test]
 fn drop_reason_keeps_recorded_decisions_and_derived_vocabulary_out_of_unknowns() {
     let known: BTreeSet<String> = ["owns(Dhilipsiva, Nibli)."]
         .iter()
