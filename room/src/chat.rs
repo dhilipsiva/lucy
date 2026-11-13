@@ -84,6 +84,16 @@ pub struct Chat {
     notice_text: String,
 }
 
+type GarageHook = Rc<dyn Fn(&str)>;
+thread_local! {
+    static GARAGE: RefCell<Option<GarageHook>> = const { RefCell::new(None) };
+}
+/// The garage's buttons (roadmap/N8i.md) ask for XR, which needs the visitor's click to still
+/// count: the app installs this, and the click listener calls it there and then.
+pub fn on_garage(f: GarageHook) {
+    GARAGE.with(|g| *g.borrow_mut() = Some(f));
+}
+
 fn by_id(doc: &Document, id: &str) -> Option<Element> {
     doc.get_element_by_id(id)
 }
@@ -294,6 +304,12 @@ impl Chat {
                 }
                 "import" => {
                     pick_archive(&q);
+                    return;
+                }
+                "garage" => {
+                    if let Some(f) = GARAGE.with(|g| g.borrow().clone()) {
+                        f(&value);
+                    }
                     return;
                 }
                 _ => return,
@@ -667,6 +683,7 @@ impl Chat {
                 v.words_status, v.words_ready, v.words_busy
             ),
             Some("model") => format!("model|{}|{}|{:?}", s.backend, s.provider, s.accepted),
+            Some("garage") => "garage".to_string(),
             Some(_) => format!(
                 "more|{}|{}|{}",
                 v.peers.join("\n"),
@@ -712,6 +729,25 @@ impl Chat {
         let close = button(d, "ask-close", "×", "panel", "");
         attr(&close, "aria-label", "Close");
         self.panel.append_child(&close).ok();
+        if which == "garage" {
+            self.panel
+                .append_child(&make(d, "p", "ask-eyebrow", Some("// a car in my room")))
+                .ok();
+            for (id, title, note) in [
+                ("launch", "Launch strip", "Sit down first. 0–100 km/h in 2.5 s on a straight road: in a headset in VR, or here on this screen. The timing is exact; VR can't push you into the seat, so it's an average 1.13 g you see and hear, not feel."),
+                ("life", "Life-size in your room", "Mixed reality on a headset. Point at the floor, pull the trigger, and walk around it."),
+                ("mini", "Drive the miniature", "Mixed reality on a headset. A 1:10 car you drive through your home; it stops at the walls and furniture your headset sees. Nothing of your room is kept."),
+            ] {
+                let row = make(d, "div", "ask-option", None);
+                row.append_child(&button(d, "ask-option-btn", title, "garage", id)).ok();
+                row.append_child(&make(d, "p", "ask-note", Some(note))).ok();
+                self.panel.append_child(&row).ok();
+            }
+            self.panel
+                .append_child(&make(d, "p", "ask-note", Some("The car is a generic SUV I built myself, and its sound is my own: no maker's design or recording.")))
+                .ok();
+            return;
+        }
         if which == "model" {
             self.panel
                 .append_child(&make(

@@ -108,6 +108,11 @@ pub struct App {
     xr_active: bool,
     #[cfg(target_arch = "wasm32")]
     xr_pending: bool,
+    /// The garage (roadmap/N8i.md): a car in my room, three ways.
+    #[cfg(target_arch = "wasm32")]
+    garage: Option<crate::garage::Garage>,
+    #[cfg(target_arch = "wasm32")]
+    garage_pending: bool,
     xr_supported: bool,
     #[cfg(target_arch = "wasm32")]
     xr: Option<crate::xr::Session>,
@@ -246,6 +251,10 @@ pub fn boot() -> Result<(), String> {
         xr_active: false,
         #[cfg(target_arch = "wasm32")]
         xr_pending: false,
+        #[cfg(target_arch = "wasm32")]
+        garage: None,
+        #[cfg(target_arch = "wasm32")]
+        garage_pending: false,
         xr_supported: false,
         #[cfg(target_arch = "wasm32")]
         xr: None,
@@ -332,6 +341,12 @@ pub fn boot() -> Result<(), String> {
     app.borrow_mut().self_weak = weak.clone();
     #[cfg(target_arch = "wasm32")]
     crate::xr::probe(weak.clone());
+    #[cfg(target_arch = "wasm32")]
+    {
+        // the garage's buttons need the visitor's click to still count when they ask for XR
+        let w = weak.clone();
+        crate::chat::on_garage(Rc::new(move |v: &str| crate::garage::start(w.clone(), v)));
+    }
     let q = app.borrow().input.clone();
     input::direct(Rc::new(move |e| {
         if let Some(a) = weak.upgrade() {
@@ -362,6 +377,92 @@ pub fn boot() -> Result<(), String> {
 }
 
 impl App {
+    // ── the garage (roadmap/N8i.md) ──
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn garage_busy(&self) -> bool {
+        self.garage.is_some() || self.garage_pending || self.xr.is_some() || self.xr_pending
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn gl_context(&self) -> web_sys::WebGl2RenderingContext {
+        self.gl.ctx.clone()
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn vr_supported(&self) -> bool {
+        self.xr_supported
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn garage_pending(&mut self, pending: bool) {
+        self.garage_pending = pending;
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn garage_begin(
+        &mut self,
+        mode: crate::garage::Mode,
+        xr: Option<crate::garage::XrState>,
+        audio: Option<crate::garage::Audio>,
+    ) {
+        self.garage_pending = false;
+        let back = self.settings.view == "chat";
+        let mut g = crate::garage::Garage::new(&self.gl, mode, back);
+        g.audio = audio;
+        if let Some(state) = xr {
+            g.xr = Some(state);
+            self.xr_active = true;
+        } else {
+            self.show_conversation(false);
+        }
+        self.keys.clear();
+        self.garage = Some(g);
+        self.last_ms = now_ms();
+        self.log(&format!("garage: {mode:?}"));
+        self.version += 1;
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn garage_error(&mut self, error: &str) {
+        self.garage_pending = false;
+        self.notice = Some(error.to_string());
+        self.log(&format!("garage: {error}"));
+        self.version += 1;
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn garage_xr_frame(&mut self, now: f64, frame: &web_sys::XrFrame) {
+        let dt = ((now - self.last_ms) / 1000.0).clamp(0.0, 0.1) as f32;
+        self.last_ms = now;
+        if let Some(g) = &mut self.garage {
+            g.frame_xr(&self.gl, now, dt, frame);
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn garage_select(&mut self, event: &web_sys::XrInputSourceEvent) {
+        if let Some(g) = &mut self.garage {
+            g.select(now_ms(), event);
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) fn garage_ended(&mut self) {
+        if let Some(mut g) = self.garage.take() {
+            g.close();
+        }
+        self.xr_active = false;
+        self.gl
+            .ctx
+            .bind_framebuffer(web_sys::WebGl2RenderingContext::FRAMEBUFFER, None);
+        self.resize();
+        self.last_ms = now_ms();
+        self.log("garage: left, my room restored");
+        self.version += 1;
+    }
+    #[cfg(target_arch = "wasm32")]
+    fn garage_close_flat(&mut self) {
+        if let Some(mut g) = self.garage.take() {
+            let back = g.back_to_chat;
+            g.close();
+            self.keys.clear();
+            self.show_conversation(back);
+            self.log("garage: left, my room restored");
+        }
+        self.version += 1;
+    }
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn xr_support(&mut self, supported: bool) {
         self.xr_supported = supported;
@@ -1672,6 +1773,17 @@ impl App {
         }
     }
     fn handle(&mut self, ev: InputEvent) {
+        #[cfg(target_arch = "wasm32")]
+        if let Some(g) = self.garage.as_mut().filter(|g| g.xr.is_none()) {
+            match &ev {
+                InputEvent::KeyDown { key, repeat, .. } if !*repeat => {
+                    g.key(&key.to_lowercase(), true, now_ms())
+                }
+                InputEvent::KeyUp { key } => g.key(&key.to_lowercase(), false, now_ms()),
+                _ => {}
+            }
+            return;
+        }
         if self.in_conversation() && !matches!(ev, InputEvent::Draft(_) | InputEvent::Typing) {
             self.keys.clear();
             return;
@@ -2114,6 +2226,18 @@ impl App {
         }
         // the engine: post what waits (or, on the main thread, run one query now)
         self.engine.pump();
+        #[cfg(target_arch = "wasm32")]
+        if self.garage.as_ref().is_some_and(|g| g.xr.is_none()) {
+            let (w, h) = (self.w, self.h);
+            if let Some(g) = self.garage.as_mut() {
+                g.frame_flat(&self.gl, now, dt, w, h);
+            }
+            if self.garage.as_ref().is_some_and(|g| g.leave) || self.in_conversation() {
+                self.garage_close_flat();
+            }
+            self.engine.frame_drawn();
+            return;
+        }
         if self.in_conversation() {
             self.render_chat();
             self.engine.frame_drawn();

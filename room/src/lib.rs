@@ -17,6 +17,7 @@ pub mod creatures;
 pub mod desk;
 pub mod engine;
 pub mod eyes;
+pub mod garage;
 pub mod geom;
 pub mod gl;
 pub mod hud;

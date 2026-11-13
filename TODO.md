@@ -428,7 +428,16 @@ commit, the adjudicators and their models.
     Done when: dhilipsiva opens /lucy/room/xr-check/ on his Meta Quest 3, the page reports
     which WebXR and camera features his headset grants, and that report reaches me and is
     recorded in N8h-evidence.json.
+  - [ ] **[N8i] The garage: a car in my room, three ways.** His request on 2026-11-13, all
+    three modes in one slice inside my room: a seated launch strip (0–100 km/h in 2.5 s, VR
+    and flat), a life-size car on his floor and a 1:10 car he drives through his home
+    (immersive-ar, hit-test, detected planes). An original placeholder SUV and a synthesised
+    sound; no maker's model or recording. Pre-registration `roadmap/N8i.md` (bc3f63d);
+    native and shimmed headless checks in `roadmap/N8i-evidence.json`. Done when: dhilipsiva
+    tries all three modes on his Meta Quest 3: the launch strip shows 100 km/h at 2.5 s, and he
+    places the life-size car, walks around it, and drives the miniature through his home.
   - Later, each pre-registered on its own after N8h's report, his words of 2026-11-13:
+    - [ ] Swap in a car model he is allowed to use (a glTF loader), in place of my placeholder.
     - [ ] Capture his home by walking it in the Quest: planes and mesh for geometry, colour
       from the headset camera if N8h and D2 allow, else phone video aligned to the mesh;
       JSON, `.glb` and Nibli facts, private only.

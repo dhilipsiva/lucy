@@ -159,7 +159,13 @@ and the worker entry called, so the engine runs off the drawing thread.
 Hidden text mirrors carry my words, the mind line, the board, model/journal status and log
 for screen readers and the headless test. `#wake-terminal` mirrors the complete demonstration
 text, and `#room-link` is the canonical public-room anchor.
-`test/headless.mjs` and `test/ask.mjs` are Node test harnesses, not part of the room.
+`test/headless.mjs`, `test/ask.mjs` and `test/garage.mjs` are Node test harnesses, not part of the room.
+
+The garage (`src/garage`, roadmap/N8i.md) opens from the conversation's **Garage** button: a
+seated launch strip (0–100 km/h in 2.5 s, in a headset or on this screen), a life-size car on
+the visitor's floor and a 1:10 car driven through their home (mixed reality, hit-test and
+detected planes, used live and never kept). The car is my own placeholder and its sound is
+synthesised; `#garage-status` mirrors what the garage shows.
 
 ## Build, test, serve
 
@@ -177,6 +183,7 @@ node room/test/headless.mjs --wake-demo --shot /tmp/wake-demo.png
 node room/test/headless.mjs --platforms
 node room/test/headless.mjs --controls
 node room/test/ask.mjs   # the conversation, against stand-in providers, Ollama and peers
+node room/test/garage.mjs --shot /tmp/garage.png   # the garage, flat and with a shimmed headset
 ```
 
 The canvas checks open the scene with `?view=scene`; `ask.mjs` checks the conversation at
