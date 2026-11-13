@@ -895,7 +895,7 @@ impl Garage {
             let floor = self.xr.as_ref().is_some_and(|x| x.floor);
             let head = self.head;
             if let Some(cap) = self.cap.as_mut() {
-                let lines = cap.frame(now, dt, frame, &space, floor, head);
+                let lines = cap.frame(now, frame, &space, floor, head);
                 let status = cap.status();
                 self.board.draw(gl, &self.scene, &lines);
                 // the board floats ahead of him, a little below his eyes, turned to face him
@@ -1211,7 +1211,7 @@ pub fn start(app: Weak<RefCell<App>>, value: &str) {
         });
         return;
     }
-    // the camera and the face finder are asked for inside this same press
+    // the camera is asked for inside this same press
     let mut cap = (mode == Mode::Capture).then(Capturing::begin);
     let init = XrSessionInit::new();
     let features: Vec<JsValue> = if mode == Mode::Capture {

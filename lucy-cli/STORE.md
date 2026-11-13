@@ -173,3 +173,20 @@ Run `nix develop --command just ci`; use
 `nix develop .#desktop --command just ci-desktop` for the desktop feature. Tests cover exact recovery,
 conflicts, corruption, peer edits/deletions, independent writers, vector validation
 and app activation/approval boundaries.
+
+## A captured home (`lucy home import`)
+
+`lucy home import FILE [--root DIR]` reads a `lucy-home-capture-v1` file (roadmap/N8j.md,
+N8j.v2.md) and writes `home-captures/<sha256 of the file>/` under the data root: `capture.json`
+(the geometry, pictures removed), `photos/<id>.jpg`, `facts.nibli` (one statement per labelled
+surface my lexicon can name, each checked by `nibli_kr::parse_checked`) and `summary.txt`.
+Directories are 0700 and files 0600.
+
+A capture comes off the headset raw, its faces not blurred, and a raw file is refused here. Blur
+it first, on this machine: `cd room/face && cargo run --release --features desktop --bin
+lucy-home-blur -- IN.json OUT.json`, then import `OUT.json`. The tool writes OUT only when every
+picture was read and checked.
+
+The import opens no store, writes no record and touches no replication log, so no sync or backup
+can carry it: by dhilipsiva's decision of 2026-11-14 a capture of his home stays on the disk it
+was imported to. A second import of the same file changes nothing. Undo is deleting the directory.

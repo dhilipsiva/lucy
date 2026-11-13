@@ -1,6 +1,7 @@
-//! Faces out of a picture before it is kept (roadmap/N8j.md). Each face box is widened and
-//! pixelated in place. The rule that matters is `process`: without a detection that ran and
-//! answered, there is no picture.
+//! Faces out of a picture of someone's home (roadmap/N8j.md, N8j.v2.md). Each face box is
+//! widened and pixelated in place. The rule that matters is `process`: without a detection
+//! that ran and answered, there is no picture. Shared by my room, which blurs a raw capture
+//! it opens, and the desktop tool that blurs one before my store will take it.
 
 /// A face box, corners in 0..1 of the picture.
 #[derive(Clone, Copy, Debug, PartialEq)]

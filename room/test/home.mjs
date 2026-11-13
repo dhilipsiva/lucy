@@ -1,12 +1,14 @@
-// A headless check of capturing a home and opening it again (roadmap/N8j.md). Serves the
-// repository and, with room/test/garage-shim.js and Chrome's fake camera:
-//   1. starts a capture, walks the shimmed head, and reads the counts from the status mirror;
+// A headless check of capturing a home and opening it again (roadmap/N8j.md, N8j.v2.md). Serves
+// the repository and, with room/test/garage-shim.js and Chrome's fake camera:
+//   1. starts a capture, walks the shimmed head, and reads the counts from the status mirror:
+//      every camera frame is kept as taken, and no face finder runs on the "headset";
 //   2. ends it with B: the camera's tracks are stopped and nothing was sent over the network;
-//   3. downloads the capture and checks the file: format, counts that add up, JPEG pictures;
+//   3. downloads the capture and checks the file: marked raw, counts that add up, JPEG pictures;
 //   4. looks at it on the flat screen, moves an alignment slider, and leaves;
-//   5. opens the downloaded file again through the file picker.
-// The shim and the fake camera prove orchestration only, never a headset. The face finder
-// runs for real (the fake camera shows no face; the finder's own tests carry a portrait).
+//   5. adds the fixture portrait as one more raw picture and opens that file through the picker:
+//      my room blurs it with the face finder's worker before storing it, and the file it then
+//      hands back is marked processed, with one face blurred in the portrait.
+// The shim and the fake camera prove orchestration only, never a headset.
 //   node room/test/home.mjs [--keep FILE] [--shot PNG]    (CHROME=/path/to/chromium)
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
@@ -81,11 +83,11 @@ await waitFor('a mixed-reality session', "window.__xrRequests.length===1 && wind
 const req = await evaluate('window.__xrRequests[0]');
 assert(req.mode === 'immersive-ar' && req.activation && ['plane-detection', 'mesh-detection'].every((f) => req.options.optionalFeatures.includes(f)) && !req.options.optionalFeatures.includes('camera-access'), `request ${JSON.stringify(req)}`);
 assert((await evaluate('window.__streams.length')) === 1, 'the camera was not asked for in the same press');
-await waitFor('the face finder', "document.getElementById('garage-status')?.textContent.includes('detector ready')", 60000);
 for (let i = 1; i <= 6; i++) { await evaluate(`window.__headAt=[${i * 0.5 - 1.5},1.6,0.6]`); await sleep(900); }
 await waitFor('pictures kept', "Number((document.getElementById('garage-status')?.textContent.match(/kept (\\d+)/)||[])[1])>=3", 20000);
 const during = await status();
-assert(num(during, 'planes') === 1 && num(during, 'meshes') === 1 && num(during, 'path') > 5, `capture status ${during}`);
+assert(num(during, 'planes') === 1 && num(during, 'meshes') === 1 && num(during, 'path') > 30 && during.endsWith('raw'), `capture status ${during}`);
+assert(!requests.some((r) => r.url.includes('face')), 'the face finder was fetched during a capture');
 const alpha = await evaluate('window.__clearColors.slice(-3).map(c=>c[3])');
 assert(alpha.every((a) => a === 0), `capture clear alpha ${alpha}`);
 
@@ -110,11 +112,11 @@ await open('download');
 await waitFor('the download', 'window.__downloads.length===1', 20000);
 const text = await evaluate('window.__downloads[0]');
 const file = JSON.parse(text);
-assert(file.format === 'lucy-home-capture-v1', `format ${file.format}`);
+assert(file.format === 'lucy-home-capture-v1' && file.raw === true, `format ${file.format} raw ${file.raw}`);
 assert(file.planes.length === 1 && file.planes[0].label === 'wall' && file.meshes.length === 1 && file.meshes[0].indices.length === 3, 'surfaces in the file');
-assert(file.photos.length >= 3 && file.photos.every((p) => p.jpeg_base64.startsWith('/9j/') && p.pose.length === 16), 'pictures in the file');
+assert(file.photos.length >= 5 && file.photos.every((p) => p.jpeg_base64.startsWith('/9j/') && p.pose.length === 16 && p.faces_blurred === 0), 'pictures in the file');
 assert(file.stats.kept === file.photos.length && file.stats.kept + file.stats.dropped === file.stats.offered, `counts ${JSON.stringify(file.stats)}`);
-assert(file.detector.name === 'ultraface-rfb-320' && /^[0-9a-f]{64}$/.test(file.detector.model_sha256), `detector ${JSON.stringify(file.detector)}`);
+assert(file.detector.name === '' && file.stats.faces_blurred === 0, `a raw capture names no detector: ${JSON.stringify(file.detector)}`);
 const path = keep || join(profile, 'lucy-home-capture.json');
 writeFileSync(path, text);
 out.file = { bytes: text.length, photos: file.photos.length, stats: file.stats, pathPoints: file.path.length };
@@ -134,15 +136,34 @@ await waitFor('my room again', "document.getElementById('garage-status')?.textCo
 assert(!(await evaluate("!!document.getElementById('home-panel')")), 'the panel stayed');
 out.view = { shown, narrowed };
 
-// 5. open the file again through the picker
+// 5. a raw file with a face in it, opened through the picker: blurred before it is stored
+const withFace = JSON.parse(text);
+const portraitId = Math.max(...withFace.photos.map((p) => p.id)) + 1;
+withFace.photos.push({ ...withFace.photos[0], id: portraitId, jpeg_base64: readFileSync(join(root, 'room/face/tests/portrait.jpg')).toString('base64') });
+withFace.stats.kept += 1; withFace.stats.offered += 1;
+const facePath = join(profile, 'with-face.json');
+writeFileSync(facePath, JSON.stringify(withFace));
 chooser = null;
 await open('open');
 for (let i = 0; i < 50 && !chooser; i++) await sleep(100);
 assert(chooser, 'no file chooser opened');
-await send('DOM.setFileInputFiles', { files: [path], backendNodeId: chooser.backendNodeId }, sessionId);
-await waitFor('the opened home', "/garage home · planes 1 · meshes 1 · pictures \\d+/.test(document.getElementById('garage-status')?.textContent)", 20000);
+await send('DOM.setFileInputFiles', { files: [facePath], backendNodeId: chooser.backendNodeId }, sessionId);
+await waitFor('the opened home', "/garage home · planes 1 · meshes 1 · pictures \\d+/.test(document.getElementById('garage-status')?.textContent)", 60000);
 out.reopened = await status();
-assert(num(out.reopened, 'pictures') === file.photos.length, 'the reopened home lost pictures');
+assert(num(out.reopened, 'pictures') === withFace.photos.length, 'the reopened home lost pictures');
+assert(requests.some((r) => r.url.endsWith('/room/face-worker.js')), 'the face finder was not used to open a raw file');
+await click('#home-panel [data-role="leave"]');
+await waitFor('my room again', "document.getElementById('garage-status')?.textContent===''", 5000);
+await open('download');
+await waitFor('the second download', 'window.__downloads.length===2', 20000);
+const processed = JSON.parse(await evaluate('window.__downloads[1]'));
+const portrait = processed.photos.find((p) => p.id === portraitId);
+assert(processed.raw === false && processed.detector.name === 'ultraface-rfb-320' && /^[0-9a-f]{64}$/.test(processed.detector.model_sha256), `processed file ${processed.raw} ${JSON.stringify(processed.detector)}`);
+// the portrait's one face is blurred; the finder errs toward too many, so the fake camera's
+// test pattern may add a mistaken box or two, and the total says how many
+assert(portrait && portrait.faces_blurred === 1 && processed.stats.faces_blurred === processed.photos.reduce((n, p) => n + p.faces_blurred, 0), `the portrait's face: ${JSON.stringify(portrait && portrait.faces_blurred)} of ${processed.stats.faces_blurred}`);
+assert(portrait.jpeg_base64 !== withFace.photos.at(-1).jpeg_base64, 'the portrait came back unchanged');
+out.blurredInBrowser = { pictures: processed.photos.length, faces: processed.stats.faces_blurred, detector: processed.detector.name };
 
 out.pass = true;
 out.note = 'shimmed headset and fake camera: orchestration only; no headset, frame-rate, alignment or texture-quality claim';

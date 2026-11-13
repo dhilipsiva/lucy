@@ -7,12 +7,14 @@ use serde::{Deserialize, Serialize};
 
 pub const FORMAT: &str = "lucy-home-capture-v1";
 /// The whole file, pictures included.
-pub const FILE_BYTES: usize = 96 * 1024 * 1024;
-pub const MAX_PHOTOS: usize = 400;
+pub const FILE_BYTES: usize = 320 * 1024 * 1024;
+/// Every frame of a walk at about one a second: twenty-five minutes.
+pub const MAX_PHOTOS: usize = 1500;
 pub const MAX_PLANES: usize = 512;
 pub const MAX_MESHES: usize = 64;
 pub const MAX_VERTICES: usize = 400_000;
-pub const MAX_PATH: usize = 20_000;
+/// Thirty points a second for half an hour.
+pub const MAX_PATH: usize = 60_000;
 pub const PHOTO_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -24,6 +26,9 @@ pub struct HomeCapture {
     pub ended: String,
     pub device: String,
     pub reference_space: String,
+    /// True while the pictures are as the camera gave them: faces not yet blurred. The headset
+    /// writes true (roadmap/N8j.v2.md); only a blur that ran over every picture writes false.
+    pub raw: bool,
     pub planes: Vec<Plane>,
     pub meshes: Vec<SurfaceMesh>,
     pub path: Vec<PathPoint>,
@@ -314,6 +319,7 @@ pub(crate) fn sample() -> HomeCapture {
         ended: "2026-11-14T00:01:00Z".into(),
         device: "test".into(),
         reference_space: "local-floor".into(),
+        raw: false,
         planes: vec![Plane {
             label: "wall".into(),
             orientation: "vertical".into(),

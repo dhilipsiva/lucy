@@ -1,20 +1,35 @@
-//! My face finder (roadmap/N8j.md): UltraFace RFB-320 through tract. A picture of someone's
-//! home is kept only after every face in it is found and pixelated, so this errs toward
-//! finding too many. The same code runs natively (the tests) and in a worker in the browser.
+//! My face finder (roadmap/N8j.md, N8j.v2.md): UltraFace through tract. Before a picture of
+//! someone's home enters my store, every face in it is found and pixelated, so this errs
+//! toward finding too many. In a browser it runs in a worker (the RFB-320 model), when my
+//! room opens a raw capture; on the desktop, `lucy-home-blur` adds the larger RFB-640 model
+//! at the camera's full size.
 
 use sha2::{Digest, Sha256};
 use tract_onnx::prelude::*;
 
+#[cfg(feature = "desktop")]
+pub mod capture;
+
 pub const NAME: &str = "ultraface-rfb-320";
 pub const MODEL_SHA256: &str = "34cd7e60aeff28744c657de7a3dc64e872d506741de66987f3426f2b79f88017";
 static MODEL: &[u8] = include_bytes!("../model/version-RFB-320.onnx");
-/// The network's input size.
-pub const W: usize = 320;
-pub const H: usize = 240;
+#[cfg(feature = "desktop")]
+pub const LARGE_NAME: &str = "ultraface-rfb-640";
+#[cfg(feature = "desktop")]
+pub const LARGE_SHA256: &str = "8f4c659275977e7a3bfbfa339a9c769ad793df50f9c0baa8c14b11baa1646430";
+#[cfg(feature = "desktop")]
+static LARGE: &[u8] = include_bytes!("../model/version-RFB-640.onnx");
 /// Lower than the model's usual 0.7: a wall blurred by mistake costs less than a face kept.
 pub const THRESHOLD: f32 = 0.5;
 
-pub type Net = SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>;
+type Plan = SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>;
+
+/// A loaded model and the picture size it reads.
+pub struct Net {
+    plan: Plan,
+    pub width: usize,
+    pub height: usize,
+}
 
 /// A face's box in the picture, corners in 0..1.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -26,40 +41,64 @@ pub struct Face {
     pub score: f32,
 }
 
-pub fn model_digest() -> String {
-    Sha256::digest(MODEL)
+fn digest(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
 }
+pub fn model_digest() -> String {
+    digest(MODEL)
+}
 
-pub fn load() -> Result<Net, String> {
-    if model_digest() != MODEL_SHA256 {
+fn build(bytes: &[u8], pinned: &str, width: usize, height: usize) -> Result<Net, String> {
+    if digest(bytes) != pinned {
         return Err("the face model is not the one I pinned".into());
     }
-    (|| -> TractResult<Net> {
+    (|| -> TractResult<Plan> {
         tract_onnx::onnx()
-            .model_for_read(&mut std::io::Cursor::new(MODEL))?
-            .with_input_fact(0, f32::fact([1, 3, H, W]).into())?
+            .model_for_read(&mut std::io::Cursor::new(bytes))?
+            .with_input_fact(0, f32::fact([1, 3, height, width]).into())?
             .into_optimized()?
             .into_runnable()
     })()
+    .map(|plan| Net {
+        plan,
+        width,
+        height,
+    })
     .map_err(|e| format!("the face model did not load: {e}"))
 }
 
-/// Bilinear resize of an RGBA picture to the network's RGB input.
-pub fn to_input(rgba: &[u8], width: usize, height: usize) -> Result<Vec<u8>, String> {
+/// The small model: 320×240, what a browser can carry.
+pub fn load() -> Result<Net, String> {
+    build(MODEL, MODEL_SHA256, 320, 240)
+}
+/// The larger model: 640×480, the headset camera's own size.
+#[cfg(feature = "desktop")]
+pub fn load_large() -> Result<Net, String> {
+    build(LARGE, LARGE_SHA256, 640, 480)
+}
+
+/// Bilinear resize of an RGBA picture to a model's RGB input.
+pub fn to_input(
+    rgba: &[u8],
+    width: usize,
+    height: usize,
+    w: usize,
+    h: usize,
+) -> Result<Vec<u8>, String> {
     if width == 0 || height == 0 || rgba.len() != width * height * 4 {
         return Err("the picture's size does not match its bytes".into());
     }
-    let mut out = vec![0u8; W * H * 3];
-    for y in 0..H {
-        let fy = (y as f32 + 0.5) * height as f32 / H as f32 - 0.5;
+    let mut out = vec![0u8; w * h * 3];
+    for y in 0..h {
+        let fy = (y as f32 + 0.5) * height as f32 / h as f32 - 0.5;
         let y0 = fy.floor().clamp(0.0, height as f32 - 1.0) as usize;
         let y1 = (y0 + 1).min(height - 1);
         let ty = (fy - y0 as f32).clamp(0.0, 1.0);
-        for x in 0..W {
-            let fx = (x as f32 + 0.5) * width as f32 / W as f32 - 0.5;
+        for x in 0..w {
+            let fx = (x as f32 + 0.5) * width as f32 / w as f32 - 0.5;
             let x0 = fx.floor().clamp(0.0, width as f32 - 1.0) as usize;
             let x1 = (x0 + 1).min(width - 1);
             let tx = (fx - x0 as f32).clamp(0.0, 1.0);
@@ -67,7 +106,7 @@ pub fn to_input(rgba: &[u8], width: usize, height: usize) -> Result<Vec<u8>, Str
                 let p = |xx: usize, yy: usize| rgba[(yy * width + xx) * 4 + c] as f32;
                 let top = p(x0, y0) * (1.0 - tx) + p(x1, y0) * tx;
                 let bottom = p(x0, y1) * (1.0 - tx) + p(x1, y1) * tx;
-                out[(y * W + x) * 3 + c] = (top * (1.0 - ty) + bottom * ty).round() as u8;
+                out[(y * w + x) * 3 + c] = (top * (1.0 - ty) + bottom * ty).round() as u8;
             }
         }
     }
@@ -76,13 +115,14 @@ pub fn to_input(rgba: &[u8], width: usize, height: usize) -> Result<Vec<u8>, Str
 
 /// Faces in an RGBA picture of any size.
 pub fn detect(net: &Net, rgba: &[u8], width: usize, height: usize) -> Result<Vec<Face>, String> {
-    let rgb = to_input(rgba, width, height)?;
-    let input: Tensor = tract_ndarray::Array4::from_shape_fn((1, 3, H, W), |(_, c, y, x)| {
-        (rgb[(y * W + x) * 3 + c] as f32 - 127.0) / 128.0
+    let (w, h) = (net.width, net.height);
+    let rgb = to_input(rgba, width, height, w, h)?;
+    let input: Tensor = tract_ndarray::Array4::from_shape_fn((1, 3, h, w), |(_, c, y, x)| {
+        (rgb[(y * w + x) * 3 + c] as f32 - 127.0) / 128.0
     })
     .into();
     (|| -> TractResult<Vec<Face>> {
-        let out = net.run(tvec!(input.into()))?;
+        let out = net.plan.run(tvec!(input.into()))?;
         let scores = out[0].to_array_view::<f32>()?;
         let boxes = out[1].to_array_view::<f32>()?;
         let mut found = vec![];
@@ -98,16 +138,21 @@ pub fn detect(net: &Net, rgba: &[u8], width: usize, height: usize) -> Result<Vec
                 });
             }
         }
-        found.sort_by(|a, b| b.score.total_cmp(&a.score));
-        let mut keep: Vec<Face> = vec![];
-        for f in found {
-            if keep.iter().all(|k| overlap(k, &f) < 0.3) {
-                keep.push(f);
-            }
-        }
-        Ok(keep)
+        Ok(merge(found))
     })()
     .map_err(|e| format!("the face model did not run: {e}"))
+}
+
+/// Keep the surest of any boxes that overlap.
+pub fn merge(mut found: Vec<Face>) -> Vec<Face> {
+    found.sort_by(|a, b| b.score.total_cmp(&a.score));
+    let mut keep: Vec<Face> = vec![];
+    for f in found {
+        if keep.iter().all(|k| overlap(k, &f) < 0.3) {
+            keep.push(f);
+        }
+    }
+    keep
 }
 
 fn overlap(a: &Face, b: &Face) -> f32 {
@@ -232,5 +277,28 @@ mod tests {
     fn a_wrong_size_is_an_error_not_a_guess() {
         let net = load().unwrap();
         assert!(detect(&net, &[0u8; 10], 640, 480).is_err());
+    }
+
+    #[cfg(feature = "desktop")]
+    #[test]
+    fn the_larger_model_finds_a_face_too_small_to_be_sure_of() {
+        // the portrait at 70 pixels high in a 640x480 frame: a person across a room
+        let small = image::load_from_memory(include_bytes!("../tests/portrait.jpg"))
+            .unwrap()
+            .resize(70, 70, image::imageops::FilterType::Triangle)
+            .to_rgba8();
+        let mut frame = image::RgbaImage::from_pixel(640, 480, image::Rgba([150, 150, 150, 255]));
+        image::imageops::overlay(&mut frame, &small, 100, 200);
+        let large = load_large().unwrap();
+        assert_eq!((large.width, large.height), (640, 480));
+        let faces = detect(&large, frame.as_raw(), 640, 480).unwrap();
+        assert!(
+            faces
+                .iter()
+                .any(|f| f.x1 < 0.3 && f.y1 > 0.35 && f.y2 < 0.6),
+            "{faces:?}"
+        );
+        let wall = vec![180u8; 640 * 480 * 4];
+        assert!(detect(&large, &wall, 640, 480).unwrap().is_empty());
     }
 }

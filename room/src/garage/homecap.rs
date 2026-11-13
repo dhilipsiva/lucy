@@ -1,25 +1,25 @@
-//! Capturing a home and looking at it again (roadmap/N8j.md), in the browser.
+//! Capturing a home and looking at it again (roadmap/N8j.md, N8j.v2.md), in the browser.
 //!
 //! `Capturing` runs inside a mixed-reality session the wearer started: it records the planes
-//! and meshes the headset grants, the walked path, and camera frames with the head pose of
-//! each. A frame is kept only after my face finder answered and its faces were pixelated.
-//! `Viewing` draws a stored capture, its pictures laid over its surfaces.
+//! and meshes the headset grants, the walked path, and every camera frame with the head pose
+//! of each, as the camera gives them. The blur and the heavier processing happen on the
+//! desktop. A raw capture opened here in a browser is blurred by my face finder's worker
+//! before it is stored. `Viewing` draws a stored capture, its pictures laid over its surfaces.
 
-use super::blur::{self, Detection, FaceBox};
 use super::browser::{call, get, pose_matrix, present};
 use super::project;
-use super::select::Selector;
 use crate::colors::linear;
 use crate::gl::{Gl, GpuMesh, Lights, LitParams, Texture};
 use crate::sources::js_error;
 use glam::{Mat4, Quat, Vec3};
 use js_sys::{Array, Function, Object, Reflect, Uint8Array};
+use lucy_room_memory::blur::{self, Detection, FaceBox};
 use lucy_room_memory::home::{
     base64_decode, base64_encode, Alignment, Detector, HomeCapture, PathPoint, Photo, Plane, Stats,
-    SurfaceMesh, FORMAT, MAX_PHOTOS,
+    SurfaceMesh, FORMAT, MAX_PATH, MAX_PHOTOS,
 };
-use std::cell::RefCell;
-use std::collections::{BTreeMap, VecDeque};
+use std::cell::{Cell, RefCell};
+use std::collections::BTreeMap;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::{Clamped, JsCast};
@@ -30,9 +30,10 @@ use web_sys::{
     XrReferenceSpace,
 };
 
-/// How long the face finder may take over one picture before the picture is dropped.
-const DETECT_MS: f64 = 5000.0;
-const PATH_STEP_S: f32 = 0.2;
+/// How long the face finder may take over one picture before the file is refused.
+const DETECT_MS: i32 = 10_000;
+/// The path is kept at thirty points a second.
+const PATH_STEP_S: f32 = 1.0 / 30.0;
 
 fn doc() -> web_sys::Document {
     web_sys::window().unwrap().document().unwrap()
@@ -56,72 +57,46 @@ struct Cam {
     video: Option<JsValue>,
     error: Option<String>,
 }
-#[derive(Default)]
-struct Det {
-    ready: bool,
-    fatal: Option<String>,
-    name: String,
-    sha: String,
-    replies: VecDeque<(u32, Result<Vec<FaceBox>, String>)>,
-}
-struct Pending {
-    id: u32,
-    sent: f64,
-    t: f32,
-    pose: Mat4,
-    width: u32,
-    height: u32,
-    rgba: Vec<u8>,
-}
 
+/// A capture in progress (roadmap/N8j.v2.md): everything is kept as the headset gives it.
+/// Every camera frame is stored as taken, faces and all; the blur happens on the desktop,
+/// before my store will take the file.
 pub struct Capturing {
     cam: Rc<RefCell<Cam>>,
-    det: Rc<RefCell<Det>>,
-    worker: Option<Worker>,
     frame: Option<(HtmlCanvasElement, CanvasRenderingContext2d)>,
-    selector: Selector,
     last_total: Option<u32>,
-    pending: Option<Pending>,
+    encoding: Rc<Cell<bool>>,
     next_id: u32,
     done: Rc<RefCell<Vec<(Photo, Blob)>>>,
     planes: Vec<Plane>,
     meshes: Vec<SurfaceMesh>,
     path: Vec<PathPoint>,
     offered: u32,
-    faces: u32,
     started_ms: Option<f64>,
     started: String,
-    last_forward: Option<Vec3>,
     frames: u64,
     floor: bool,
 }
 
 impl Capturing {
-    /// Runs inside the visitor's press: the camera is asked for now, and the face finder's
-    /// worker is started. Neither is waited for; the capture copes with either being absent.
+    /// Runs inside the visitor's press: the camera is asked for now and not waited for; the
+    /// capture copes with it being absent.
     pub fn begin() -> Capturing {
         let cam = Rc::new(RefCell::new(Cam::default()));
         open_camera(&cam);
-        let det = Rc::new(RefCell::new(Det::default()));
-        let worker = start_worker(&det);
         Capturing {
             cam,
-            det,
-            worker,
             frame: None,
-            selector: Selector::default(),
             last_total: None,
-            pending: None,
+            encoding: Rc::new(Cell::new(false)),
             next_id: 0,
             done: Rc::new(RefCell::new(vec![])),
             planes: vec![],
             meshes: vec![],
             path: vec![],
             offered: 0,
-            faces: 0,
             started_ms: None,
             started: iso(),
-            last_forward: None,
             frames: 0,
             floor: true,
         }
@@ -131,7 +106,6 @@ impl Capturing {
     pub fn frame(
         &mut self,
         now: f64,
-        dt: f32,
         frame: &XrFrame,
         space: &XrReferenceSpace,
         floor: bool,
@@ -141,15 +115,8 @@ impl Capturing {
         self.floor = floor;
         let start = *self.started_ms.get_or_insert(now);
         let t = ((now - start) / 1000.0) as f32;
-        let pos = head.w_axis.truncate();
-        let forward = head.transform_vector3(-Vec3::Z).normalize_or(Vec3::NEG_Z);
-        let turn_rate = match self.last_forward {
-            Some(f) if dt > 1e-4 => f.dot(forward).clamp(-1.0, 1.0).acos() / dt,
-            _ => 0.0,
-        };
-        self.last_forward = Some(forward);
-        if self.path.last().is_none_or(|p| t - p.t >= PATH_STEP_S) {
-            let (_, rot, _) = head.to_scale_rotation_translation();
+        if self.path.len() < MAX_PATH && self.path.last().is_none_or(|p| t - p.t >= PATH_STEP_S) {
+            let (_, rot, pos) = head.to_scale_rotation_translation();
             self.path.push(PathPoint {
                 t,
                 pos: pos.to_array(),
@@ -159,8 +126,7 @@ impl Capturing {
         if self.frames % 30 == 1 {
             self.read_surfaces(frame, space);
         }
-        self.settle(now);
-        self.maybe_take(now, t, head, pos, forward, turn_rate);
+        self.take(t, head);
         self.lines()
     }
 
@@ -229,70 +195,8 @@ impl Capturing {
         }
     }
 
-    /// Finish the picture that is with the face finder: keep it blurred, or drop it.
-    fn settle(&mut self, now: f64) {
-        let Some(p) = &self.pending else { return };
-        let reply = {
-            let mut det = self.det.borrow_mut();
-            let mut found = None;
-            while let Some((id, r)) = det.replies.pop_front() {
-                if id == p.id {
-                    found = Some(r);
-                }
-            }
-            found
-        };
-        let detection = match reply {
-            Some(Ok(boxes)) => Detection::Found(boxes),
-            Some(Err(e)) => Detection::Failed(e),
-            None if self.det.borrow().fatal.is_some() => Detection::Missing,
-            None if now - p.sent > DETECT_MS => Detection::TimedOut,
-            None => return,
-        };
-        let Some(mut p) = self.pending.take() else {
-            return;
-        };
-        let (w, h) = (p.width, p.height);
-        let Ok(faces) = blur::process(&mut p.rgba, w as usize, h as usize, &detection) else {
-            return; // dropped: counted when the capture ends, as offered minus kept
-        };
-        let Some((canvas, ctx)) = &self.frame else {
-            return;
-        };
-        let Ok(image) = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&p.rgba), w, h) else {
-            return;
-        };
-        if ctx.put_image_data(&image, 0, 0).is_err() {
-            return;
-        }
-        self.faces += faces;
-        let photo = Photo {
-            id: p.id,
-            t: p.t,
-            pose: p.pose.to_cols_array(),
-            width: w,
-            height: h,
-            faces_blurred: faces,
-            jpeg_base64: String::new(),
-        };
-        let done = self.done.clone();
-        let cb = Closure::once_into_js(move |blob: JsValue| {
-            if let Ok(blob) = blob.dyn_into::<Blob>() {
-                done.borrow_mut().push((photo, blob));
-            }
-        });
-        let _ = canvas.to_blob_with_type_and_encoder_options(
-            cb.unchecked_ref(),
-            "image/jpeg",
-            &JsValue::from_f64(0.82),
-        );
-    }
-
-    /// Take a new camera frame if the camera delivered one and the wearer has moved on.
-    fn maybe_take(&mut self, now: f64, t: f32, head: Mat4, pos: Vec3, forward: Vec3, rate: f32) {
-        if self.pending.is_some() {
-            return;
-        }
+    /// Keep the camera's frame if it delivered a new one: as taken, at its own size.
+    fn take(&mut self, t: f32, head: Mat4) {
         let Some(video) = self.cam.borrow().video.clone() else {
             return;
         };
@@ -306,16 +210,16 @@ impl Capturing {
         if !fresh || get(&video, "readyState").as_f64().unwrap_or(0.0) < 2.0 {
             return;
         }
-        if !self.selector.wants(pos, forward, rate, MAX_PHOTOS) {
+        self.offered += 1;
+        // one picture is encoded at a time; a frame that arrives meanwhile is counted as missed
+        if self.encoding.get() || self.next_id as usize >= MAX_PHOTOS {
             return;
         }
-        let vw = get(&video, "videoWidth").as_f64().unwrap_or(640.0).max(1.0);
-        let vh = get(&video, "videoHeight")
+        let w = get(&video, "videoWidth").as_f64().unwrap_or(640.0).max(1.0) as u32;
+        let h = get(&video, "videoHeight")
             .as_f64()
             .unwrap_or(480.0)
-            .max(1.0);
-        let scale = (640.0 / vw).min(1.0);
-        let (w, h) = ((vw * scale).round() as u32, (vh * scale).round() as u32);
+            .max(1.0) as u32;
         if self
             .frame
             .as_ref()
@@ -323,7 +227,9 @@ impl Capturing {
         {
             self.frame = canvas(w, h);
         }
-        let Some((_, ctx)) = &self.frame else { return };
+        let Some((canvas, ctx)) = &self.frame else {
+            return;
+        };
         let Ok(draw) = get(ctx, "drawImage").dyn_into::<Function>() else {
             return;
         };
@@ -331,37 +237,34 @@ impl Capturing {
         if Reflect::apply(&draw, ctx, &args).is_err() {
             return;
         }
-        let Ok(image) = ctx.get_image_data(0, 0, w as i32, h as i32) else {
-            return;
+        let photo = Photo {
+            id: self.next_id,
+            t,
+            pose: head.to_cols_array(),
+            width: w,
+            height: h,
+            faces_blurred: 0,
+            jpeg_base64: String::new(),
         };
-        let rgba = image.data().0;
-        self.offered += 1;
-        self.selector.took(pos, forward);
-        let id = self.next_id;
         self.next_id += 1;
-        let sent = {
-            let det = self.det.borrow();
-            det.ready && det.fatal.is_none()
-        } && self.worker.as_ref().is_some_and(|worker| {
-            let msg = Object::new();
-            let _ = Reflect::set(&msg, &"id".into(), &id.into());
-            let _ = Reflect::set(&msg, &"width".into(), &w.into());
-            let _ = Reflect::set(&msg, &"height".into(), &h.into());
-            let _ = Reflect::set(&msg, &"rgba".into(), &Uint8Array::from(rgba.as_slice()));
-            worker.post_message(&msg).is_ok()
+        self.encoding.set(true);
+        let (done, encoding) = (self.done.clone(), self.encoding.clone());
+        let cb = Closure::once_into_js(move |blob: JsValue| {
+            encoding.set(false);
+            if let Ok(blob) = blob.dyn_into::<Blob>() {
+                done.borrow_mut().push((photo, blob));
+            }
         });
-        if sent {
-            self.pending = Some(Pending {
-                id,
-                sent: now,
-                t,
-                pose: head,
-                width: w,
-                height: h,
-                rgba,
-            });
+        if canvas
+            .to_blob_with_type_and_encoder_options(
+                cb.unchecked_ref(),
+                "image/jpeg",
+                &JsValue::from_f64(0.9),
+            )
+            .is_err()
+        {
+            self.encoding.set(false);
         }
-        // not sent: no face finder, so no picture; it counts as dropped
     }
 
     fn kept(&self) -> u32 {
@@ -370,23 +273,12 @@ impl Capturing {
 
     fn lines(&self) -> Vec<(f64, String)> {
         let cam = self.cam.borrow();
-        let det = self.det.borrow();
-        let kept = self.kept();
-        let waiting = u32::from(self.pending.is_some());
         let camera = if let Some(e) = &cam.error {
             format!("no camera: {e}")
         } else if cam.video.is_none() {
             "camera starting…".into()
-        } else if let Some(e) = &det.fatal {
-            format!("● camera on · pictures off: {e}")
-        } else if !det.ready {
-            "● camera on · face finder loading…".into()
         } else {
-            format!(
-                "● camera on · {kept} pictures · {} dropped · {} faces blurred",
-                self.offered.saturating_sub(kept + waiting),
-                self.faces
-            )
+            format!("● camera on · {} pictures, kept as taken", self.kept())
         };
         vec![
             (50.0, camera),
@@ -403,45 +295,29 @@ impl Capturing {
 
     /// What a test or a screen reader can read of the capture as it runs.
     pub fn status(&self) -> String {
-        let kept = self.kept();
         format!(
-            "garage capture · planes {} · meshes {} · path {} · offered {} · kept {kept} · faces {} · detector {}",
+            "garage capture · planes {} · meshes {} · path {} · offered {} · kept {} · raw",
             self.planes.len(),
             self.meshes.len(),
             self.path.len(),
             self.offered,
-            self.faces,
-            if self.det.borrow().fatal.is_some() {
-                "missing"
-            } else if self.det.borrow().ready {
-                "ready"
-            } else {
-                "loading"
-            }
+            self.kept()
         )
     }
 
-    /// The capture ends: camera off, worker gone, and what was gathered handed over.
+    /// The capture ends: camera off, and what was gathered handed over, marked raw.
     pub fn finish(mut self) -> (HomeCapture, Vec<(u32, Blob)>) {
         close_camera(&self.cam);
-        if let Some(w) = self.worker.take() {
-            w.terminate();
-        }
         let mut kept: Vec<(Photo, Blob)> = self.done.borrow_mut().drain(..).collect();
         kept.sort_by_key(|(p, _)| p.id);
-        let det = self.det.borrow();
         let mut notes = vec![
-            "Depth is not captured: the headset gives it to the graphics card only.".to_string(),
+            "Raw: the pictures are as the camera gave them; faces are not blurred yet. Run lucy-home-blur on the desktop before lucy home import.".to_string(),
+            "Depth is not captured: the headset gives it to the graphics card only.".into(),
             "The camera's place and lens are a starting guess; align them in the viewer.".into(),
             "Frames come from a video element, about one a second on a Quest 3.".into(),
         ];
         if let Some(e) = &self.cam.borrow().error {
             notes.push(format!("No camera: {e}"));
-        }
-        if let Some(e) = &det.fatal {
-            notes.push(format!(
-                "No pictures were kept: the face finder did not run ({e})."
-            ));
         }
         let stamp: String = self
             .started
@@ -457,6 +333,7 @@ impl Capturing {
                 .and_then(|w| w.navigator().user_agent().ok())
                 .unwrap_or_default(),
             reference_space: if self.floor { "local-floor" } else { "local" }.into(),
+            raw: true,
             planes: std::mem::take(&mut self.planes),
             meshes: std::mem::take(&mut self.meshes),
             path: std::mem::take(&mut self.path),
@@ -465,12 +342,9 @@ impl Capturing {
                 offered: self.offered,
                 kept: kept.len() as u32,
                 dropped: self.offered.saturating_sub(kept.len() as u32),
-                faces_blurred: kept.iter().map(|(p, _)| p.faces_blurred).sum(),
+                faces_blurred: 0,
             },
-            detector: Detector {
-                name: det.name.clone(),
-                model_sha256: det.sha.clone(),
-            },
+            detector: Detector::default(),
             alignment: Alignment::default(),
             notes,
         };
@@ -526,66 +400,189 @@ fn close_camera(cam: &Rc<RefCell<Cam>>) {
     }
 }
 
-fn start_worker(det: &Rc<RefCell<Det>>) -> Option<Worker> {
-    let url = match crate::sources::worker_url("face") {
-        Ok(u) => u.replace("worker.js?role=face", "face-worker.js"),
-        Err(e) => {
-            det.borrow_mut().fatal = Some(e);
-            return None;
+// ── the face finder, for a raw capture opened in a browser ──
+
+/// A promise and the function that settles it.
+fn deferred() -> (js_sys::Promise, Function) {
+    let mut resolve = None;
+    let promise = js_sys::Promise::new(&mut |ok, _| resolve = Some(ok));
+    (promise, resolve.expect("the executor runs at once"))
+}
+/// Wait for a promise, but only so long; None when the time ran out first.
+async fn within(promise: &js_sys::Promise, ms: i32) -> Option<JsValue> {
+    let (timeout, fire) = deferred();
+    let window = web_sys::window()?;
+    let late = Closure::once_into_js(move || {
+        let _ = fire.call1(&JsValue::NULL, &JsValue::NULL);
+    });
+    let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(late.unchecked_ref(), ms);
+    let first = JsFuture::from(js_sys::Promise::race(&Array::of2(promise, &timeout)))
+        .await
+        .ok()?;
+    (!first.is_null()).then_some(first)
+}
+
+#[derive(Default)]
+struct FinderState {
+    hello: Option<Function>,
+    waiting: BTreeMap<u32, Function>,
+}
+
+/// My face finder's worker, asked one picture at a time.
+struct Finder {
+    worker: Worker,
+    state: Rc<RefCell<FinderState>>,
+    name: String,
+    sha: String,
+    next: u32,
+}
+impl Finder {
+    async fn start() -> Result<Finder, String> {
+        let url =
+            crate::sources::worker_url("face")?.replace("worker.js?role=face", "face-worker.js");
+        let options = WorkerOptions::new();
+        options.set_type(WorkerType::Module);
+        let worker = Worker::new_with_options(&url, &options).map_err(|e| js_error(&e))?;
+        let state = Rc::new(RefCell::new(FinderState::default()));
+        let (hello, said) = deferred();
+        state.borrow_mut().hello = Some(said);
+        let s = state.clone();
+        let on =
+            Closure::<dyn FnMut(web_sys::MessageEvent)>::new(move |e: web_sys::MessageEvent| {
+                let m = e.data();
+                let mut st = s.borrow_mut();
+                let settle = match get(&m, "id").as_f64() {
+                    Some(id) => st.waiting.remove(&(id as u32)),
+                    None => st.hello.take(),
+                };
+                drop(st);
+                if let Some(f) = settle {
+                    let _ = f.call1(&JsValue::NULL, &m);
+                }
+            });
+        worker.set_onmessage(Some(on.as_ref().unchecked_ref()));
+        on.forget();
+        let s = state.clone();
+        let fail = Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
+            if let Some(f) = s.borrow_mut().hello.take() {
+                let gone = Object::new();
+                let _ = Reflect::set(&gone, &"fatal".into(), &"it is not on this site".into());
+                let _ = f.call1(&JsValue::NULL, &gone);
+            }
+        });
+        worker.set_onerror(Some(fail.as_ref().unchecked_ref()));
+        fail.forget();
+        let first = within(&hello, 30_000).await;
+        let ready = first.as_ref().is_some_and(|m| get(m, "ready").is_truthy());
+        if !ready {
+            worker.terminate();
+            return Err(first
+                .and_then(|m| get(&m, "fatal").as_string())
+                .unwrap_or_else(|| "it did not start in time".into()));
         }
-    };
-    let options = WorkerOptions::new();
-    options.set_type(WorkerType::Module);
-    let worker = match Worker::new_with_options(&url, &options) {
-        Ok(w) => w,
-        Err(e) => {
-            det.borrow_mut().fatal = Some(js_error(&e));
-            return None;
+        let m = first.unwrap_or(JsValue::UNDEFINED);
+        Ok(Finder {
+            worker,
+            state,
+            name: get(&m, "name").as_string().unwrap_or_default(),
+            sha: get(&m, "model_sha256").as_string().unwrap_or_default(),
+            next: 0,
+        })
+    }
+
+    async fn detect(&mut self, rgba: &[u8], w: u32, h: u32) -> Detection {
+        let id = self.next;
+        self.next += 1;
+        let (answer, settle) = deferred();
+        self.state.borrow_mut().waiting.insert(id, settle);
+        let msg = Object::new();
+        let _ = Reflect::set(&msg, &"id".into(), &id.into());
+        let _ = Reflect::set(&msg, &"width".into(), &w.into());
+        let _ = Reflect::set(&msg, &"height".into(), &h.into());
+        let _ = Reflect::set(&msg, &"rgba".into(), &Uint8Array::from(rgba));
+        if let Err(e) = self.worker.post_message(&msg) {
+            return Detection::Failed(js_error(&e));
         }
-    };
-    let d = det.clone();
-    let on = Closure::<dyn FnMut(web_sys::MessageEvent)>::new(move |e: web_sys::MessageEvent| {
-        let m = e.data();
-        let mut det = d.borrow_mut();
-        if let Some(f) = get(&m, "fatal").as_string() {
-            det.fatal = Some(f);
-        } else if get(&m, "ready").is_truthy() {
-            det.ready = true;
-            det.name = get(&m, "name").as_string().unwrap_or_default();
-            det.sha = get(&m, "model_sha256").as_string().unwrap_or_default();
-        } else if let Some(id) = get(&m, "id").as_f64() {
-            let reply = if get(&m, "ok").is_truthy() {
-                let flat = js_sys::Float32Array::new(&get(&m, "boxes")).to_vec();
-                Ok(flat
-                    .chunks(5)
-                    .filter(|b| b.len() == 5)
-                    .map(|b| FaceBox {
-                        x1: b[0],
-                        y1: b[1],
-                        x2: b[2],
-                        y2: b[3],
-                    })
-                    .collect())
-            } else {
-                Err(get(&m, "error")
+        let Some(m) = within(&answer, DETECT_MS).await else {
+            self.state.borrow_mut().waiting.remove(&id);
+            return Detection::TimedOut;
+        };
+        if !get(&m, "ok").is_truthy() {
+            return Detection::Failed(
+                get(&m, "error")
                     .as_string()
-                    .unwrap_or_else(|| "no reason given".into()))
-            };
-            det.replies.push_back((id as u32, reply));
+                    .unwrap_or_else(|| "no reason given".into()),
+            );
         }
+        Detection::Found(
+            js_sys::Float32Array::new(&get(&m, "boxes"))
+                .to_vec()
+                .chunks(5)
+                .filter(|b| b.len() == 5)
+                .map(|b| FaceBox {
+                    x1: b[0],
+                    y1: b[1],
+                    x2: b[2],
+                    y2: b[3],
+                })
+                .collect(),
+        )
+    }
+}
+
+/// One raw picture, blurred: decoded, read by the finder, its faces pixelated, encoded again.
+async fn blur_one(finder: &mut Finder, jpeg: &[u8]) -> Result<(Blob, u32, u32, u32), String> {
+    let window = web_sys::window().ok_or("no window")?;
+    let bitmap: ImageBitmap = JsFuture::from(js_sys::Promise::from(call(
+        &window,
+        "createImageBitmap",
+        &Array::of1(&jpeg_blob(jpeg)?.into()),
+    )?))
+    .await
+    .map_err(|e| js_error(&e))?
+    .unchecked_into();
+    let (w, h) = (bitmap.width(), bitmap.height());
+    let (c, ctx) = canvas(w, h).ok_or("no canvas")?;
+    ctx.draw_image_with_image_bitmap(&bitmap, 0.0, 0.0)
+        .map_err(|e| js_error(&e))?;
+    bitmap.close();
+    let mut rgba = ctx
+        .get_image_data(0, 0, w as i32, h as i32)
+        .map_err(|e| js_error(&e))?
+        .data()
+        .0;
+    let detection = finder.detect(&rgba, w, h).await;
+    let faces = blur::process(&mut rgba, w as usize, h as usize, &detection)?;
+    let image = ImageData::new_with_u8_clamped_array_and_sh(Clamped(&rgba), w, h)
+        .map_err(|e| js_error(&e))?;
+    ctx.put_image_data(&image, 0, 0).map_err(|e| js_error(&e))?;
+    let (encoded, settle) = deferred();
+    let cb = Closure::once_into_js(move |blob: JsValue| {
+        let _ = settle.call1(&JsValue::NULL, &blob);
     });
-    worker.set_onmessage(Some(on.as_ref().unchecked_ref()));
-    on.forget();
-    let d = det.clone();
-    let fail = Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
-        d.borrow_mut().fatal = Some("the face finder is not on this site".into());
-    });
-    worker.set_onerror(Some(fail.as_ref().unchecked_ref()));
-    fail.forget();
-    Some(worker)
+    c.to_blob_with_type_and_encoder_options(
+        cb.unchecked_ref(),
+        "image/jpeg",
+        &JsValue::from_f64(0.9),
+    )
+    .map_err(|e| js_error(&e))?;
+    let blob = JsFuture::from(encoded)
+        .await
+        .ok()
+        .and_then(|b| b.dyn_into::<Blob>().ok())
+        .ok_or("the blurred picture did not encode")?;
+    Ok((blob, faces, w, h))
 }
 
 // ── storing, exporting, importing ──
+
+fn jpeg_blob(bytes: &[u8]) -> Result<Blob, String> {
+    let parts = Array::new();
+    parts.push(&Uint8Array::from(bytes));
+    let options = web_sys::BlobPropertyBag::new();
+    options.set_type("image/jpeg");
+    Blob::new_with_u8_array_sequence_and_options(&parts, &options).map_err(|e| js_error(&e))
+}
 
 async fn bytes_of(blob: &Blob) -> Result<Vec<u8>, String> {
     let buffer = JsFuture::from(blob.array_buffer())
@@ -609,23 +606,36 @@ async fn stored() -> Result<Option<(HomeCapture, Vec<(u32, Blob)>)>, String> {
     Ok(Some((capture, photos)))
 }
 
-/// The stored capture as one JSON file, pictures inside, handed to the visitor.
+/// The stored capture as one JSON file, pictures inside, handed to the visitor. The file is
+/// built in pieces, one per picture, so a long walk never becomes one giant string.
 pub async fn download() -> Result<String, String> {
     let (mut capture, photos) = stored()
         .await?
         .ok_or("There's no captured home in this browser yet.")?;
-    let mut by_id = BTreeMap::new();
-    for (id, blob) in &photos {
-        by_id.insert(*id, base64_encode(&bytes_of(blob).await?));
-    }
+    let have: BTreeMap<u32, &Blob> = photos.iter().map(|(id, b)| (*id, b)).collect();
     // a picture whose bytes are gone is left out, never exported empty
-    capture.photos.retain(|p| by_id.contains_key(&p.id));
-    for p in &mut capture.photos {
-        p.jpeg_base64 = by_id.remove(&p.id).unwrap_or_default();
+    capture.photos.retain(|p| have.contains_key(&p.id));
+    let json = capture.without_pictures().json()?;
+    // every picture's field is empty in that text, in order: the bytes go in between
+    const EMPTY: &str = "\"jpeg_base64\":\"\"";
+    let pieces: Vec<&str> = json.split(EMPTY).collect();
+    if pieces.len() != capture.photos.len() + 1 {
+        return Err("the capture's pictures and its text disagree".into());
     }
-    let json = capture.json()?;
     let parts = Array::new();
-    parts.push(&JsValue::from_str(&json));
+    let mut bytes = 0usize;
+    let mut push = |s: &str| {
+        bytes += s.len();
+        parts.push(&JsValue::from_str(s));
+    };
+    for (i, piece) in pieces.iter().enumerate() {
+        push(piece);
+        if let Some(p) = capture.photos.get(i) {
+            push("\"jpeg_base64\":\"");
+            push(&base64_encode(&bytes_of(have[&p.id]).await?));
+            push("\"");
+        }
+    }
     let options = web_sys::BlobPropertyBag::new();
     options.set_type("application/json");
     let blob =
@@ -651,33 +661,73 @@ pub async fn download() -> Result<String, String> {
         .ok_or("no window")?
         .set_timeout_with_callback_and_timeout_and_arguments_0(cleanup.unchecked_ref(), 30_000);
     Ok(format!(
-        "Downloaded lucy-home-capture.json: {} surfaces, {} pictures, {:.1} MB.",
+        "Downloaded lucy-home-capture.json: {} surfaces, {} pictures, {:.1} MB.{}",
         capture.planes.len(),
         capture.photos.len(),
-        json.len() as f64 / 1_048_576.0
+        bytes as f64 / 1_048_576.0,
+        if capture.raw {
+            " The pictures are as taken: run lucy-home-blur on your desktop before lucy home import."
+        } else {
+            ""
+        }
     ))
 }
 
-/// A capture file the visitor picked: checked strictly, then kept in this browser.
+/// A capture file the visitor picked: checked strictly, then kept in this browser. A raw one
+/// is blurred first, picture by picture; if my face finder isn't here, it is refused.
 pub async fn import(text: &str) -> Result<String, String> {
-    let capture = HomeCapture::parse(text)?;
+    let mut capture = HomeCapture::parse(text)?;
+    let mut finder = if capture.raw {
+        Some(Finder::start().await.map_err(|e| {
+            format!("this is a raw capture, and I can't blur its faces here ({e}). Run lucy-home-blur on the desktop and open the file it writes")
+        })?)
+    } else {
+        None
+    };
     let mut photos = vec![];
-    for p in &capture.photos {
-        if p.jpeg_base64.is_empty() {
-            continue;
+    let mut faces = 0;
+    let result: Result<(), String> = async {
+        for p in &mut capture.photos {
+            if p.jpeg_base64.is_empty() {
+                continue;
+            }
+            let bytes = base64_decode(&p.jpeg_base64)?;
+            if bytes.len() < 3 || bytes[..3] != [0xff, 0xd8, 0xff] {
+                return Err(format!("picture {} is not a JPEG", p.id));
+            }
+            let blob = match finder.as_mut() {
+                Some(f) => {
+                    let (blob, n, w, h) = blur_one(f, &bytes)
+                        .await
+                        .map_err(|e| format!("picture {}: {e}", p.id))?;
+                    p.faces_blurred = n;
+                    p.width = w;
+                    p.height = h;
+                    faces += n;
+                    blob
+                }
+                None => jpeg_blob(&bytes)?,
+            };
+            photos.push((p.id, blob));
         }
-        let bytes = base64_decode(&p.jpeg_base64)?;
-        if bytes.len() < 3 || bytes[..3] != [0xff, 0xd8, 0xff] {
-            return Err(format!("picture {} is not a JPEG", p.id));
-        }
-        let parts = Array::new();
-        parts.push(&Uint8Array::from(bytes.as_slice()));
-        let options = web_sys::BlobPropertyBag::new();
-        options.set_type("image/jpeg");
-        let blob = Blob::new_with_u8_array_sequence_and_options(&parts, &options)
-            .map_err(|e| js_error(&e))?;
-        photos.push((p.id, blob));
+        Ok(())
     }
+    .await;
+    if let Some(f) = finder.take() {
+        f.worker.terminate();
+        if result.is_ok() {
+            capture.raw = false;
+            capture.stats.faces_blurred = faces;
+            capture.detector = Detector {
+                name: f.name,
+                model_sha256: f.sha,
+            };
+            capture
+                .notes
+                .push("Faces were blurred in the browser when this raw capture was opened.".into());
+        }
+    }
+    result?;
     store(&capture, &photos).await?;
     Ok(format!(
         "Opened a captured home: {} surfaces, {} meshes, {} pictures.",

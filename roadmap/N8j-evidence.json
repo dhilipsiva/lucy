@@ -1,0 +1,45 @@
+[
+  {
+    "item": "N8j",
+    "pre_registration": "roadmap/N8j.md (def5a8e), revised by roadmap/N8j.v2.md (fe867e9) before the raw capture was built",
+    "class": "A: native tests, the real desktop tools run on a file the room produced, and a headless Chrome run with room/test/garage-shim.js and Chrome's fake camera. The shim and the fake camera prove orchestration only: nothing here is a headset result.",
+    "recorded": "2026-11-13T20:49:10Z",
+    "host": "dhilipsiva-desktop",
+    "code_commit": "the commit that carries this file, on branch todo/N8j",
+    "toolchain": {
+      "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+      "node": "v26.13.0",
+      "chrome": "156.0.8078.79"
+    },
+    "spike": "UltraFace RFB-320 through tract-onnx 0.21.19: one face in the fixture portrait, none on a blank frame, natively and in wasm32; about 47 ms a frame in desktop Chrome; worker module 7.1 MB, kept out of the room (8.3 MB)",
+    "native": {
+      "room-memory": "14 tests: the format's strict parse and caps, base64, and the blur (a face box flattened, the rest untouched, no answer means no picture)",
+      "room/face (--features desktop)": "7 tests: both pinned models; the portrait found and a wall not; a 70-pixel face found by RFB-640; a raw capture comes out with the face's pixels changed, one face counted, raw false; one unreadable picture fails the whole file",
+      "room": "87 lib tests, 17 in garage: projection, cells, picture choice, lag along the path",
+      "lucy-cli home": "3 tests: an import writes exactly capture.json, facts.nibli, photos and summary.txt with modes 0600/0700 and nothing else (no store, record or replication log); facts parse with nibli_kr; a bad or raw file writes nothing"
+    },
+    "desktop_chain": "On a 115-picture raw file from the headless capture: lucy-home-blur wrote a processed file in 12.0 s and refused to overwrite it on a second run; lucy home import refused the raw file and imported the processed one into a throwaway root as 118 files under home-captures/ only.",
+    "headless": {
+      "command": "node room/test/home.mjs",
+      "capture": "immersive-ar requested inside the click with plane-detection and mesh-detection and without camera-access; the camera asked for in the same press; no face finder fetched; 115 frames offered and 115 kept in about six seconds; clear alpha 0; B ended it; the camera track ended; requests during the capture were GETs to this server and to my public peers only",
+      "file": "lucy-home-capture-v1, raw true, 1.77 MB, JPEG pictures with 16-number poses, kept + dropped = offered, no detector named",
+      "view": "the wall textured (48 of 65 cells); narrowing the lens slider re-painted with fewer (32); Leave removed the panel",
+      "raw_file_opened_in_the_room": "with the fixture portrait added as one more raw picture: the face worker was fetched, the stored capture came back marked processed by ultraface-rfb-320, the portrait with one face blurred and its bytes changed; one mistaken box on the fake camera's test pattern was blurred too",
+      "regressions": "garage.mjs, headless.mjs (default and --platforms) and ask.mjs pass on the same build"
+    },
+    "changes_from_what_was_registered": [
+      "N8j.v2: raw capture and desktop blur, his decision",
+      "No record is written to my store at import, because a store record enters the local replication log; the capture is files under the data root only, and I remember it through this conversation's own records",
+      "Frames are read only through the video element; MediaStreamTrackProcessor and ImageCapture were not tried",
+      "The room's wasm grew from 8.10 to about 8.3 MB"
+    ],
+    "limitations": [
+      "no headset was used: frame rate, how many pictures a walk yields, memory on the Quest for a long capture, alignment and how the textures look are unknown until his walk",
+      "the desktop blur uses the same model family at 640x480 and 320x240; it is more thorough than the browser's, not a different kind of detector",
+      "textures can paint through furniture; depth is not captured",
+      "dhilipsiva.dev does not carry face-worker.js, so opening a raw file there is refused; github.io carries it"
+    ],
+    "adjudicators": [],
+    "disagreements": []
+  }
+]

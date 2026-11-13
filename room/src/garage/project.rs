@@ -328,6 +328,7 @@ mod tests {
             ended: String::new(),
             device: String::new(),
             reference_space: "local-floor".into(),
+            raw: false,
             planes: vec![wall()],
             meshes: vec![],
             path: vec![],

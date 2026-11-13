@@ -19,9 +19,21 @@ crate-type = ["cdylib", "rlib"]
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
 
+[features]
+# The desktop tool (roadmap/N8j.v2.md): the larger model at the camera's full size, and
+# `lucy-home-blur`, which blurs a raw capture before my store will take it.
+desktop = ["dep:image", "dep:serde_json", "dep:lucy-room-memory"]
+
+[[bin]]
+name = "lucy-home-blur"
+required-features = ["desktop"]
+
 [dependencies]
 tract-onnx = "=0.21.19"
 sha2 = "0.10"
+image = { version = "0.25", default-features = false, features = ["jpeg"], optional = true }
+serde_json = { version = "1", optional = true }
+lucy-room-memory = { path = "../../room-memory", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"

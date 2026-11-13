@@ -30,6 +30,7 @@ Peer-to-peer, cross-agent, and model-agnostic.
   lucy peer enroll|list|change       enroll scoped peers or append signed changes (--stdin)
   lucy room import FILE --peer NAME [--commit]
                                      preview or preserve and publish a private room archive
+  lucy home import FILE              keep a captured home on this disk only (never synced)
   lucy sync [--peer NAME [--retry]]   refresh peers; retry a selected failed upload
   lucy doctor                        inspect local integrity without invoking a model
   lucy continuity since|ack          durable events (--consumer ID --scope S --cursor C)
@@ -159,6 +160,12 @@ pub fn run(args: &[String], stdin: &str, env_override: Option<Env>) -> Outcome {
             };
         }
         _ => {}
+    }
+    if command == "home" {
+        return match crate::home::command(&args[1..]) {
+            Ok(v) => json_out(0, v),
+            Err(e) => harness(&e),
+        };
     }
     if command == "room" {
         return match crate::room::command(&args[1..]) {

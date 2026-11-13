@@ -1,4 +1,5 @@
 //! Exact visible messages. Provenance is reported evidence, never authentication.
+pub mod blur;
 pub mod home;
 pub mod transport;
 use serde::{Deserialize, Serialize};

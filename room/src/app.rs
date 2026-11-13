@@ -445,12 +445,11 @@ impl App {
         if let Some(mut g) = self.garage.take() {
             if let Some((capture, photos)) = g.finish_capture() {
                 self.notice = Some(format!(
-                    "Captured your home: {} surfaces, {} meshes, {} pictures ({} dropped, {} faces blurred). It's kept in this browser only. Open Garage to download it or to look at it.",
+                    "Captured your home: {} surfaces, {} meshes, {} pictures ({} frames missed). The pictures are kept as taken, faces not blurred, in this browser only. Open Garage to download the file, then run lucy-home-blur on your desktop.",
                     capture.planes.len(),
                     capture.meshes.len(),
                     capture.stats.kept,
-                    capture.stats.dropped,
-                    capture.stats.faces_blurred
+                    capture.stats.dropped
                 ));
                 let weak = self.self_weak.clone();
                 wasm_bindgen_futures::spawn_local(async move {

@@ -759,11 +759,11 @@ impl Chat {
                 .append_child(&make(d, "p", "ask-eyebrow", Some("// your home, captured")))
                 .ok();
             for (id, title, note) in [
-                ("capture", "Capture my home", "Mixed reality on a headset. Walk slowly through your rooms: I record the walls, floor and furniture your headset sees, your path, and pictures from its camera. Every face is blurred before a picture is kept, and if I can't blur, I keep no pictures. Nothing is uploaded; it stays in this browser until you download it. B finishes."),
+                ("capture", "Capture my home", "Mixed reality on a headset. Walk slowly through your rooms: I record the walls, floor and furniture your headset sees, your path, and every picture its camera gives, as taken. Faces are not blurred here: that happens on your desktop, before I keep anything. Nothing is uploaded; it stays in this browser until you download it. B finishes."),
                 ("home", "My captured home", "Look at the capture kept in this browser, its pictures laid on its walls, and line them up."),
                 ("home-vr", "Walk it in VR", "The same capture at full size in a headset. Left stick walks, right stick turns, B leaves."),
-                ("open", "Open a captured home", "Choose a lucy-home-capture.json file. It replaces the capture kept in this browser."),
-                ("download", "Download my capture", "One JSON file with the geometry and the blurred pictures, for you to keep."),
+                ("open", "Open a captured home", "Choose a lucy-home-capture.json file. It replaces the capture kept in this browser. A raw one has its faces blurred here first."),
+                ("download", "Download my capture", "One JSON file with the geometry and the pictures, for you to carry to your desktop."),
             ] {
                 let row = make(d, "div", "ask-option", None);
                 row.append_child(&button(d, "ask-option-btn", title, "garage", id)).ok();

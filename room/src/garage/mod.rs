@@ -4,13 +4,13 @@
 //! again. The car is a generic SUV of my own and its sound is synthesised here; VR can't
 //! give the push of 1.13 g, so the launch is honest kinematics with comfort first.
 
-pub mod blur;
+pub use lucy_room_memory::blur;
+
 pub mod car;
 pub mod drive;
 pub mod launch;
 pub mod planes;
 pub mod project;
-pub mod select;
 
 #[cfg(target_arch = "wasm32")]
 mod browser;

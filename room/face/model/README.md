@@ -10,3 +10,8 @@ boxes already decoded to corners in 0..1.
 
 `../tests/portrait.jpg` is Alexander Gardner's 1863 photograph of Abraham Lincoln (O-77),
 public domain, from Wikimedia Commons: the fixture a face must be found in.
+
+`version-RFB-640.onnx` is the same family at 640×480, from
+<https://huggingface.co/onnxmodelzoo/version-RFB-640> (MIT): 1,588,012 bytes, sha256
+`8f4c659275977e7a3bfbfa339a9c769ad793df50f9c0baa8c14b11baa1646430`. Only the desktop tool
+(`--features desktop`, `lucy-home-blur`) carries it; the browser's worker does not.
