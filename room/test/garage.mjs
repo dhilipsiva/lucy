@@ -1,6 +1,6 @@
 // A headless check of the garage (roadmap/N8i.md). Serves the repository, opens room/ in headless
 // Chromium over the DevTools protocol and, in three fresh pages:
-//   1. the flat launch strip: Space, then 100 km/h read at 2.5 s from the status mirror;
+//   1. the Garage panel's link to xr-check, then the flat launch strip: Space, then 100 km/h read at 2.5 s from the status mirror;
 //   2. the VR launch strip with room/test/garage-shim.js: one clear and three viewports a frame,
 //      the trigger launches, haptic pulses are sent, B leaves;
 //   3. mixed reality: life-size placed by a hit-test result with a transparent clear, then the
@@ -72,6 +72,9 @@ try { out.chromium = (await send('Browser.getVersion')).product; } catch {}
 // 1. the flat launch strip
 {
   const p = await page(false);
+  // the headset check is one tap from the Garage panel
+  await p.click('[data-action="panel"][data-value="garage"]');
+  await p.waitFor('the xr-check link', "document.querySelector('#ask-panel a[href=\"https://dhilipsiva.github.io/lucy/room/xr-check/\"]')?.textContent==='Check your headset first'", 10000);
   await open(p, 'launch');
   await p.waitFor('the flat garage', "document.getElementById('garage-status')?.textContent.startsWith('garage launch · READY')", 20000);
   await p.key(' ', 'Space');

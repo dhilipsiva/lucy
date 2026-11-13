@@ -84,6 +84,8 @@ pub struct Chat {
     notice_text: String,
 }
 
+/// Where my headset check lives; GitHub Pages carries it on every push to main.
+const XR_CHECK: &str = "https://dhilipsiva.github.io/lucy/room/xr-check/";
 type GarageHook = Rc<dyn Fn(&str)>;
 thread_local! {
     static GARAGE: RefCell<Option<GarageHook>> = const { RefCell::new(None) };
@@ -733,6 +735,13 @@ impl Chat {
             self.panel
                 .append_child(&make(d, "p", "ask-eyebrow", Some("// a car in my room")))
                 .ok();
+            // xr-check (roadmap/N8h.md): one tap from here, so nobody types its address in a headset
+            let check = make(d, "div", "ask-option", None);
+            let link = make(d, "a", "ask-option-btn", Some("Check your headset first"));
+            attr(&link, "href", XR_CHECK);
+            check.append_child(&link).ok();
+            check.append_child(&make(d, "p", "ask-note", Some("A one-minute check of what your headset lets a web page use: floor, walls, depth, camera. Life-size and the miniature depend on it. Nothing of your room is kept; you choose whether to send me the result."))).ok();
+            self.panel.append_child(&check).ok();
             for (id, title, note) in [
                 ("launch", "Launch strip", "Sit down first. 0–100 km/h in 2.5 s on a straight road: in a headset in VR, or here on this screen. The timing is exact; VR can't push you into the seat, so it's an average 1.13 g you see and hear, not feel."),
                 ("life", "Life-size in your room", "Mixed reality on a headset. Point at the floor, pull the trigger, and walk around it."),
