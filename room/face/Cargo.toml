@@ -1,0 +1,40 @@
+[package]
+name = "lucy-face"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96"
+license = "MIT OR Apache-2.0"
+description = "Lucy D's face finder (roadmap/N8j.md): finds faces in a picture so her room can blur them before a picture of someone's home is kept. Runs in a worker, loaded only when a capture starts."
+repository = "https://github.com/dhilipsiva/lucy"
+publish = false
+
+# Its own workspace inside room/, like xr-check: tract is as large as my whole room, so it is
+# kept out of lucy-room and fetched only by a visitor who starts a capture.
+[workspace]
+
+[lib]
+name = "lucy_face"
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[dependencies]
+tract-onnx = "=0.21.19"
+sha2 = "0.10"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+console_error_panic_hook = "0.1.7"
+getrandom = { version = "0.2", features = ["js"] }
+web-sys = { version = "0.3", features = ["DedicatedWorkerGlobalScope", "MessageEvent"] }
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
