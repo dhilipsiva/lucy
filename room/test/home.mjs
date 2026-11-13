@@ -53,6 +53,10 @@ await send('Page.setInterceptFileChooserDialog', { enabled: true }, sessionId);
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `window.__streams=[];window.__downloads=[];
   const gum=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
   navigator.mediaDevices.getUserMedia=async(c)=>{const s=await gum(c);window.__streams.push(s);return s;};
+  // behind an immersive session a browser may give a page no idle time, so canvas.toBlob never
+  // answers there: on his Quest 3 the first build kept no picture. The capture must not need it.
+  const toBlob=HTMLCanvasElement.prototype.toBlob;
+  HTMLCanvasElement.prototype.toBlob=function(...a){if(window.__xrSession&&!window.__xrSession.ended){window.__starved=(window.__starved||0)+1;return;}return toBlob.apply(this,a);};
   const click=HTMLAnchorElement.prototype.click;
   HTMLAnchorElement.prototype.click=function(){if(this.download){window.__downloads.push(fetch(this.href).then(r=>r.text()));return;}return click.call(this);};` }, sessionId);
 await send('Page.addScriptToEvaluateOnNewDocument', { source: readFileSync(join(root, 'room/test/garage-shim.js'), 'utf8') }, sessionId);
@@ -88,6 +92,7 @@ await waitFor('pictures kept', "Number((document.getElementById('garage-status')
 const during = await status();
 assert(num(during, 'planes') === 1 && num(during, 'meshes') === 1 && num(during, 'path') > 30 && during.endsWith('raw'), `capture status ${during}`);
 assert(!requests.some((r) => r.url.includes('face')), 'the face finder was fetched during a capture');
+assert(!(await evaluate('window.__starved')), 'the capture waited on canvas.toBlob during the session');
 const alpha = await evaluate('window.__clearColors.slice(-3).map(c=>c[3])');
 assert(alpha.every((a) => a === 0), `capture clear alpha ${alpha}`);
 

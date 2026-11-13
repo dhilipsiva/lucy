@@ -41,5 +41,19 @@
     ],
     "adjudicators": [],
     "disagreements": []
+  },
+  {
+    "item": "N8j",
+    "class": "C then A: dhilipsiva's report from his Meta Quest 3, then a headless regression",
+    "recorded": "2026-11-13T21:49:10Z",
+    "report": {
+      "his_words": "The images seems to be missing from the export",
+      "date": "2026-11-14",
+      "device": "Meta Quest 3"
+    },
+    "reading": "The first live build (0b2f771) kept no pictures on his headset. I have not seen his file, so the cause is inferred, not observed: pictures were encoded with canvas.toBlob, which answers from the browser's idle time, and a page behind an immersive session may get none. My headless run never hid the page and could not catch it.",
+    "change": "Pictures are now encoded at once with canvas.toDataURL; each lost frame is counted with its reason and written into the file's notes; the board shows pictures kept of frames delivered.",
+    "check": "room/test/home.mjs now starves canvas.toBlob for as long as the shimmed session runs: 114 of 114 frames kept, and the capture never called it. Orchestration only.",
+    "open": "Whether this was the cause on his headset is unknown until he captures again; if pictures are still missing, the file's notes will say why."
   }
 ]

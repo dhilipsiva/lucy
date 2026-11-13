@@ -18,7 +18,7 @@ use lucy_room_memory::home::{
     base64_decode, base64_encode, Alignment, Detector, HomeCapture, PathPoint, Photo, Plane, Stats,
     SurfaceMesh, FORMAT, MAX_PATH, MAX_PHOTOS,
 };
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
@@ -65,9 +65,10 @@ pub struct Capturing {
     cam: Rc<RefCell<Cam>>,
     frame: Option<(HtmlCanvasElement, CanvasRenderingContext2d)>,
     last_total: Option<u32>,
-    encoding: Rc<Cell<bool>>,
+    /// Why pictures were lost, if any were: counted so the file can say.
+    failures: BTreeMap<&'static str, u32>,
     next_id: u32,
-    done: Rc<RefCell<Vec<(Photo, Blob)>>>,
+    done: Vec<(Photo, Blob)>,
     planes: Vec<Plane>,
     meshes: Vec<SurfaceMesh>,
     path: Vec<PathPoint>,
@@ -88,9 +89,9 @@ impl Capturing {
             cam,
             frame: None,
             last_total: None,
-            encoding: Rc::new(Cell::new(false)),
+            failures: BTreeMap::new(),
             next_id: 0,
-            done: Rc::new(RefCell::new(vec![])),
+            done: vec![],
             planes: vec![],
             meshes: vec![],
             path: vec![],
@@ -211,9 +212,8 @@ impl Capturing {
             return;
         }
         self.offered += 1;
-        // one picture is encoded at a time; a frame that arrives meanwhile is counted as missed
-        if self.encoding.get() || self.next_id as usize >= MAX_PHOTOS {
-            return;
+        if self.next_id as usize >= MAX_PHOTOS {
+            return self.lost("the cap on pictures was reached");
         }
         let w = get(&video, "videoWidth").as_f64().unwrap_or(640.0).max(1.0) as u32;
         let h = get(&video, "videoHeight")
@@ -228,15 +228,29 @@ impl Capturing {
             self.frame = canvas(w, h);
         }
         let Some((canvas, ctx)) = &self.frame else {
-            return;
+            return self.lost("no canvas");
         };
         let Ok(draw) = get(ctx, "drawImage").dyn_into::<Function>() else {
-            return;
+            return self.lost("no drawImage");
         };
         let args = Array::of5(&video, &0.into(), &0.into(), &w.into(), &h.into());
         if Reflect::apply(&draw, ctx, &args).is_err() {
-            return;
+            return self.lost("the frame could not be drawn");
         }
+        // Encoded here and now. canvas.toBlob answers from the browser's idle time, and a page
+        // behind an immersive session may get none: on his headset the first build kept no
+        // picture at all.
+        let jpeg = canvas
+            .to_data_url_with_type_and_encoder_options("image/jpeg", &JsValue::from_f64(0.9))
+            .ok()
+            .and_then(|url| {
+                url.strip_prefix("data:image/jpeg;base64,")
+                    .and_then(|b64| base64_decode(b64).ok())
+            })
+            .filter(|bytes| bytes.len() > 3 && bytes[..3] == [0xff, 0xd8, 0xff]);
+        let Some(blob) = jpeg.and_then(|bytes| jpeg_blob(&bytes).ok()) else {
+            return self.lost("the picture did not encode");
+        };
         let photo = Photo {
             id: self.next_id,
             t,
@@ -247,28 +261,15 @@ impl Capturing {
             jpeg_base64: String::new(),
         };
         self.next_id += 1;
-        self.encoding.set(true);
-        let (done, encoding) = (self.done.clone(), self.encoding.clone());
-        let cb = Closure::once_into_js(move |blob: JsValue| {
-            encoding.set(false);
-            if let Ok(blob) = blob.dyn_into::<Blob>() {
-                done.borrow_mut().push((photo, blob));
-            }
-        });
-        if canvas
-            .to_blob_with_type_and_encoder_options(
-                cb.unchecked_ref(),
-                "image/jpeg",
-                &JsValue::from_f64(0.9),
-            )
-            .is_err()
-        {
-            self.encoding.set(false);
-        }
+        self.done.push((photo, blob));
+    }
+
+    fn lost(&mut self, why: &'static str) {
+        *self.failures.entry(why).or_insert(0) += 1;
     }
 
     fn kept(&self) -> u32 {
-        self.done.borrow().len() as u32
+        self.done.len() as u32
     }
 
     fn lines(&self) -> Vec<(f64, String)> {
@@ -278,7 +279,11 @@ impl Capturing {
         } else if cam.video.is_none() {
             "camera starting…".into()
         } else {
-            format!("● camera on · {} pictures, kept as taken", self.kept())
+            format!(
+                "● camera on · {} pictures kept of {} frames",
+                self.kept(),
+                self.offered
+            )
         };
         vec![
             (50.0, camera),
@@ -308,7 +313,7 @@ impl Capturing {
     /// The capture ends: camera off, and what was gathered handed over, marked raw.
     pub fn finish(mut self) -> (HomeCapture, Vec<(u32, Blob)>) {
         close_camera(&self.cam);
-        let mut kept: Vec<(Photo, Blob)> = self.done.borrow_mut().drain(..).collect();
+        let mut kept: Vec<(Photo, Blob)> = std::mem::take(&mut self.done);
         kept.sort_by_key(|(p, _)| p.id);
         let mut notes = vec![
             "Raw: the pictures are as the camera gave them; faces are not blurred yet. Run lucy-home-blur on the desktop before lucy home import.".to_string(),
@@ -318,6 +323,13 @@ impl Capturing {
         ];
         if let Some(e) = &self.cam.borrow().error {
             notes.push(format!("No camera: {e}"));
+        } else if self.cam.borrow().video.is_none() {
+            notes.push("The camera never started during this capture.".into());
+        } else if self.offered == 0 {
+            notes.push("The camera started but delivered no frame during this capture.".into());
+        }
+        for (why, n) in &self.failures {
+            notes.push(format!("{n} frames were lost: {why}."));
         }
         let stamp: String = self
             .started
