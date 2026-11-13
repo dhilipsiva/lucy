@@ -400,11 +400,13 @@ impl App {
         mode: crate::garage::Mode,
         xr: Option<crate::garage::XrState>,
         audio: Option<crate::garage::Audio>,
+        cap: Option<crate::garage::Capturing>,
     ) {
         self.garage_pending = false;
         let back = self.settings.view == "chat";
         let mut g = crate::garage::Garage::new(&self.gl, mode, back);
         g.audio = audio;
+        g.cap = cap;
         if let Some(state) = xr {
             g.xr = Some(state);
             self.xr_active = true;
@@ -441,7 +443,30 @@ impl App {
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn garage_ended(&mut self) {
         if let Some(mut g) = self.garage.take() {
-            g.close();
+            if let Some((capture, photos)) = g.finish_capture() {
+                self.notice = Some(format!(
+                    "Captured your home: {} surfaces, {} meshes, {} pictures ({} dropped, {} faces blurred). It's kept in this browser only. Open Garage to download it or to look at it.",
+                    capture.planes.len(),
+                    capture.meshes.len(),
+                    capture.stats.kept,
+                    capture.stats.dropped,
+                    capture.stats.faces_blurred
+                ));
+                let weak = self.self_weak.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Err(e) = crate::garage::store_capture(&capture, &photos).await {
+                        if let Some(a) = weak.upgrade() {
+                            a.borrow_mut().garage_error(&format!(
+                                "The capture could not be kept in this browser: {e}"
+                            ));
+                        }
+                    }
+                });
+            }
+            if let Some(n) = g.note.take() {
+                self.notice = Some(n);
+            }
+            g.close(&self.gl);
         }
         self.xr_active = false;
         self.gl
@@ -456,7 +481,10 @@ impl App {
     fn garage_close_flat(&mut self) {
         if let Some(mut g) = self.garage.take() {
             let back = g.back_to_chat;
-            g.close();
+            if let Some(n) = g.note.take() {
+                self.notice = Some(n);
+            }
+            g.close(&self.gl);
             self.keys.clear();
             self.show_conversation(back);
             self.log("garage: left, my room restored");
@@ -1780,6 +1808,11 @@ impl App {
                     g.key(&key.to_lowercase(), true, now_ms())
                 }
                 InputEvent::KeyUp { key } => g.key(&key.to_lowercase(), false, now_ms()),
+                InputEvent::PointerDown { x, y, .. } => g.pointer("down", *x, *y),
+                InputEvent::PointerMove { x, y, .. } => g.pointer("move", *x, *y),
+                InputEvent::PointerUp { .. } | InputEvent::PointerCancel { .. } => {
+                    g.pointer("up", 0.0, 0.0)
+                }
                 _ => {}
             }
             return;

@@ -2,6 +2,7 @@
 //! speedometer. Hit-test, planes and haptics have no web-sys bindings yet, so they are read
 //! with `Reflect`, as xr-check does.
 
+use super::homecap::{Capturing, Viewing, Walk};
 use super::{car, drive, launch, planes, Mode};
 use crate::app::App;
 use crate::colors::linear;
@@ -27,17 +28,21 @@ use web_sys::{
 const EYE: f32 = 1.2;
 const SKY: u32 = 0x8FA7BF;
 
-fn get(v: &JsValue, key: &str) -> JsValue {
+pub(super) fn get(v: &JsValue, key: &str) -> JsValue {
     Reflect::get(v, &key.into()).unwrap_or(JsValue::UNDEFINED)
 }
-fn present(v: &JsValue) -> bool {
+pub(super) fn present(v: &JsValue) -> bool {
     !(v.is_undefined() || v.is_null())
 }
-fn call(obj: &JsValue, name: &str, args: &Array) -> Result<JsValue, String> {
+pub(super) fn call(obj: &JsValue, name: &str, args: &Array) -> Result<JsValue, String> {
     let f: Function = get(obj, name)
         .dyn_into()
         .map_err(|_| format!("{name} is not available"))?;
     Reflect::apply(&f, obj, args).map_err(|e| js_error(&e))
+}
+/// A pose's transform as a matrix (an XRPose read without bindings).
+pub(super) fn pose_matrix(v: &JsValue) -> Option<Mat4> {
+    matrix(v)
 }
 fn matrix(v: &JsValue) -> Option<Mat4> {
     let m = get(&get(v, "transform"), "matrix");
@@ -234,6 +239,12 @@ pub struct Garage {
     pub leave: bool,
     pub back_to_chat: bool,
     status: String,
+    /// A capture of his home in progress, or one being looked at (roadmap/N8j.md).
+    pub cap: Option<Capturing>,
+    pub view: Option<Viewing>,
+    drag: Option<(f64, f64)>,
+    /// What to tell the visitor once the garage has closed.
+    pub note: Option<String>,
 }
 
 fn mesh_node(gl: &Gl, scene: &mut Scene, parent: NodeId, m: &geom::Mesh, mat: Material) -> NodeId {
@@ -339,6 +350,10 @@ impl Garage {
             leave: false,
             back_to_chat,
             status: String::new(),
+            cap: None,
+            view: (mode == Mode::Home).then(Viewing::new),
+            drag: None,
+            note: None,
         }
     }
 
@@ -365,7 +380,7 @@ impl Garage {
             }
             Mode::LifeSize => self.place(hand),
             Mode::Miniature if !self.placed => self.place(hand),
-            Mode::Miniature => {}
+            Mode::Miniature | Mode::Capture | Mode::Home => {}
         }
     }
 
@@ -438,6 +453,8 @@ impl Garage {
         let mut pulses = vec![];
         let mut accel_frac = 0.0;
         match self.mode {
+            // these two run in their own frame paths below
+            Mode::Capture | Mode::Home => {}
             Mode::Launch => {
                 if self.clicked("right", 4) {
                     self.pressed_at = None;
@@ -621,6 +638,13 @@ impl Garage {
         if !self.keys_down.insert(key.to_string()) {
             return;
         }
+        if self.mode == Mode::Home {
+            // the walking keys are read while held, in frame_flat
+            if key == "escape" {
+                self.leave = true;
+            }
+            return;
+        }
         match key {
             " " | "spacebar" => self.press(now, "right"),
             "r" => self.pressed_at = None,
@@ -631,7 +655,58 @@ impl Garage {
         }
     }
 
+    /// Drag to look around a captured home on a flat screen.
+    pub fn pointer(&mut self, kind: &str, x: f64, y: f64) {
+        match kind {
+            "down" => self.drag = Some((x, y)),
+            "move" => {
+                if let (Some((px, py)), Some(v)) = (self.drag, self.view.as_mut()) {
+                    v.yaw -= (x - px) as f32 * 0.004;
+                    v.pitch = (v.pitch - (y - py) as f32 * 0.004).clamp(-1.4, 1.4);
+                    self.drag = Some((x, y));
+                }
+            }
+            _ => self.drag = None,
+        }
+    }
+
+    fn home_flat(&mut self, gl: &Gl, now: f64, dt: f32, w: f64, h: f64) {
+        let held = |keys: &[&str]| keys.iter().any(|k| self.keys_down.contains(*k));
+        let axis = |plus: &[&str], minus: &[&str]| {
+            f32::from(u8::from(held(plus))) - f32::from(u8::from(held(minus)))
+        };
+        let walk = Walk {
+            forward: axis(&["w", "arrowup"], &["s", "arrowdown"]),
+            strafe: axis(&["d"], &["a"]),
+            turn: axis(&["arrowleft", "q"], &["arrowright", "e"]) * 1.4,
+            look: 0.0,
+            rise: axis(&["r"], &["f"]),
+        };
+        let Some(v) = self.view.as_mut() else { return };
+        v.step(gl, now, dt, walk, true);
+        if v.leave {
+            self.leave = true;
+        }
+        if let Some(e) = &v.error {
+            self.note = Some(e.clone());
+            self.leave = true;
+        }
+        let world = Mat4::from_translation(v.pos)
+            * Mat4::from_rotation_y(v.yaw)
+            * Mat4::from_rotation_x(v.pitch);
+        let proj =
+            Mat4::perspective_rh_gl(70f32.to_radians(), (w / h.max(1.0)) as f32, 0.05, 200.0);
+        gl.clear(sky());
+        v.render(gl, &world.inverse(), &proj, v.pos);
+        let status = v.status();
+        self.set_status(status);
+    }
+
     pub fn frame_flat(&mut self, gl: &Gl, now: f64, dt: f32, w: f64, h: f64) {
+        if self.mode == Mode::Home {
+            self.frames += 1;
+            return self.home_flat(gl, now, dt, w, h);
+        }
         if self.frames == 0 {
             // the vignette is a headset comfort aid; on a flat screen it starts off (V turns it on)
             self.vignette = false;
@@ -810,11 +885,59 @@ impl Garage {
         if self.clicked("right", 5) {
             self.leave = true;
         }
-        if self.mode.ar() {
+        if matches!(self.mode, Mode::LifeSize | Mode::Miniature) {
             self.hit_test(frame);
             if self.frames % 10 == 1 {
                 self.read_planes(frame);
             }
+        }
+        if self.mode == Mode::Capture {
+            let floor = self.xr.as_ref().is_some_and(|x| x.floor);
+            let head = self.head;
+            if let Some(cap) = self.cap.as_mut() {
+                let lines = cap.frame(now, dt, frame, &space, floor, head);
+                let status = cap.status();
+                self.board.draw(gl, &self.scene, &lines);
+                // the board floats ahead of him, a little below his eyes, turned to face him
+                let at = head.w_axis.truncate();
+                let mut f = head.transform_vector3(-Vec3::Z);
+                f.y = 0.0;
+                let f = f.normalize_or(Vec3::NEG_Z);
+                let spot = at + f * 1.2 - Vec3::Y * 0.35;
+                self.scene.set_visible(self.board.node, true);
+                self.scene.set_pos(self.board.node, spot);
+                self.scene.node(self.board.node).rotation =
+                    Quat::from_rotation_y((-f.x).atan2(-f.z));
+                self.set_status(status);
+            }
+        }
+        if self.mode == Mode::Home {
+            // thumbsticks: the left walks the way he faces, the right turns in steps
+            let f = self.head.transform_vector3(-Vec3::Z);
+            let head_yaw = (-f.x).atan2(-f.z);
+            let stick = Vec3::new(self.axis("left", 2), 0.0, self.axis("left", 3));
+            let moved = Quat::from_rotation_y(head_yaw) * stick;
+            let turn = self.snap.turn(self.axis("right", 2), now);
+            if let Some(v) = self.view.as_mut() {
+                v.yaw += turn;
+                v.step(
+                    gl,
+                    now,
+                    dt,
+                    Walk {
+                        forward: -moved.z,
+                        strafe: moved.x,
+                        ..Default::default()
+                    },
+                    false,
+                );
+                if let Some(e) = &v.error {
+                    self.note = Some(e.clone());
+                    self.leave = true;
+                }
+            }
+            let status = self.view.as_ref().map(|v| v.status()).unwrap_or_default();
+            self.set_status(status);
         }
         let (vignette, pulses) = self.step(gl, now, dt);
         self.pulse(&session, &pulses);
@@ -844,8 +967,17 @@ impl Garage {
                 continue;
             };
             gl.viewport(vp.x(), vp.y(), vp.width(), vp.height());
-            let eye_world = crate::xr::matrix(&view.transform().matrix());
+            let mut eye_world = crate::xr::matrix(&view.transform().matrix());
             let proj = crate::xr::matrix(&view.projection_matrix());
+            if let Some(v) = self.view.as_ref() {
+                // he stands in the captured home: its floor under his own
+                eye_world = Mat4::from_rotation_translation(
+                    Quat::from_rotation_y(v.yaw),
+                    Vec3::new(v.pos.x, 0.0, v.pos.z),
+                ) * eye_world;
+                v.render(gl, &eye_world.inverse(), &proj, eye_world.w_axis.truncate());
+                continue;
+            }
             self.scene
                 .render(gl, &eye_world.inverse(), &proj, eye_world.w_axis.truncate());
             if self.mode == Mode::Launch {
@@ -862,9 +994,24 @@ impl Garage {
         self.press(now, &hand);
     }
 
-    pub fn close(&mut self) {
+    /// A capture that was running ends here: camera off, and what it gathered handed over.
+    pub fn finish_capture(
+        &mut self,
+    ) -> Option<(
+        lucy_room_memory::home::HomeCapture,
+        Vec<(u32, web_sys::Blob)>,
+    )> {
+        self.cap.take().map(|c| c.finish())
+    }
+
+    pub fn close(&mut self, gl: &Gl) {
         if let Some(a) = self.audio.take() {
             a.close();
+        }
+        // a capture nobody collected still has its camera stopped
+        drop(self.finish_capture());
+        if let Some(mut v) = self.view.take() {
+            v.close(gl);
         }
         mirror("");
     }
@@ -988,9 +1135,6 @@ fn build_cockpit(gl: &Gl, scene: &mut Scene, track: NodeId) {
 
 /// Runs inside the visitor's click: the XR request has to, so the browser counts the gesture.
 pub fn start(app: Weak<RefCell<App>>, value: &str) {
-    let Some(mode) = Mode::parse(value) else {
-        return;
-    };
     let Some(rc) = app.upgrade() else { return };
     let Ok(a) = rc.try_borrow() else { return };
     if a.garage_busy() {
@@ -998,15 +1142,58 @@ pub fn start(app: Weak<RefCell<App>>, value: &str) {
     }
     let (gl, vr) = (a.gl_context(), a.vr_supported());
     drop(a);
-    let audio = Audio::new().ok();
+    // the captured home's file comes and goes without a session
+    match value {
+        "download" => {
+            let app = app.clone();
+            spawn_local(async move {
+                let said = super::homecap::download().await;
+                if let Some(a) = app.upgrade() {
+                    a.borrow_mut()
+                        .garage_error(&said.unwrap_or_else(|e| format!("No download: {e}")));
+                }
+            });
+            return;
+        }
+        "open" => {
+            let app = app.clone();
+            super::homecap::pick(move |result| {
+                let Some(a) = app.upgrade() else { return };
+                match result {
+                    Ok(_) => {
+                        super::homecap::load();
+                        a.borrow_mut().garage_begin(Mode::Home, None, None, None);
+                    }
+                    Err(e) => a
+                        .borrow_mut()
+                        .garage_error(&format!("That file didn't open as a captured home: {e}")),
+                }
+            });
+            return;
+        }
+        _ => {}
+    }
+    let Some(mode) = Mode::parse(value) else {
+        return;
+    };
+    let car = !matches!(mode, Mode::Capture | Mode::Home);
+    let audio = car.then(|| Audio::new().ok()).flatten();
     let Some(w) = web_sys::window() else { return };
     let xr = w.navigator().xr();
-    if mode == Mode::Launch && (!present(&xr) || !vr) {
-        // no headset: the launch strip on this screen
+    if mode == Mode::Home {
+        super::homecap::load();
+    }
+    let flat = match mode {
+        Mode::Launch => !present(&xr) || !vr,
+        Mode::Home => value != "home-vr" || !present(&xr) || !vr,
+        _ => false,
+    };
+    if flat {
+        // no headset, or none asked for: on this screen
         let app = app.clone();
         spawn_local(async move {
             if let Some(a) = app.upgrade() {
-                a.borrow_mut().garage_begin(mode, None, audio);
+                a.borrow_mut().garage_begin(mode, None, audio, None);
             }
         });
         return;
@@ -1015,13 +1202,29 @@ pub fn start(app: Weak<RefCell<App>>, value: &str) {
         let app = app.clone();
         spawn_local(async move {
             if let Some(a) = app.upgrade() {
-                a.borrow_mut().garage_error("Life-size and the miniature need a headset's mixed reality, and this browser has no WebXR.");
+                a.borrow_mut().garage_error(if mode == Mode::Capture {
+                    "Capturing a home needs a headset's mixed reality, and this browser has no WebXR."
+                } else {
+                    "Life-size and the miniature need a headset's mixed reality, and this browser has no WebXR."
+                });
             }
         });
         return;
     }
+    // the camera and the face finder are asked for inside this same press
+    let mut cap = (mode == Mode::Capture).then(Capturing::begin);
     let init = XrSessionInit::new();
-    let features: Vec<JsValue> = if mode.ar() {
+    let features: Vec<JsValue> = if mode == Mode::Capture {
+        [
+            "local-floor",
+            "plane-detection",
+            "mesh-detection",
+            "hand-tracking",
+        ]
+        .iter()
+        .map(|f| JsValue::from_str(f))
+        .collect()
+    } else if mode.ar() {
         [
             "local-floor",
             "hit-test",
@@ -1056,6 +1259,8 @@ pub fn start(app: Weak<RefCell<App>>, value: &str) {
                 if let Some(audio) = audio {
                     audio.close();
                 }
+                // no session: the camera that was asked for is closed again
+                drop(cap.take().map(|c| c.finish()));
                 a.borrow_mut().garage_error(&format!(
                     "The headset didn't open {}: {e}",
                     if mode.ar() { "mixed reality" } else { "VR" }
@@ -1063,7 +1268,8 @@ pub fn start(app: Weak<RefCell<App>>, value: &str) {
             }
             Ok(state) => {
                 let session = state.session.clone();
-                a.borrow_mut().garage_begin(mode, Some(state), audio);
+                a.borrow_mut()
+                    .garage_begin(mode, Some(state), audio, cap.take());
                 run(app.clone(), session);
             }
         }
