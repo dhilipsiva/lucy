@@ -1,0 +1,17 @@
+[
+  {
+    "item": "N8h",
+    "pre_registration": "roadmap/N8h.md (5a0db01)",
+    "class": "C: dhilipsiva's own report from his Meta Quest 3, in his words; the page's JSON has not reached me yet",
+    "recorded": "2026-11-13T19:19:48Z",
+    "code_commit": "2bd8770 (xr-check), served from https://dhilipsiva.github.io/lucy/room/xr-check/",
+    "report": {
+      "his_words": "Xr check was all passed",
+      "date": "2026-11-14",
+      "device": "Meta Quest 3"
+    },
+    "reading": "Every row of the table read granted, by his summary. Which values sat behind each row (plane and mesh counts, depth size, XRView.camera size, the 2D camera's resolution, the browser version) is not known until the JSON arrives.",
+    "also_reported": "N8i on the same headset: he entered the garage, drove the car, looked at the scene and walked in between.",
+    "open": "the JSON itself, for the details above; until then N8h's Done-when holds in summary only"
+  }
+]
