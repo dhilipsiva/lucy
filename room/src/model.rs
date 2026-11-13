@@ -2,10 +2,10 @@
 use candle::{quantized::gguf_file, DType, Device, Tensor};
 use candle_transformers::{generation::LogitsProcessor, models::quantized_qwen3::ModelWeights};
 use tokenizers::Tokenizer;
-pub const REVISION: &str = "a082662b4403665ab1910795fae279481b9f4d3a";
+pub const REVISION: &str = "8b29a800f26b1acc17e08a7e0476e191ab4d7e5d";
 pub const MODEL: &str = "dhilipsiva/lucy-slm";
 pub const FILE: &str = "lucy-0.6b-q8_0.gguf";
-pub const WEIGHTS_SHA: &str = "ebec9d9b0ab36de981f9d92dd61de28dd05503493ba18b19ce759812ffb40c03";
+pub const WEIGHTS_SHA: &str = "a8e63d8220b99f768c9d2667e4286d698f59524bfb0de85fe67c6e96fafa0f57";
 pub const TOKENIZER_SHA: &str = "be75606093db2094d7cd20f3c2f385c212750648bd6ea4fb2bf507a6a4c55506";
 pub const MAX_TOKENS: usize = 160;
 pub const CONTEXT: usize = 2048;

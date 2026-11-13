@@ -177,7 +177,7 @@ if (process.argv.includes('--controls') || process.argv.includes('--words') || p
     assert(!consoleLines.some(l=>/panicked|exception:/.test(l)),'fault fixture exception');console.log(JSON.stringify({pass:true,fixture:true,checks:['visible checkpoint recovered after reload','original question preserved','worker failure visible and recorded','retry after worker failure','stop after visible stream']},null,2));cleanup();process.exit(0);
   }
   if(process.argv.includes('--words')) {
-    await evaluate(`(async()=>{const c=await caches.open('lucy-room-model-v1');for(const name of ['lucy-0.6b-q8_0.gguf','tokenizer.json','system.txt']){const r=await fetch('/target/room-model/'+name);if(!r.ok)throw new Error('missing real test model asset '+name);await c.put('https://huggingface.co/dhilipsiva/lucy-slm/resolve/a082662b4403665ab1910795fae279481b9f4d3a/'+name,r);}window.__frames=0;function frame(){window.__frames++;requestAnimationFrame(frame)}requestAnimationFrame(frame);})()`);
+    await evaluate(`(async()=>{const c=await caches.open('lucy-room-model-v1');for(const name of ['lucy-0.6b-q8_0.gguf','tokenizer.json','system.txt']){const r=await fetch('/target/room-model/'+name);if(!r.ok)throw new Error('missing real test model asset '+name);await c.put('https://huggingface.co/dhilipsiva/lucy-slm/resolve/8b29a800f26b1acc17e08a7e0476e191ab4d7e5d/'+name,r);}window.__frames=0;function frame(){window.__frames++;requestAnimationFrame(frame)}requestAnimationFrame(frame);})()`);
     await click('Talk');await click('Load my words · 651 MB');
     await waitFor('real model ready',"document.getElementById('words-status')?.textContent.includes('My words are ready')",300000);
     const turns=[];

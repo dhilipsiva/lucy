@@ -421,7 +421,7 @@ pub fn worker_main() {
                             &scope,
                             model::FILE,
                             model::WEIGHTS_SHA,
-                            639446912,
+                            639446976,
                             &cancel,
                             &signal,
                         )
