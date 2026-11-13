@@ -82,12 +82,13 @@ async fn open() -> Result<IdbDatabase, String> {
         .indexed_db()
         .map_err(error)?
         .ok_or("IndexedDB unavailable")?;
-    let req = factory.open_with_u32(DB, 1).map_err(error)?;
+    // version 2 adds `captures` (roadmap/N8j.md): a captured home, its pictures as Blobs
+    let req = factory.open_with_u32(DB, 2).map_err(error)?;
     let copy = req.clone();
     let upgrade = Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
         if let Ok(v) = copy.result() {
             if let Ok(db) = v.dyn_into::<IdbDatabase>() {
-                for name in ["messages", "drafts", "cache"] {
+                for name in ["messages", "drafts", "cache", "captures"] {
                     if !db.object_store_names().contains(name) {
                         let _ = db.create_object_store(name);
                     }
@@ -319,7 +320,7 @@ pub async fn cache_remove(key: &str) -> Result<(), String> {
 }
 pub async fn forget() -> Result<(), String> {
     let db = open().await?;
-    for name in ["messages", "cache", "drafts"] {
+    for name in ["messages", "cache", "drafts", "captures"] {
         let tx = db
             .transaction_with_str_and_mode(name, IdbTransactionMode::Readwrite)
             .map_err(error)?;
@@ -378,4 +379,71 @@ pub async fn yield_now() {
         }
     });
     let _ = JsFuture::from(p).await;
+}
+
+// ── a captured home (roadmap/N8j.md): one at a time, geometry as JSON, pictures as Blobs ──
+
+/// Replace the stored capture: its JSON without pictures, and each picture's JPEG.
+pub async fn capture_put(meta: &str, photos: &[(u32, web_sys::Blob)]) -> Result<(), String> {
+    let db = open().await?;
+    let tx = db
+        .transaction_with_str_and_mode("captures", IdbTransactionMode::Readwrite)
+        .map_err(error)?;
+    let done = transaction_done(&tx);
+    let store = tx.object_store("captures").map_err(error)?;
+    store.clear().map_err(error)?;
+    store
+        .put_with_key(&meta.into(), &"meta".into())
+        .map_err(error)?;
+    for (id, blob) in photos {
+        store
+            .put_with_key(blob, &format!("photo/{id}").into())
+            .map_err(error)?;
+    }
+    let result = JsFuture::from(done).await.map_err(error).map(|_| ());
+    db.close();
+    result
+}
+/// Rewrite only the JSON (a saved alignment), leaving the pictures.
+pub async fn capture_meta_put(meta: &str) -> Result<(), String> {
+    let db = open().await?;
+    let tx = db
+        .transaction_with_str_and_mode("captures", IdbTransactionMode::Readwrite)
+        .map_err(error)?;
+    let done = transaction_done(&tx);
+    tx.object_store("captures")
+        .map_err(error)?
+        .put_with_key(&meta.into(), &"meta".into())
+        .map_err(error)?;
+    let result = JsFuture::from(done).await.map_err(error).map(|_| ());
+    db.close();
+    result
+}
+pub async fn capture_meta() -> Result<Option<String>, String> {
+    let db = open().await?;
+    let tx = db.transaction_with_str("captures").map_err(error)?;
+    let r = request(
+        &tx.object_store("captures")
+            .map_err(error)?
+            .get(&"meta".into())
+            .map_err(error)?,
+    )
+    .await;
+    db.close();
+    Ok(r?.as_string())
+}
+/// The stored pictures for these ids; one that is missing is simply absent.
+pub async fn capture_photos(ids: &[u32]) -> Result<Vec<(u32, web_sys::Blob)>, String> {
+    let db = open().await?;
+    let tx = db.transaction_with_str("captures").map_err(error)?;
+    let store = tx.object_store("captures").map_err(error)?;
+    let mut out = vec![];
+    for id in ids {
+        let v = request(&store.get(&format!("photo/{id}").into()).map_err(error)?).await?;
+        if let Ok(blob) = v.dyn_into::<web_sys::Blob>() {
+            out.push((*id, blob));
+        }
+    }
+    db.close();
+    Ok(out)
 }

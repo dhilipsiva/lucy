@@ -472,6 +472,37 @@ impl Gl {
         g.depth_mask(true);
         g.enable(G::CULL_FACE);
     }
+    /// A photograph on a surface (roadmap/N8j.md): unlit, its own colours, written to depth so
+    /// nearer surfaces hide farther ones; either face shows.
+    pub fn draw_photo(&self, mesh: &GpuMesh, mvp: &Mat4, tex: &Texture) {
+        let g = &self.ctx;
+        let p = &self.flat;
+        g.use_program(Some(&p.prog));
+        g.uniform_matrix4fv_with_f32_array(p.u("u_mvp"), false, &mvp.to_cols_array());
+        g.active_texture(G::TEXTURE0);
+        g.bind_texture(G::TEXTURE_2D, Some(&tex.tex));
+        g.uniform1i(p.u("u_map"), 0);
+        g.uniform1i(p.u("u_useMap"), 1);
+        g.uniform4fv_with_f32_array(p.u("u_tint"), &[1.0, 1.0, 1.0, 1.0]);
+        g.uniform1i(p.u("u_flipY"), 0);
+        g.uniform1i(p.u("u_premul"), 0);
+        g.enable(G::DEPTH_TEST);
+        g.depth_mask(true);
+        g.disable(G::CULL_FACE);
+        self.blend(Blend::None);
+        self.draw(mesh);
+        g.enable(G::CULL_FACE);
+    }
+    /// Free a mesh that is being replaced (the captured home re-paints as it is aligned).
+    pub fn delete_mesh(&self, mesh: GpuMesh) {
+        self.ctx.delete_vertex_array(Some(&mesh.vao));
+        for b in &mesh._buffers {
+            self.ctx.delete_buffer(Some(b));
+        }
+    }
+    pub fn delete_texture(&self, t: Texture) {
+        self.ctx.delete_texture(Some(&t.tex));
+    }
     /// An unlit quad or billboard with a texture (panels, boards, halos).
     pub fn draw_flat(
         &self,

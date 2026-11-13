@@ -755,6 +755,21 @@ impl Chat {
             self.panel
                 .append_child(&make(d, "p", "ask-note", Some("The car is a generic SUV I built myself, and its sound is my own: no maker's design or recording.")))
                 .ok();
+            self.panel
+                .append_child(&make(d, "p", "ask-eyebrow", Some("// your home, captured")))
+                .ok();
+            for (id, title, note) in [
+                ("capture", "Capture my home", "Mixed reality on a headset. Walk slowly through your rooms: I record the walls, floor and furniture your headset sees, your path, and every picture its camera gives, as taken. Faces are not blurred here: that happens on your desktop, before I keep anything. Nothing is uploaded; it stays in this browser until you download it. B finishes."),
+                ("home", "My captured home", "Look at the capture kept in this browser, its pictures laid on its walls, and line them up."),
+                ("home-vr", "Walk it in VR", "The same capture at full size in a headset. Left stick walks, right stick turns, B leaves."),
+                ("open", "Open a captured home", "Choose a lucy-home-capture.json file. It replaces the capture kept in this browser. A raw one has its faces blurred here first."),
+                ("download", "Download my capture", "One JSON file with the geometry and the pictures, for you to carry to your desktop."),
+            ] {
+                let row = make(d, "div", "ask-option", None);
+                row.append_child(&button(d, "ask-option-btn", title, "garage", id)).ok();
+                row.append_child(&make(d, "p", "ask-note", Some(note))).ok();
+                self.panel.append_child(&row).ok();
+            }
             return;
         }
         if which == "model" {

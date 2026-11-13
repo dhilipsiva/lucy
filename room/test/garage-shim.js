@@ -1,13 +1,16 @@
 // API orchestration fixture only (roadmap/N8i.md): it cannot establish headset compatibility,
 // haptics, hit-test, plane detection or comfort. A fake navigator.xr for the garage: two
 // controllers with gamepads and haptic actuators, immersive-vr and immersive-ar, hit-test
-// results on the floor, and one detected wall 1.5 m ahead.
+// results on the floor, one detected wall 1.5 m ahead with its label, one small mesh, and a
+// head that home.mjs can walk.
 window.__xrRequests=[];window.__xrTrace=[];window.__pulses=[];window.__clearColors=[];window.__xrFrame=null;
 const identity=(x=0,y=0,z=0)=>new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,x,y,z,1]);
 const projection=new Float32Array([1,0,0,0,0,1,0,0,0,0,-1.003,-1,0,0,-0.1,0]);
 // the wall's plane space: plane +y turned to face the viewer, standing at z=-1.5
 const wallPose=new Float32Array([1,0,0,0, 0,0,1,0, 0,-1,0,0, 0,1,-1.5,1]);
 window.__hitAt=[0,0,-0.5];
+// where the wearer's head is; home.mjs walks it (roadmap/N8j.md)
+window.__headAt=[0,1.6,0];
 WebGL2RenderingContext.prototype.makeXRCompatible=function(){window.__xrCompatible=true;return Promise.resolve();};
 for(const name of ['clear','viewport']){const original=WebGL2RenderingContext.prototype[name];WebGL2RenderingContext.prototype[name]=function(...args){if(window.__xrFrame)window.__xrFrame.calls.push({name,args});return original.apply(this,args);};}
 {const original=WebGL2RenderingContext.prototype.clearColor;WebGL2RenderingContext.prototype.clearColor=function(...args){if(window.__xrFrame)window.__clearColors.push(args);return original.apply(this,args);};}
@@ -22,10 +25,11 @@ class Session {
  requestHitTestSource(options){return Promise.resolve({hand:options.space.hand});}
  requestAnimationFrame(cb){if(this.ended)return 0;return setTimeout(()=>{if(this.ended)return;
   const frame={
-   getViewerPose:()=>({transform:{matrix:identity(0,1.6,0)},views:[{eye:'left',transform:{matrix:identity(-0.032,1.6,0)},projectionMatrix:projection},{eye:'right',transform:{matrix:identity(0.032,1.6,0)},projectionMatrix:projection}]}),
-   getPose:(space)=>({transform:{matrix:space&&space.id==='wall'?wallPose:identity(0,1.6,0)}}),
+   getViewerPose:()=>{const [hx,hy,hz]=window.__headAt;return {transform:{matrix:identity(hx,hy,hz)},views:[{eye:'left',transform:{matrix:identity(hx-0.032,hy,hz)},projectionMatrix:projection},{eye:'right',transform:{matrix:identity(hx+0.032,hy,hz)},projectionMatrix:projection}]};},
+   getPose:(space)=>({transform:{matrix:space&&space.id==='wall'?wallPose:space&&space.id==='mesh'?identity(0,0,0):identity(0,1.6,0)}}),
    getHitTestResults:(src)=>[{getPose:()=>({transform:{matrix:identity(...window.__hitAt)}})}],
-   detectedPlanes:this.mode==='immersive-ar'?new Set([{orientation:'vertical',planeSpace:{id:'wall'},polygon:[{x:-1,y:0,z:-1},{x:1,y:0,z:-1},{x:1,y:0,z:1},{x:-1,y:0,z:1}]}]):undefined,
+   detectedPlanes:this.mode==='immersive-ar'?new Set([{orientation:'vertical',semanticLabel:'wall',planeSpace:{id:'wall'},polygon:[{x:-1,y:0,z:-1},{x:1,y:0,z:-1},{x:1,y:0,z:1},{x:-1,y:0,z:1}]}]):undefined,
+   detectedMeshes:this.mode==='immersive-ar'?new Set([{semanticLabel:'global mesh',meshSpace:{id:'mesh'},vertices:new Float32Array([-1,0,-1.4, 1,0,-1.4, 0,1,-1.4]),indices:new Uint32Array([0,1,2])}]):undefined,
   };
   window.__xrCurrent=frame;window.__xrFrame={calls:[]};cb(performance.now(),frame);window.__xrTrace.push(window.__xrFrame);window.__xrFrame=null;},30);}
  end(){this.ended=true;return new Promise(resolve=>setTimeout(()=>{this.onend?.(new Event('end'));resolve();},0));}

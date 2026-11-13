@@ -436,11 +436,20 @@ commit, the adjudicators and their models.
     native and shimmed headless checks in `roadmap/N8i-evidence.json`. Done when: dhilipsiva
     tries all three modes on his Meta Quest 3: the launch strip shows 100 km/h at 2.5 s, and he
     places the life-size car, walks around it, and drives the miniature through his home.
-  - Later, each pre-registered on its own after N8h's report, his words of 2026-11-13:
+  - [ ] **[N8j] Capture his home: walk it in the Quest, export it, open it in my room and my
+    memory.** His request of 2026-11-14, revised by him the same day to a raw capture processed
+    on his desktop. Capture and Home modes in the garage; the `lucy-home-capture-v1` format;
+    a face finder (`room/face`) as a browser worker and as the desktop tool `lucy-home-blur`;
+    `lucy home import`, which refuses a raw file. Pre-registration `roadmap/N8j.md` (def5a8e),
+    revision `roadmap/N8j.v2.md` (fe867e9); checks in `roadmap/N8j-evidence.json`. Done when:
+    he walks his home in the Quest, downloads the file, opens it in my room and sees his rooms
+    with their pictures, and `lucy home import` puts it in my private store on this desktop.
+  - Later, each pre-registered on its own, his words of 2026-11-13 and 2026-11-14:
     - [ ] Swap in a car model he is allowed to use (a glTF loader), in place of my placeholder.
-    - [ ] Capture his home by walking it in the Quest: planes and mesh for geometry, colour
-      from the headset camera if N8h and D2 allow, else phone video aligned to the mesh;
-      JSON, `.glb` and Nibli facts, private only.
+    - [ ] Process a capture on his desktop, where the hardware is (his words: "superior
+      processing capabilities"): recognise the objects in the pictures, work out the camera's
+      place and lens from the pictures themselves, keep furniture from being painted onto the
+      walls behind it, read depth if the headset can give it, and export `.glb`.
     - [ ] Render the captured home in 3D in my room, with me standing beside Gundus and
       Bucchi (uniblox is the candidate engine).
     - [ ] Walk up to him: from his headset position, cross the floor around furniture and
@@ -480,6 +489,12 @@ an attributed claim in my archive.
   without anyone being surprised and the off switch stays his. The decision is his.
 - **D2 Sensors.** Which camera and microphone, where in the home, when powered, who else is
   in frame. Default: the screen only. Gates S2b, S2c.
+  - Decided for N8j by dhilipsiva on 2026-11-14 (Claude Code session 15dab160): the headset's
+    front camera, only while a capture he started is running, anywhere in his home. First
+    with faces blurred on the headset; then, the same day, changed by him to fully raw: every
+    frame kept as taken, and faces blurred on his desktop before my store takes the file
+    (`roadmap/N8j.v2.md`). The imported capture lives on his desktop's disk only, never pushed
+    anywhere. This covers a capture he starts; a standing camera for S2b and S2c is undecided.
 - **D3 What of his home may be public.** Default: nothing; perception records are private
   and published only by his classification, per record.
 - **D4 Compute for retraining.** Hours per retrain on his machine; whether a hosted GPU is

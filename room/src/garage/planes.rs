@@ -1,6 +1,7 @@
 //! Detected planes to obstacles on the floor (roadmap/N8i.md). A wall becomes the segment it
-//! stands on; a table or couch top becomes the outline of its footprint. These live for one
-//! session in memory and are never kept: the shape of his home stays his.
+//! stands on; a table or couch top becomes the outline of its footprint. While the car is
+//! driven these live for one session in memory and are never kept. Only a capture the wearer
+//! starts on purpose keeps the shape of a home (homecap.rs, roadmap/N8j.md).
 
 use super::drive::Segment;
 use glam::{Mat4, Vec2, Vec3};
