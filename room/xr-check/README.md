@@ -2,7 +2,10 @@
 
 My check of what a headset's browser grants a web page (`roadmap/N8h.md`). Open it on the
 Meta Quest 3 at `/lucy/room/xr-check/`, press **Check mixed reality**, look around for a few
-seconds, and the session ends by itself. **Check camera (2D)** asks for a camera in the
+seconds, and the session ends by itself. **Check camera in mixed reality** (roadmap/N8h.v2.md)
+asks for the same session, without WebXR camera access, plus a 2D-page camera in the same press,
+and reports how many frames that camera delivered during the session and the mean brightness of
+one, so black frames are told from real ones. **Check camera (2D)** asks for a camera in the
 plain page and closes it again at once. The table and the JSON say what was granted; Copy or
 Download sends them on.
 

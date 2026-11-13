@@ -57,7 +57,25 @@ pub struct Session {
     pub depth_cpu: Probe,
     pub depth_gpu: Probe,
     pub view_camera: Probe,
+    /// N8h.v2: a 2D-page camera (getUserMedia) asked for in the same press as the session.
+    pub camera_during: Option<CameraDuring>,
 }
+
+/// Whether a getUserMedia camera kept delivering frames while the session ran: counts and
+/// one brightness number only, never a frame.
+#[derive(Serialize, Default, Clone, Debug, PartialEq)]
+pub struct CameraDuring {
+    pub opened: bool,
+    pub error: Option<String>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub frames_during: u32,
+    /// Mean of one frame drawn at 32x24, 0..255; near 0 means black frames.
+    pub mean_brightness: Option<f32>,
+}
+
+/// Below this mean brightness a frame counts as black.
+pub const BLACK: f32 = 2.0;
 
 /// Planes or meshes seen in frames: the busiest frame's count and labels, never geometry.
 #[derive(Serialize, Default, Clone, Debug, PartialEq)]
@@ -207,6 +225,12 @@ impl Report {
                 detail,
             });
         }
+        rows.push(during_row(
+            self.sessions
+                .iter()
+                .rev()
+                .find_map(|s| s.camera_during.as_ref()),
+        ));
         rows.push(match &self.camera_2d {
             None => Row {
                 feature: "camera in a 2D page (getUserMedia)".into(),
@@ -231,6 +255,55 @@ impl Report {
             },
         });
         rows
+    }
+}
+
+fn during_row(c: Option<&CameraDuring>) -> Row {
+    let (status, detail) = match c {
+        None => (Status::NotChecked, String::new()),
+        Some(c) if c.error.is_some() => (Status::Error, c.error.clone().unwrap_or_default()),
+        Some(c) if !c.opened => (
+            Status::NotGranted,
+            "the camera didn't open while the session ran".into(),
+        ),
+        Some(c) if c.frames_during == 0 => (
+            Status::NotGranted,
+            "it opened, but no frames arrived during the session".into(),
+        ),
+        Some(CameraDuring {
+            mean_brightness: Some(b),
+            ..
+        }) if *b < BLACK => (
+            Status::NotGranted,
+            format!("frames arrived but were black (mean {b:.1})"),
+        ),
+        Some(c) => {
+            let size = match (c.width, c.height) {
+                (Some(w), Some(h)) => format!("{w}×{h}; "),
+                _ => String::new(),
+            };
+            match c.mean_brightness {
+                Some(b) => (
+                    Status::Granted,
+                    format!(
+                        "{size}{} frames during the session; mean brightness {b:.0}",
+                        c.frames_during
+                    ),
+                ),
+                None => (
+                    Status::Unknown,
+                    format!(
+                        "{size}{} frames arrived, but no frame could be measured",
+                        c.frames_during
+                    ),
+                ),
+            }
+        }
+    };
+    Row {
+        feature: "camera during mixed reality (getUserMedia)".into(),
+        status,
+        detail,
     }
 }
 
@@ -393,6 +466,71 @@ mod tests {
         assert_eq!(status(&r, "hit-test"), Status::Unknown);
     }
 
+    fn during(c: CameraDuring) -> Status {
+        Report {
+            sessions: vec![Session {
+                mode: "immersive-ar".into(),
+                started: Some(true),
+                camera_during: Some(c),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+        .rows()
+        .into_iter()
+        .find(|r| r.feature == "camera during mixed reality (getUserMedia)")
+        .unwrap()
+        .status
+    }
+
+    #[test]
+    fn camera_during_counts_only_real_frames() {
+        let live = CameraDuring {
+            opened: true,
+            width: Some(640),
+            height: Some(480),
+            frames_during: 200,
+            mean_brightness: Some(96.0),
+            ..Default::default()
+        };
+        assert_eq!(during(live.clone()), Status::Granted);
+        assert_eq!(
+            during(CameraDuring {
+                mean_brightness: Some(0.4),
+                ..live.clone()
+            }),
+            Status::NotGranted
+        );
+        assert_eq!(
+            during(CameraDuring {
+                frames_during: 0,
+                ..live.clone()
+            }),
+            Status::NotGranted
+        );
+        assert_eq!(
+            during(CameraDuring {
+                opened: false,
+                ..Default::default()
+            }),
+            Status::NotGranted
+        );
+        assert_eq!(
+            during(CameraDuring {
+                error: Some("NotAllowedError".into()),
+                ..Default::default()
+            }),
+            Status::Error
+        );
+        assert_eq!(
+            during(CameraDuring {
+                mean_brightness: None,
+                ..live
+            }),
+            Status::Unknown
+        );
+    }
+
     #[test]
     fn nothing_checked_yet() {
         let r = Report::default();
@@ -475,6 +613,9 @@ mod tests {
             "kind",
             "label",
             "frame_rate",
+            "camera_during",
+            "frames_during",
+            "mean_brightness",
         ];
         fn keys(v: &serde_json::Value, out: &mut Vec<String>, label_maps: bool) {
             match v {

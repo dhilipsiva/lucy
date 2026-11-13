@@ -3,7 +3,9 @@
 //! Plane, mesh, depth and camera access have no web-sys bindings yet, so they are read with
 //! `Reflect`. Nothing read from a frame is kept beyond counts, labels and sizes.
 
-use crate::report::{Camera2d, Device, ModeSupport, Probe, Report, Seen, Session, FEATURES};
+use crate::report::{
+    Camera2d, CameraDuring, Device, ModeSupport, Probe, Report, Seen, Session, FEATURES,
+};
 use js_sys::{Array, Function, Object, Reflect};
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -21,6 +23,14 @@ use web_sys::{
 const SECONDS: f64 = 8.0;
 
 type Shared = Rc<RefCell<Report>>;
+/// N8h.v2: the 2D camera asked for in the same press as the session, and its frame count base.
+#[derive(Default)]
+struct Gum {
+    stream: Option<MediaStream>,
+    video: Option<JsValue>,
+    base: Option<u32>,
+}
+type SharedGum = Option<Rc<RefCell<Gum>>>;
 type Loop = Rc<RefCell<Option<Closure<dyn FnMut(f64, XrFrame)>>>>;
 
 /// The same reading as room/src/sources.rs `js_error`.
@@ -52,6 +62,40 @@ fn call1(obj: &JsValue, name: &str, arg: &JsValue) -> Result<JsValue, String> {
         .map_err(|_| format!("{name} is not available"))?;
     f.call1(obj, arg).map_err(|e| js_error(&e))
 }
+fn call0(obj: &JsValue, name: &str) -> Result<JsValue, String> {
+    let f: Function = get(obj, name)
+        .dyn_into()
+        .map_err(|_| format!("{name} is not available"))?;
+    f.call0(obj).map_err(|e| js_error(&e))
+}
+/// The mean of one frame drawn at 32x24, 0..255. The pixels are read and dropped at once.
+fn brightness(video: &JsValue) -> Option<f32> {
+    if get(video, "readyState").as_f64().unwrap_or(0.0) < 2.0 {
+        return None;
+    }
+    let canvas: JsValue = doc().create_element("canvas").ok()?.into();
+    let _ = Reflect::set(&canvas, &"width".into(), &32.into());
+    let _ = Reflect::set(&canvas, &"height".into(), &24.into());
+    let ctx = call1(&canvas, "getContext", &"2d".into()).ok()?;
+    let draw: Function = get(&ctx, "drawImage").dyn_into().ok()?;
+    let args = Array::of5(video, &0.into(), &0.into(), &32.into(), &24.into());
+    Reflect::apply(&draw, &ctx, &args).ok()?;
+    let read: Function = get(&ctx, "getImageData").dyn_into().ok()?;
+    let image = Reflect::apply(
+        &read,
+        &ctx,
+        &Array::of4(&0.into(), &0.into(), &32.into(), &24.into()),
+    )
+    .ok()?;
+    let data = js_sys::Uint8ClampedArray::new(&get(&image, "data")).to_vec();
+    let (mut sum, mut n) = (0u64, 0u64);
+    for px in data.chunks(4) {
+        sum += px[0] as u64 + px[1] as u64 + px[2] as u64;
+        n += 3;
+    }
+    (n > 0).then(|| sum as f32 / n as f32)
+}
+
 fn doc() -> Document {
     web_sys::window().unwrap().document().unwrap()
 }
@@ -129,9 +173,13 @@ pub fn start() {
         set_hidden("check-ar", true);
     }
     let r = report.clone();
-    on_click("check-ar", move || check_ar(&r, true));
+    on_click("check-ar", move || check_ar(&r, true, false));
     let r = report.clone();
-    on_click("retry-ar", move || check_ar(&r, false));
+    on_click("retry-ar", move || check_ar(&r, false, false));
+    let r = report.clone();
+    // N8h.v2: camera access isn't granted in mixed reality on his headset, so this asks for the
+    // session without it, and for the 2D camera in the same press
+    on_click("check-ar-camera", move || check_ar(&r, false, true));
     let r = report.clone();
     on_click("check-camera", move || check_camera(&r));
     let r = report.clone();
@@ -162,7 +210,7 @@ fn render(r: &Shared) {
 
 /// requestSession must be called inside the button's activation (WebXR §3.2), so everything
 /// up to it is synchronous.
-fn check_ar(r: &Shared, with_camera: bool) {
+fn check_ar(r: &Shared, with_camera: bool, with_gum: bool) {
     let Some(w) = web_sys::window() else {
         return;
     };
@@ -196,10 +244,12 @@ fn check_ar(r: &Shared, with_camera: bool) {
         report.sessions.push(Session {
             mode: "immersive-ar".into(),
             requested,
+            camera_during: with_gum.then(CameraDuring::default),
             ..Default::default()
         });
         report.sessions.len() - 1
     };
+    let gum: SharedGum = with_gum.then(|| open_camera(r, index, &w));
     set_text(
         "status",
         "Asking the headset for a mixed-reality session. Look around the room for a few seconds; it ends by itself.",
@@ -227,7 +277,7 @@ fn check_ar(r: &Shared, with_camera: bool) {
             }
             Ok(s) => {
                 r.borrow_mut().sessions[index].started = Some(true);
-                if let Err(e) = run(&r, index, s.unchecked_into()).await {
+                if let Err(e) = run(&r, index, s.unchecked_into(), gum).await {
                     r.borrow_mut().sessions[index].error = Some(e);
                     set_text("status", "The session started but could not be set up.");
                     render(&r);
@@ -237,7 +287,87 @@ fn check_ar(r: &Shared, with_camera: bool) {
     });
 }
 
-async fn run(r: &Shared, index: usize, session: XrSession) -> Result<(), String> {
+/// Ask for the 2D camera now, in the same press; it plays into a video element nobody sees.
+fn open_camera(r: &Shared, index: usize, w: &web_sys::Window) -> Rc<RefCell<Gum>> {
+    let state = Rc::new(RefCell::new(Gum::default()));
+    let fail = |r: &Shared, e: String| {
+        if let Some(c) = r.borrow_mut().sessions[index].camera_during.as_mut() {
+            c.error = Some(e);
+        }
+    };
+    let devices = match w.navigator().media_devices() {
+        Ok(d) => d,
+        Err(e) => {
+            fail(r, js_error(&e));
+            return state;
+        }
+    };
+    let constraints = MediaStreamConstraints::new();
+    constraints.set_video(&JsValue::TRUE);
+    let asked = match devices.get_user_media_with_constraints(&constraints) {
+        Ok(p) => p,
+        Err(e) => {
+            fail(r, js_error(&e));
+            return state;
+        }
+    };
+    let (r, st) = (r.clone(), state.clone());
+    spawn_local(async move {
+        match JsFuture::from(asked).await {
+            Err(e) => {
+                if let Some(c) = r.borrow_mut().sessions[index].camera_during.as_mut() {
+                    c.error = Some(js_error(&e));
+                }
+            }
+            Ok(s) => {
+                let stream: MediaStream = s.unchecked_into();
+                let video: JsValue = match doc().create_element("video") {
+                    Ok(v) => v.into(),
+                    Err(e) => {
+                        if let Some(c) = r.borrow_mut().sessions[index].camera_during.as_mut() {
+                            c.error = Some(js_error(&e));
+                        }
+                        return;
+                    }
+                };
+                let _ = Reflect::set(&video, &"muted".into(), &JsValue::TRUE);
+                let _ = Reflect::set(&video, &"playsInline".into(), &JsValue::TRUE);
+                let _ = Reflect::set(&video, &"srcObject".into(), &stream);
+                let _ = call0(&video, "play");
+                if let Some(c) = r.borrow_mut().sessions[index].camera_during.as_mut() {
+                    c.opened = true;
+                    if let Some(track) = stream.get_video_tracks().iter().next() {
+                        if let Ok(settings) = call0(&track, "getSettings") {
+                            c.width = get_u32(&settings, "width");
+                            c.height = get_u32(&settings, "height");
+                        }
+                    }
+                }
+                let mut g = st.borrow_mut();
+                g.stream = Some(stream);
+                g.video = Some(video);
+            }
+        }
+        render(&r);
+    });
+    state
+}
+
+fn close_camera(gum: &SharedGum) {
+    if let Some(g) = gum {
+        let mut g = g.borrow_mut();
+        if let Some(stream) = g.stream.take() {
+            for t in stream.get_tracks().iter() {
+                t.unchecked_into::<MediaStreamTrack>().stop();
+            }
+        }
+        if let Some(v) = g.video.take() {
+            let _ = Reflect::set(&v, &"srcObject".into(), &JsValue::NULL);
+        }
+    }
+}
+
+async fn run(r: &Shared, index: usize, session: XrSession, gum: SharedGum) -> Result<(), String> {
     {
         let mut report = r.borrow_mut();
         let s = &mut report.sessions[index];
@@ -290,6 +420,7 @@ async fn run(r: &Shared, index: usize, session: XrSession) -> Result<(), String>
         Ok(v) => v,
         Err(e) => {
             let _ = session.end();
+            close_camera(&gum);
             return Err(e);
         }
     };
@@ -303,8 +434,10 @@ async fn run(r: &Shared, index: usize, session: XrSession) -> Result<(), String>
     let frames: Loop = Rc::new(RefCell::new(None));
     let ended = frames.clone();
     let rr = r.clone();
+    let closing = gum.clone();
     let end = Closure::<dyn FnMut()>::new(move || {
         ended.borrow_mut().take();
+        close_camera(&closing);
         set_text(
             "status",
             "Done. The table below is what your headset granted; Copy or Download sends it to me.",
@@ -335,6 +468,22 @@ async fn run(r: &Shared, index: usize, session: XrSession) -> Result<(), String>
             s.seconds = (seconds * 10.0).round() / 10.0;
             seen(&frame, "detectedPlanes", false, &mut s.planes);
             seen(&frame, "detectedMeshes", true, &mut s.meshes);
+            // N8h.v2: count the 2D camera's frames while the session runs, and measure one
+            if let (Some(g), Some(c)) = (&gum, s.camera_during.as_mut()) {
+                if s.frames % 30 == 20 {
+                    let mut g = g.borrow_mut();
+                    if let Some(video) = g.video.clone() {
+                        if let Ok(q) = call0(&video, "getVideoPlaybackQuality") {
+                            let total = get_u32(&q, "totalVideoFrames").unwrap_or(0);
+                            let base = *g.base.get_or_insert(total);
+                            c.frames_during = total.saturating_sub(base);
+                        }
+                        if seconds >= 3.0 && c.mean_brightness.is_none() {
+                            c.mean_brightness = brightness(&video);
+                        }
+                    }
+                }
+            }
             // Depth and the camera are asked about every half second until they answer.
             if s.frames % 30 == 10 {
                 if let Some(view) = frame
