@@ -30,11 +30,14 @@ jobs:
         run: cd room && cargo test --locked
       - name: Build the Rust room (roadmap/N8.v3.md)
         run: cd room && wasm-pack build --release --target web --out-dir pkg --out-name lucy_room
+      - name: Build xr-check, the headset feature check (roadmap/N8h.md)
+        run: cd room/xr-check && cargo test --locked && wasm-pack build --release --target web --out-dir pkg --out-name xr_check
       - name: Assemble the site (the room, public memory fallbacks and the protocol; no private files)
         run: |
           mkdir -p _site/lucy _site/room
           mkdir -p _site/nell && cp nell/index.html _site/nell/
           cp room/index.html room/worker.js room/styles.css _site/room/ && cp -r room/tokens room/assets _site/room/ && mkdir -p _site/room/pkg && cp room/pkg/lucy_room.js room/pkg/lucy_room_bg.wasm _site/room/pkg/
+          mkdir -p _site/room/xr-check/pkg && cp room/xr-check/index.html _site/room/xr-check/ && cp room/xr-check/pkg/xr_check.js room/xr-check/pkg/xr_check_bg.wasm _site/room/xr-check/pkg/
           cp lucy/constitution.nibli lucy/memory.nibli _site/lucy/
           python3 scripts/room-public-assets.py _site
           cp WAKE.md README.md _site/

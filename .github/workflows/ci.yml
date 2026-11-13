@@ -36,3 +36,12 @@ jobs:
       - run: cargo +1.96.1 clippy --locked --all-targets -- -D warnings
       - run: cargo +1.96.1 test --locked
       - run: cargo +1.96.1 check --locked --target wasm32-unknown-unknown
+      # xr-check (roadmap/N8h.md): its own small workspace inside room/, checked the same way.
+      - run: cargo +1.96.1 fmt --all -- --check
+        working-directory: room/xr-check
+      - run: cargo +1.96.1 clippy --locked --all-targets -- -D warnings
+        working-directory: room/xr-check
+      - run: cargo +1.96.1 clippy --locked --target wasm32-unknown-unknown -- -D warnings
+        working-directory: room/xr-check
+      - run: cargo +1.96.1 test --locked
+        working-directory: room/xr-check

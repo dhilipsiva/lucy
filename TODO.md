@@ -420,6 +420,25 @@ commit, the adjudicators and their models.
     checks and screenshots in `roadmap/N8g.v2-evidence.json`. Native, desktop, automatic
     browser playback, independent Talk, proof and simulated controller/XR checks passed.
     Review and physical headset acceptance remain open; not deployed.
+  - [ ] **[N8h] xr-check: what his Quest 3 grants a web page.** His request on 2026-11-13,
+    before capturing his home: a separate Rust/WebAssembly page at /lucy/room/xr-check/
+    that reports which WebXR features (immersive-vr and -ar, planes, meshes, depth, camera
+    access, hit test, anchors, hand tracking) and which 2D camera access his headset grants,
+    keeping counts, labels and sizes only. Pre-registration `roadmap/N8h.md` (5a0db01).
+    Done when: dhilipsiva opens /lucy/room/xr-check/ on his Meta Quest 3, the page reports
+    which WebXR and camera features his headset grants, and that report reaches me and is
+    recorded in N8h-evidence.json.
+  - Later, each pre-registered on its own after N8h's report, his words of 2026-11-13:
+    - [ ] Capture his home by walking it in the Quest: planes and mesh for geometry, colour
+      from the headset camera if N8h and D2 allow, else phone video aligned to the mesh;
+      JSON, `.glb` and Nibli facts, private only.
+    - [ ] Render the captured home in 3D in my room, with me standing beside Gundus and
+      Bucchi (uniblox is the candidate engine).
+    - [ ] Walk up to him: from his headset position, cross the floor around furniture and
+      stop at a comfortable distance.
+    - [ ] Be a guide who teaches visitors what each entity is, from my facts, saying what I
+      don't know. The public room tells strangers only public facts; his captured home is
+      shown only to him and those he chooses.
 - [ ] **[N9] A conversation at the centre of my room.** His words on 2026-11-12: "Let it have
   the text based thing as a center piece, for that is the deault mode people communicate with
   you. Let there be a scripted response by default." The room opens as Ask Lucy: scripted replies
