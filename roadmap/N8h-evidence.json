@@ -13,5 +13,112 @@
     "reading": "Every row of the table read granted, by his summary. Which values sat behind each row (plane and mesh counts, depth size, XRView.camera size, the 2D camera's resolution, the browser version) is not known until the JSON arrives.",
     "also_reported": "N8i on the same headset: he entered the garage, drove the car, looked at the scene and walked in between.",
     "open": "the JSON itself, for the details above; until then N8h's Done-when holds in summary only"
+  },
+  {
+    "item": "N8h",
+    "pre_registration": "roadmap/N8h.md (5a0db01)",
+    "class": "B: the page's own JSON from his Meta Quest 3 (lucy-xr-check.json, downloaded on the headset, 2634 bytes), copied here field by field",
+    "recorded": "2026-11-13T19:34:09Z",
+    "page_time": "2026-11-13T19:21:53.115Z",
+    "browser": "Mozilla/5.0 (X11; Linux x86_64; Quest 3) AppleWebKit/537.36 (KHTML, like Gecko) OculusBrowser/154.1.0.32.54.1101200317 Chrome/154.0.8037.126 VR Safari/537.36",
+    "modes": {
+      "immersive-vr": true,
+      "immersive-ar": true
+    },
+    "immersive_ar": {
+      "requested": [
+        "local-floor",
+        "plane-detection",
+        "mesh-detection",
+        "depth-sensing",
+        "camera-access",
+        "hit-test",
+        "anchors",
+        "hand-tracking"
+      ],
+      "enabled_features": [
+        "viewer",
+        "plane-detection",
+        "webxr",
+        "hit-test",
+        "anchors",
+        "local",
+        "local-floor",
+        "hand-tracking",
+        "mesh-detection",
+        "depth-sensing"
+      ],
+      "reference_space": "local-floor",
+      "frames": 716,
+      "seconds": 8.0,
+      "planes": {
+        "max_count": 23,
+        "labels": {
+          "ceiling": 1,
+          "floor": 1,
+          "shelf": 1,
+          "wall": 20
+        },
+        "orientations": {
+          "horizontal": 3,
+          "vertical": 20
+        }
+      },
+      "meshes": {
+        "max_count": 2,
+        "labels": {
+          "unlabelled": 2
+        },
+        "max_vertices": 2469
+      },
+      "depth": {
+        "usage": "gpu-optimized",
+        "format": "unsigned-short",
+        "cpu": {
+          "tried": true,
+          "ok": false,
+          "width": null,
+          "height": null,
+          "error": "Failed to execute 'getDepthInformation' on 'XRFrame': Unable to obtain XRCPUDepthInformation in \"gpu-optimized\" usage mode."
+        },
+        "gpu": {
+          "tried": true,
+          "ok": true,
+          "width": 320,
+          "height": 320,
+          "error": null
+        }
+      },
+      "view_camera": {
+        "tried": true,
+        "ok": false,
+        "width": null,
+        "height": null,
+        "error": null
+      }
+    },
+    "camera_2d": {
+      "opened": true,
+      "error": null,
+      "devices": [
+        {
+          "kind": "audioinput",
+          "label": ""
+        },
+        {
+          "kind": "videoinput",
+          "label": "camera 0, facing front"
+        },
+        {
+          "kind": "audiooutput",
+          "label": ""
+        }
+      ],
+      "width": 640,
+      "height": 480,
+      "frame_rate": 30.0
+    },
+    "reading": "Granted in immersive-ar: local-floor, plane-detection (23 planes: 20 walls, floor, ceiling, shelf), mesh-detection (2 unlabelled meshes, up to 2469 vertices), depth-sensing (GPU only, 320x320 unsigned-short; CPU depth refused in gpu-optimized mode), hit-test, anchors, hand-tracking. Not granted: camera-access (absent from enabledFeatures; no XRView.camera). A plain 2D page opened 'camera 0, facing front' at 640x480, 30 fps, and closed it.",
+    "correction": "The earlier entry's summary that every row passed was his reading of a mostly green table; camera-access in immersive-ar was not granted. Done when now holds: the report reached me and is recorded here."
   }
 ]

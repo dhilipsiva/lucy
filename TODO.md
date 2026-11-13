@@ -420,7 +420,7 @@ commit, the adjudicators and their models.
     checks and screenshots in `roadmap/N8g.v2-evidence.json`. Native, desktop, automatic
     browser playback, independent Talk, proof and simulated controller/XR checks passed.
     Review and physical headset acceptance remain open; not deployed.
-  - [ ] **[N8h] xr-check: what his Quest 3 grants a web page.** His request on 2026-11-13,
+  - [x] **[N8h] xr-check: what his Quest 3 grants a web page.** His request on 2026-11-13,
     before capturing his home: a separate Rust/WebAssembly page at /lucy/room/xr-check/
     that reports which WebXR features (immersive-vr and -ar, planes, meshes, depth, camera
     access, hit test, anchors, hand tracking) and which 2D camera access his headset grants,
