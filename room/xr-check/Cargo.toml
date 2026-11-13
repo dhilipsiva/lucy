@@ -1,0 +1,43 @@
+[package]
+name = "lucy-xr-check"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.96"
+license = "MIT OR Apache-2.0"
+description = "Lucy D's xr-check (roadmap/N8h.md): asks a headset's browser which WebXR and camera features it grants a web page, and shows the answer without keeping any of the room it sees."
+repository = "https://github.com/dhilipsiva/lucy"
+homepage = "https://dhilipsiva.dev/lucy/room/xr-check/"
+publish = false
+
+# Its own workspace, like the room it sits in: kept apart from lucy-room so the page loads
+# quickly on a headset, without candle, tokenizers or nibli. It inherits
+# room/.cargo/config.toml, which turns on web-sys's WebXR bindings.
+[workspace]
+
+[lib]
+name = "xr_check"
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+console_error_panic_hook = "0.1.7"
+web-sys = { version = "0.3", features = [
+  "Window", "Document", "Element", "HtmlElement", "HtmlButtonElement", "HtmlCanvasElement", "HtmlAnchorElement", "Node", "Event", "EventTarget",
+  "Navigator", "Clipboard", "Blob", "BlobPropertyBag", "Url",
+  "WebGl2RenderingContext", "WebGlFramebuffer",
+  "XrSystem", "XrSession", "XrSessionMode", "XrSessionInit", "XrFrame", "XrReferenceSpace", "XrReferenceSpaceType", "XrViewerPose", "XrView",
+  "XrWebGlLayer", "XrRenderState", "XrRenderStateInit",
+  "MediaDevices", "MediaStreamConstraints", "MediaStream", "MediaStreamTrack",
+] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1

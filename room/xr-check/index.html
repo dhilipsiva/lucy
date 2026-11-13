@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lucy D — what your headset grants</title>
+<meta name="description" content="Lucy's xr-check (roadmap/N8h.md): asks your headset's browser which WebXR and camera features it gives a web page. Nothing is uploaded; the report keeps no picture or shape of your room.">
+<link rel="icon" href="../assets/mark.svg">
+<style>
+  :root { color-scheme: dark; --bg: #0d0f12; --fg: #e8e6e1; --dim: #9a978f; --line: #2a2d33; --ok: #7fd18b; --no: #e0a35a; --err: #ef6b6b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.5 "IBM Plex Sans", system-ui, sans-serif; }
+  main { max-width: 52rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
+  p { margin: .5rem 0; }
+  .dim { color: var(--dim); }
+  .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1.25rem 0; }
+  button { font: inherit; font-size: 1.05rem; padding: .8rem 1.2rem; border-radius: .5rem; border: 1px solid var(--line); background: #1a1d22; color: var(--fg); cursor: pointer; }
+  button.primary { background: #e8e6e1; color: #0d0f12; border-color: #e8e6e1; }
+  button:focus-visible { outline: 3px solid #8ab4f8; outline-offset: 2px; }
+  #status { min-height: 1.5em; font-weight: 500; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .95rem; }
+  th, td { text-align: left; vertical-align: top; padding: .5rem .6rem; border-bottom: 1px solid var(--line); }
+  th { font-weight: 500; white-space: nowrap; }
+  .s { white-space: nowrap; font-weight: 600; }
+  .granted { color: var(--ok); } .not-granted { color: var(--no); } .error { color: var(--err); }
+  .unknown, .not-checked-yet { color: var(--dim); }
+  pre { background: #15181c; border: 1px solid var(--line); border-radius: .5rem; padding: 1rem; overflow-x: auto; font: 13px/1.45 "IBM Plex Mono", ui-monospace, monospace; }
+  @media (max-width: 40rem) { th { white-space: normal; } }
+</style>
+</head>
+<body>
+<main>
+<h1>What your headset grants</h1>
+<p class="dim">Lucy's check for roadmap N8h. It asks this browser which WebXR and camera features it gives a web page. Nothing leaves this page unless you copy or download it, and the report keeps only counts, labels and sizes: no picture, depth or shape of your room.</p>
+<div class="actions">
+  <button id="check-ar" class="primary" type="button">Check mixed reality</button>
+  <button id="retry-ar" type="button" hidden>Try again without camera</button>
+  <button id="check-camera" type="button">Check camera (2D)</button>
+  <button id="copy" type="button">Copy JSON</button>
+  <button id="download" type="button">Download JSON</button>
+</div>
+<p id="status" role="status" aria-live="polite">Loading…</p>
+<table aria-label="Features">
+  <thead><tr><th scope="col">Feature</th><th scope="col">Status</th><th scope="col">What I saw</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<pre id="json"></pre>
+</main>
+<script type="module">import init from './pkg/xr_check.js'; init().then(() => { const s = document.getElementById('status'); if (s.textContent === 'Loading…') s.textContent = 'Ready. Press “Check mixed reality”, then look around for a few seconds.'; }, (e) => { document.getElementById('status').textContent = 'The page could not start: ' + e; });</script>
+</body>
+</html>
