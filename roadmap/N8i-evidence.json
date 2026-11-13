@@ -1,0 +1,36 @@
+[
+  {
+    "item": "N8i",
+    "pre_registration": "roadmap/N8i.md (bc3f63d), committed alone before todo/N8i",
+    "class": "A: native tests of the pure garage files, and a headless Chrome run over the DevTools protocol with room/test/garage-shim.js. The shim proves API orchestration only: nothing here is a headset, haptic, hit-test, plane-detection or comfort result.",
+    "recorded": "2026-11-13T17:38:19Z",
+    "host": "dhilipsiva-desktop",
+    "working_tree_parent": "bc3f63d",
+    "code_commit": "the commit that carries this file, on branch todo/N8i",
+    "toolchain": {
+      "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+      "node": "v26.13.0",
+      "chrome": "Google Chrome 156.0.8078.79 "
+    },
+    "native": {
+      "room cargo test": "91 passed (12 new in room/src/garage: launch 3, drive 5, planes 2, car 1, modes 1)",
+      "fmt": "clean",
+      "clippy -D warnings": "clean natively and for wasm32"
+    },
+    "headless": {
+      "command": "node room/test/garage.mjs",
+      "flat_launch": "100 km/h first shown at 2.50 s and 2.52 s in two runs (pre-registered bound: one frame); 34.5 m at that moment against 34.7 m in the profile; speed only rises until 100; Esc restores the room",
+      "vr_launch": "immersive-vr requested inside the click; context made XR compatible; 1 clear and 3 viewports per frame; the trigger launched; pulses sent to both controllers, max intensity under 1; B ended the session and the room returned",
+      "ar_life_size": "immersive-ar requested inside the click with hit-test and plane-detection; clear alpha 0; the select placed the car at the hit result 0.50,-2.00",
+      "ar_miniature": "reversed into a detected vertical plane at z = -1.5 and stopped with its centre at z = -1.25 (the rear is 0.245 m behind the centre); haptic bumps sent to the right controller",
+      "regressions": "node room/test/headless.mjs and --platforms both pass on the same build"
+    },
+    "limitations": [
+      "no headset was used: comfort, haptics, hit-test, planes, passthrough compositing and frame timing on a Meta Quest 3 are unknown until dhilipsiva reports",
+      "the flat-screen launch has no mouse look (keys only); the scene-view HUD has no garage button, only the conversation's Garage panel",
+      "the car is my own placeholder; no licensed model is loaded"
+    ],
+    "adjudicators": [],
+    "disagreements": []
+  }
+]
