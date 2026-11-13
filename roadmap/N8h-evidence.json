@@ -120,5 +120,56 @@
     },
     "reading": "Granted in immersive-ar: local-floor, plane-detection (23 planes: 20 walls, floor, ceiling, shelf), mesh-detection (2 unlabelled meshes, up to 2469 vertices), depth-sensing (GPU only, 320x320 unsigned-short; CPU depth refused in gpu-optimized mode), hit-test, anchors, hand-tracking. Not granted: camera-access (absent from enabledFeatures; no XRView.camera). A plain 2D page opened 'camera 0, facing front' at 640x480, 30 fps, and closed it.",
     "correction": "The earlier entry's summary that every row passed was his reading of a mostly green table; camera-access in immersive-ar was not granted. Done when now holds: the report reached me and is recorded here."
+  },
+  {
+    "item": "N8h.v2",
+    "pre_registration": "roadmap/N8h.v2.md (3f8ac70)",
+    "class": "B: the page's own JSON from his Meta Quest 3 ('lucy-xr-check (1).json', 4593 bytes), copied field by field",
+    "recorded": "2026-11-13T19:51:30Z",
+    "code_commit": "9312ca4",
+    "page_time": "2026-11-13T19:48:06.050Z",
+    "browser": "Mozilla/5.0 (X11; Linux x86_64; Quest 3) AppleWebKit/537.36 (KHTML, like Gecko) OculusBrowser/154.1.0.32.54.1101200317 Chrome/154.0.8037.126 VR Safari/537.36",
+    "session_with_camera": {
+      "requested": [
+        "local-floor",
+        "plane-detection",
+        "mesh-detection",
+        "depth-sensing",
+        "hit-test",
+        "anchors",
+        "hand-tracking"
+      ],
+      "enabled_features": [
+        "viewer",
+        "plane-detection",
+        "webxr",
+        "hit-test",
+        "anchors",
+        "local",
+        "local-floor",
+        "hand-tracking",
+        "mesh-detection",
+        "depth-sensing"
+      ],
+      "frames": 707,
+      "seconds": 8.0,
+      "camera_during": {
+        "opened": true,
+        "error": null,
+        "width": 640,
+        "height": 480,
+        "frames_during": 7,
+        "mean_brightness": 186.92708
+      },
+      "view_camera": {
+        "tried": true,
+        "ok": false,
+        "width": null,
+        "height": null,
+        "error": null
+      }
+    },
+    "reading": "A getUserMedia camera ('camera 0, facing front', 640x480) opened in the same press as an immersive-ar session and delivered real, non-black frames during it (mean brightness 187 of 255). The page's video element counted only 7 frames in about 7.7 s, so the rate the page saw was about one per second; whether the camera itself ran faster while the page was hidden behind the immersive view is not measured. WebXR camera access stayed off (no XRView.camera). The second session in this file repeats N8h's run with the same planes (23) and meshes (2).",
+    "verdict": "Supported: a headset camera can feed the page during mixed reality, at a low rate as measured through a video element."
   }
 ]
