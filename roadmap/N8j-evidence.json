@@ -93,5 +93,25 @@
     "change": "roadmap/N8j.v3.md: the capture looks for a world-facing camera, names the camera it used, and says when its pictures all look the same; the wrong note is fixed.",
     "check": "room/test/home.mjs asserts the camera is named in the notes and not noted absent; garage/camera.rs has native tests on his headset's label and his pictures' sizes. Orchestration only.",
     "open": "Whether his Quest offers a web page any camera that sees the room. Not imported into my store: the pictures hold nothing of his home."
+  },
+  {
+    "item": "N8j",
+    "class": "import and plain view",
+    "recorded": "2026-11-14",
+    "import": {
+      "tool": "lucy home import (repo build)",
+      "planes": 23,
+      "meshes": 2,
+      "pictures": 57,
+      "facts": 44,
+      "labels_without_a_word": {
+        "ceiling": 1
+      },
+      "stays": "on this desktop's disk only; no store record, replication log or backup carries it"
+    },
+    "reading": "With no camera that sees the room (N8h-evidence.json), his capture is geometry only. He asked for it imported and drawn with plain walls. The 57 stand-in pictures went in with it; they show nothing of his home.",
+    "change": "The viewer draws a capture without pictures, or with one stand-in picture repeated, as plain surfaces: walls, floor, ceiling, furniture and the room's shape each in a colour of their own, opening with a look toward the home. A tick box in the panel puts the pictures back. This is beyond what N8j.v3.md wrote down; it is recorded here.",
+    "check": "room/test/home.mjs: the tick box switches to plain and back, and a file of nine copies of one picture opens plain by itself and says why. Opened his real file in a local headless room: 23 planes, 2 meshes, five kinds drawn. Looking at that render I found the floor lit from underneath, because its plane's axis points down on his Quest; normals now follow the winding.",
+    "open": "He stood within about a metre of where the session began, at a corner of the scanned floor, with the walls two to nine metres away. Whether that matches his home is his to say. His view of it on the Quest or the desktop."
   }
 ]

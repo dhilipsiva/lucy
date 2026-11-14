@@ -943,6 +943,8 @@ pub fn pick(then: impl Fn(Result<String, String>) + 'static) {
 pub struct Loaded {
     capture: HomeCapture,
     bitmaps: BTreeMap<u32, ImageBitmap>,
+    /// Its pictures are one stand-in picture again and again (garage/camera.rs).
+    alike: bool,
 }
 
 thread_local! {
@@ -958,6 +960,10 @@ pub fn load() {
                 .await?
                 .ok_or("There's no captured home in this browser yet. Capture one on a headset, or open a capture file.")?;
             let small = photos.len() > 100;
+            let mut sizes = super::camera::Sizes::default();
+            for (_, blob) in &photos {
+                sizes.add(blob.size() as usize);
+            }
             let window = web_sys::window().ok_or("no window")?;
             let mut bitmaps = BTreeMap::new();
             for (id, blob) in photos {
@@ -973,7 +979,11 @@ pub fn load() {
                     bitmaps.insert(id, b.unchecked_into());
                 }
             }
-            Ok::<_, String>(Loaded { capture, bitmaps })
+            Ok::<_, String>(Loaded {
+                capture,
+                bitmaps,
+                alike: sizes.all_alike(),
+            })
         }
         .await;
         ARRIVED.with(|a| *a.borrow_mut() = Some(result));
@@ -983,6 +993,8 @@ pub fn load() {
 #[derive(Default)]
 struct PanelState {
     alignment: Option<Alignment>,
+    /// The visitor ticked or cleared "show the pictures".
+    pictures: Option<bool>,
     save: bool,
     leave: bool,
 }
@@ -1003,6 +1015,11 @@ pub struct Viewing {
     textures: BTreeMap<usize, Texture>,
     pictures: Vec<(usize, GpuMesh)>,
     bare: Option<GpuMesh>,
+    /// Drawn without pictures, each kind of surface in its own colour: the default when
+    /// the capture has no picture, or only a stand-in (roadmap/N8j.v3.md).
+    plain: bool,
+    alike: bool,
+    kinds: Vec<(project::Kind, GpuMesh)>,
     alignment: Alignment,
     dirty: bool,
     built_at: f64,
@@ -1025,6 +1042,9 @@ impl Viewing {
             textures: BTreeMap::new(),
             pictures: vec![],
             bare: None,
+            plain: false,
+            alike: false,
+            kinds: vec![],
             alignment: Alignment::default(),
             dirty: false,
             built_at: 0.0,
@@ -1064,6 +1084,16 @@ impl Viewing {
                         self.yaw = (-f.x).atan2(-f.z);
                     }
                     self.bitmaps = loaded.bitmaps;
+                    self.alike = loaded.alike;
+                    self.plain = loaded.alike || loaded.capture.photos.is_empty();
+                    // with pictures the first look is his own; without them it faces the
+                    // home, since he may have begun looking away from every wall
+                    if let Some(to) = project::middle(&loaded.capture).filter(|_| self.plain) {
+                        let d = to - self.pos;
+                        if d.x.abs() + d.z.abs() > 0.5 {
+                            self.yaw = (-d.x).atan2(-d.z);
+                        }
+                    }
                     self.capture = Some(loaded.capture);
                     self.dirty = true;
                     if flat {
@@ -1078,6 +1108,10 @@ impl Viewing {
             let mut s = self.shared.borrow_mut();
             if let Some(a) = s.alignment.take() {
                 self.alignment = a;
+                self.dirty = true;
+            }
+            if let Some(show) = s.pictures.take() {
+                self.plain = !show;
                 self.dirty = true;
             }
             if std::mem::take(&mut s.leave) {
@@ -1108,13 +1142,33 @@ impl Viewing {
 
     fn paint(&mut self, gl: &Gl) {
         let Some(capture) = &self.capture else { return };
-        let painted = project::paint(capture, &self.alignment);
         if let Some(old) = self.bare.take() {
             gl.delete_mesh(old);
         }
         for (_, old) in self.pictures.drain(..) {
             gl.delete_mesh(old);
         }
+        for (_, old) in self.kinds.drain(..) {
+            gl.delete_mesh(old);
+        }
+        if self.plain {
+            let plain = project::plain(capture);
+            self.summary = format!(
+                "garage home · planes {} · meshes {} · pictures {} · plain · kinds {}",
+                capture.planes.len(),
+                capture.meshes.len(),
+                capture.photos.len(),
+                plain.len()
+            );
+            self.kinds = plain.iter().map(|(k, m)| (*k, gl.upload(m))).collect();
+            self.say(if self.alike {
+                "The pictures in this capture are one stand-in picture, not your rooms, so I'm showing plain surfaces: walls, floor, ceiling, furniture and the room's shape, each in its own colour."
+            } else {
+                "Plain surfaces: walls, floor, ceiling, furniture and the room's shape, each in its own colour."
+            });
+            return;
+        }
+        let painted = project::paint(capture, &self.alignment);
         if !painted.bare.indices.is_empty() {
             self.bare = Some(gl.upload(&painted.bare));
         }
@@ -1146,18 +1200,23 @@ impl Viewing {
             painted.textured,
             self.pictures.len()
         );
+        let said = format!(
+            "{} of {} pieces of surface carry a picture, from {} of {} pictures.",
+            painted.textured,
+            painted.cells,
+            self.pictures.len(),
+            capture.photos.len()
+        );
+        self.say(&said);
+    }
+
+    fn say(&self, text: &str) {
         if let Some(e) = self
             .panel
             .as_ref()
             .and_then(|p| p.query_selector("[data-role=stats]").ok().flatten())
         {
-            e.set_text_content(Some(&format!(
-                "{} of {} pieces of surface carry a picture, from {} of {} pictures.",
-                painted.textured,
-                painted.cells,
-                self.pictures.len(),
-                capture.photos.len()
-            )));
+            e.set_text_content(Some(text));
         }
     }
 
@@ -1173,6 +1232,38 @@ impl Viewing {
 
     /// Draw the home from one eye.
     pub fn render(&self, gl: &Gl, view: &Mat4, proj: &Mat4, cam: Vec3) {
+        for (kind, mesh) in &self.kinds {
+            // the room's shape lies on the walls it was measured from: pushed back a little,
+            // so the labelled surfaces win where the two coincide
+            let behind = *kind == project::Kind::Shape;
+            if behind {
+                gl.ctx
+                    .enable(web_sys::WebGl2RenderingContext::POLYGON_OFFSET_FILL);
+                gl.ctx.polygon_offset(2.0, 2.0);
+            }
+            gl.draw_lit(
+                mesh,
+                &LitParams {
+                    model: Mat4::IDENTITY,
+                    color: linear(kind.color()),
+                    emissive: [0.0; 3],
+                    emissive_intensity: 0.0,
+                    roughness: 0.9,
+                    opacity: 1.0,
+                    map: None,
+                    double_sided: true,
+                    depth_write: true,
+                },
+                view,
+                proj,
+                &self.lights,
+                cam,
+            );
+            if behind {
+                gl.ctx
+                    .disable(web_sys::WebGl2RenderingContext::POLYGON_OFFSET_FILL);
+            }
+        }
         if let Some(bare) = &self.bare {
             gl.draw_lit(
                 bare,
@@ -1284,6 +1375,20 @@ impl Viewing {
             let _ = row.append_child(&input);
             let _ = panel.append_child(&row);
         }
+        if let Ok(row) = d.create_element("label") {
+            let _ = row.set_attribute("style", "display:block;margin:10px 0 2px");
+            if let Ok(input) = d.create_element("input") {
+                let input: web_sys::HtmlInputElement = input.unchecked_into();
+                input.set_type("checkbox");
+                input.set_checked(!self.plain);
+                let _ = input.set_attribute("id", "home-pictures");
+                let _ = input.set_attribute("data-role", "pictures");
+                let _ = input.set_attribute("style", "margin-right:6px");
+                let _ = row.append_child(&input);
+            }
+            let _ = row.append_with_str_1("Show the pictures on the surfaces");
+            let _ = panel.append_child(&row);
+        }
         add("p", "", "margin:8px 0;color:#B9B6AE").map(|e| e.set_attribute("data-role", "stats"));
         for (role, text) in [("save", "Keep this alignment"), ("leave", "Leave")] {
             if let Some(b) = add(
@@ -1299,7 +1404,15 @@ impl Viewing {
         let shared = self.shared.clone();
         let root = panel.clone();
         let start = self.alignment;
-        let on_input = Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
+        let on_input = Closure::<dyn FnMut(web_sys::Event)>::new(move |e: web_sys::Event| {
+            let ticked = e
+                .target()
+                .and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok())
+                .filter(|i| i.get_attribute("data-role").as_deref() == Some("pictures"));
+            if let Some(box_) = ticked {
+                shared.borrow_mut().pictures = Some(box_.checked());
+                return;
+            }
             let read = |key: &str, fallback: f32| {
                 root.query_selector(&format!("[data-field={key}]"))
                     .ok()
@@ -1349,6 +1462,9 @@ impl Viewing {
             gl.delete_mesh(m);
         }
         for (_, m) in self.pictures.drain(..) {
+            gl.delete_mesh(m);
+        }
+        for (_, m) in self.kinds.drain(..) {
             gl.delete_mesh(m);
         }
         for (_, t) in std::mem::take(&mut self.textures) {

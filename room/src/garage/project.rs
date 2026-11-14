@@ -274,10 +274,142 @@ pub fn paint(c: &HomeCapture, a: &Alignment) -> Painted {
     }
 }
 
+/// What a surface is, for a home drawn without its pictures (roadmap/N8j.v3.md): each kind
+/// gets a colour of its own so the rooms read as rooms.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    Wall,
+    Floor,
+    Ceiling,
+    /// Any other labelled plane: a shelf, a table, a couch, a door.
+    Furniture,
+    /// The headset's unlabelled mesh of the room.
+    Shape,
+}
+
+impl Kind {
+    pub const ALL: [Kind; 5] = [
+        Kind::Wall,
+        Kind::Floor,
+        Kind::Ceiling,
+        Kind::Furniture,
+        Kind::Shape,
+    ];
+    pub fn of(label: &str) -> Kind {
+        match label {
+            "wall" => Kind::Wall,
+            "floor" => Kind::Floor,
+            "ceiling" => Kind::Ceiling,
+            _ => Kind::Furniture,
+        }
+    }
+    /// sRGB, as `colors::linear` takes it.
+    pub fn color(self) -> u32 {
+        match self {
+            Kind::Wall => 0xE9E4DA,
+            Kind::Floor => 0x8B6F52,
+            Kind::Ceiling => 0xF5F3EE,
+            Kind::Furniture => 0x4F7CAC,
+            Kind::Shape => 0xB8B2A6,
+        }
+    }
+}
+
+/// The middle of the labelled surfaces, for a first look that faces the home.
+pub fn middle(c: &HomeCapture) -> Option<Vec3> {
+    let centres: Vec<Vec3> = cells(&HomeCapture {
+        meshes: vec![],
+        path: vec![],
+        photos: vec![],
+        ..c.clone()
+    })
+    .iter()
+    .map(Cell::centre)
+    .collect();
+    (!centres.is_empty()).then(|| centres.iter().copied().sum::<Vec3>() / centres.len() as f32)
+}
+
+/// The home's surfaces with no picture on them: one mesh per kind that has any surface.
+pub fn plain(c: &HomeCapture) -> Vec<(Kind, Mesh)> {
+    Kind::ALL
+        .into_iter()
+        .filter_map(|kind| {
+            let only = HomeCapture {
+                planes: c
+                    .planes
+                    .iter()
+                    .filter(|p| kind != Kind::Shape && Kind::of(&p.label) == kind)
+                    .cloned()
+                    .collect(),
+                meshes: if kind == Kind::Shape {
+                    c.meshes.clone()
+                } else {
+                    vec![]
+                },
+                path: vec![],
+                photos: vec![],
+                ..c.clone()
+            };
+            let mut mesh = Mesh::default();
+            for cell in cells(&only) {
+                let base = (mesh.positions.len() / 3) as u32;
+                // The normal follows the way the corners wind, not the plane's own axis: the
+                // shader turns it for a face seen from behind, and on his Quest the floor's
+                // axis points down, which lit it as if from underneath.
+                let wound = (cell.corners[1] - cell.corners[0])
+                    .cross(cell.corners[2] - cell.corners[0])
+                    .normalize_or_zero();
+                let normal = if wound == Vec3::ZERO {
+                    cell.normal
+                } else {
+                    wound
+                };
+                for p in &cell.corners {
+                    push(&mut mesh, *p, normal, Vec2::ZERO);
+                }
+                mesh.indices.extend_from_slice(&[base, base + 1, base + 2]);
+                if cell.corners.len() == 4 {
+                    mesh.indices.extend_from_slice(&[base, base + 2, base + 3]);
+                }
+            }
+            (!mesh.indices.is_empty()).then_some((kind, mesh))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use lucy_room_memory::home::{Detector, Plane, Stats, SurfaceMesh, FORMAT};
+
+    #[test]
+    fn a_plain_home_has_one_mesh_for_each_kind_of_surface() {
+        let mut c = capture(vec![]);
+        let mut floor = wall();
+        floor.label = "floor".into();
+        let mut shelf = wall();
+        shelf.label = "shelf".into();
+        c.planes = vec![wall(), wall(), floor, shelf];
+        c.meshes = vec![SurfaceMesh {
+            label: String::new(),
+            pose: Mat4::IDENTITY.to_cols_array(),
+            vertices: vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            indices: vec![0, 1, 2],
+        }];
+        let p = plain(&c);
+        let kinds: Vec<Kind> = p.iter().map(|(k, _)| *k).collect();
+        assert_eq!(
+            kinds,
+            [Kind::Wall, Kind::Floor, Kind::Furniture, Kind::Shape]
+        );
+        // two walls of 8x8 cells, two triangles each
+        assert_eq!(p[0].1.indices.len(), 2 * 64 * 6);
+        assert_eq!(p[3].1.indices.len(), 3);
+        // every surface of the capture is in exactly one of them
+        let all: usize = p.iter().map(|(_, m)| m.indices.len()).sum();
+        let whole = paint(&c, &straight());
+        assert_eq!(all, whole.bare.indices.len());
+    }
 
     fn straight() -> Alignment {
         Alignment {

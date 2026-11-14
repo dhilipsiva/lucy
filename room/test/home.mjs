@@ -145,10 +145,17 @@ await evaluate("(()=>{const i=document.getElementById('home-hfov_deg');i.value='
 await waitFor('a re-paint', `document.getElementById('garage-status')?.textContent!==${JSON.stringify(shown)}`, 5000);
 const narrowed = await status();
 assert(num(narrowed, 'textured') < num(shown, 'textured'), `a narrower lens should cover less: ${shown} → ${narrowed}`);
+// without its pictures: the wall and the mesh, each kind in its own colour; and back again
+assert(await evaluate("document.getElementById('home-pictures').checked"), 'a capture with real pictures should open showing them');
+await click('#home-pictures');
+await waitFor('plain surfaces', "/pictures \\d+ · plain · kinds 2$/.test(document.getElementById('garage-status')?.textContent)", 5000);
+const plain = await status();
+await click('#home-pictures');
+await waitFor('the pictures again', "/textured [1-9]/.test(document.getElementById('garage-status')?.textContent)", 5000);
 await click('#home-panel [data-role="leave"]');
 await waitFor('my room again', "document.getElementById('garage-status')?.textContent===''", 5000);
 assert(!(await evaluate("!!document.getElementById('home-panel')")), 'the panel stayed');
-out.view = { shown, narrowed };
+out.view = { shown, narrowed, plain };
 
 // 5. a raw file with a face in it, opened through the picker: blurred before it is stored
 const withFace = JSON.parse(text);
@@ -178,6 +185,25 @@ assert(processed.raw === false && processed.detector.name === 'ultraface-rfb-320
 assert(portrait && portrait.faces_blurred === 1 && processed.stats.faces_blurred === processed.photos.reduce((n, p) => n + p.faces_blurred, 0), `the portrait's face: ${JSON.stringify(portrait && portrait.faces_blurred)} of ${processed.stats.faces_blurred}`);
 assert(portrait.jpeg_base64 !== withFace.photos.at(-1).jpeg_base64, 'the portrait came back unchanged');
 out.blurredInBrowser = { pictures: processed.photos.length, faces: processed.stats.faces_blurred, detector: processed.detector.name };
+
+// 6. a capture whose pictures are one picture again and again, as his Quest gave: it opens
+// plain by itself, and says why
+const standIn = JSON.parse(await evaluate('window.__downloads[1]'));
+standIn.photos = Array.from({ length: 9 }, (_, i) => ({ ...standIn.photos[0], id: i, t: i }));
+standIn.stats = { ...standIn.stats, offered: 9, kept: 9, dropped: 0, faces_blurred: 0 };
+const standInPath = join(profile, 'stand-in.json');
+writeFileSync(standInPath, JSON.stringify(standIn));
+chooser = null;
+await open('open');
+for (let i = 0; i < 50 && !chooser; i++) await sleep(100);
+assert(chooser, 'no file chooser opened for the stand-in capture');
+await send('DOM.setFileInputFiles', { files: [standInPath], backendNodeId: chooser.backendNodeId }, sessionId);
+await waitFor('the stand-in home, plain', "/pictures 9 · plain · kinds 2$/.test(document.getElementById('garage-status')?.textContent)", 60000);
+assert(!(await evaluate("document.getElementById('home-pictures').checked")), 'a stand-in capture opened showing its pictures');
+assert((await evaluate("document.querySelector('#home-panel [data-role=stats]').textContent")).includes('one stand-in picture'), 'the panel does not say why the surfaces are plain');
+out.standIn = await status();
+await click('#home-panel [data-role="leave"]');
+await waitFor('my room again', "document.getElementById('garage-status')?.textContent===''", 5000);
 
 out.pass = true;
 out.note = 'shimmed headset and fake camera: orchestration only; no headset, frame-rate, alignment or texture-quality claim';
