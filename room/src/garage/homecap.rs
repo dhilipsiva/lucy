@@ -56,6 +56,14 @@ struct Cam {
     stream: Option<MediaStream>,
     video: Option<JsValue>,
     error: Option<String>,
+    /// Set once a camera has played, and kept after it is closed: the file's notes are
+    /// written after the camera is stopped.
+    started: bool,
+    /// What the camera in use calls itself, and every camera the browser listed.
+    label: String,
+    listed: Vec<String>,
+    /// What happened when a world-facing camera was looked for (roadmap/N8j.v3.md).
+    sought: Option<String>,
 }
 
 /// A capture in progress (roadmap/N8j.v2.md): everything is kept as the headset gives it.
@@ -67,6 +75,7 @@ pub struct Capturing {
     last_total: Option<u32>,
     /// Why pictures were lost, if any were: counted so the file can say.
     failures: BTreeMap<&'static str, u32>,
+    sizes: super::camera::Sizes,
     next_id: u32,
     done: Vec<(Photo, Blob)>,
     planes: Vec<Plane>,
@@ -90,6 +99,7 @@ impl Capturing {
             frame: None,
             last_total: None,
             failures: BTreeMap::new(),
+            sizes: Default::default(),
             next_id: 0,
             done: vec![],
             planes: vec![],
@@ -248,9 +258,12 @@ impl Capturing {
                     .and_then(|b64| base64_decode(b64).ok())
             })
             .filter(|bytes| bytes.len() > 3 && bytes[..3] == [0xff, 0xd8, 0xff]);
-        let Some(blob) = jpeg.and_then(|bytes| jpeg_blob(&bytes).ok()) else {
+        let Some((blob, bytes)) =
+            jpeg.and_then(|bytes| jpeg_blob(&bytes).ok().map(|b| (b, bytes.len())))
+        else {
             return self.lost("the picture did not encode");
         };
+        self.sizes.add(bytes);
         let photo = Photo {
             id: self.next_id,
             t,
@@ -285,8 +298,22 @@ impl Capturing {
                 self.offered
             )
         };
+        let alike = self.sizes.all_alike();
+        let which = if alike {
+            "pictures all look the same: this camera may not see your room".to_string()
+        } else {
+            format!(
+                "camera: {}",
+                if cam.label.is_empty() {
+                    "unnamed"
+                } else {
+                    &cam.label
+                }
+            )
+        };
         vec![
             (50.0, camera),
+            (if alike { 32.0 } else { 30.0 }, which),
             (
                 44.0,
                 format!(
@@ -322,12 +349,39 @@ impl Capturing {
             "The camera's place and lens are a starting guess; align them in the viewer.".into(),
             "Frames come from a video element, about one a second on a Quest 3.".into(),
         ];
-        if let Some(e) = &self.cam.borrow().error {
-            notes.push(format!("No camera: {e}"));
-        } else if self.cam.borrow().video.is_none() {
-            notes.push("The camera never started during this capture.".into());
-        } else if self.offered == 0 {
-            notes.push("The camera started but delivered no frame during this capture.".into());
+        {
+            let cam = self.cam.borrow();
+            if let Some(e) = &cam.error {
+                notes.push(format!("No camera: {e}"));
+            } else if !cam.started {
+                notes.push("The camera never started during this capture.".into());
+            } else if self.offered == 0 {
+                notes.push("The camera started but delivered no frame during this capture.".into());
+            }
+            if cam.started {
+                notes.push(format!(
+                    "Camera used: {}. Cameras listed: {}.",
+                    if cam.label.is_empty() {
+                        "unnamed"
+                    } else {
+                        &cam.label
+                    },
+                    if cam.listed.is_empty() {
+                        "none".to_string()
+                    } else {
+                        cam.listed.join("; ")
+                    }
+                ));
+            }
+            if let Some(s) = &cam.sought {
+                notes.push(s.clone());
+            }
+        }
+        if self.sizes.all_alike() {
+            notes.push(format!(
+                "The {} pictures are within one percent of each other in size ({} to {} bytes): they are probably one stand-in picture, not views of the home.",
+                self.sizes.count, self.sizes.min, self.sizes.max
+            ));
         }
         for (why, n) in &self.failures {
             notes.push(format!("{n} frames were lost: {why}."));
@@ -393,12 +447,102 @@ fn open_camera(cam: &Rc<RefCell<Cam>>) {
                 let _ = Reflect::set(&video, &"playsInline".into(), &JsValue::TRUE);
                 let _ = Reflect::set(&video, &"srcObject".into(), &stream);
                 let _ = call(&video, "play", &Array::new());
-                let mut c = cam.borrow_mut();
-                c.stream = Some(stream);
-                c.video = Some(video);
+                {
+                    let mut c = cam.borrow_mut();
+                    c.label = track_label(&stream);
+                    c.stream = Some(stream);
+                    c.video = Some(video);
+                    c.started = true;
+                }
+                seek_outward(&cam, &devices).await;
             }
         }
     });
+}
+
+fn track_label(stream: &MediaStream) -> String {
+    stream
+        .get_video_tracks()
+        .iter()
+        .next()
+        .and_then(|t| get(&t, "label").as_string())
+        .unwrap_or_default()
+}
+
+/// `{ name: { exact: value } }`: a camera constraint that fails instead of settling for less.
+fn exact(name: &str, value: &str) -> JsValue {
+    let (outer, inner) = (Object::new(), Object::new());
+    let _ = Reflect::set(&inner, &"exact".into(), &value.into());
+    let _ = Reflect::set(&outer, &name.into(), &inner);
+    outer.into()
+}
+
+/// The default camera is open and permission is given; now look for one that faces the world
+/// (roadmap/N8j.v3.md). A listed camera with a better label is taken; failing that, if the one
+/// in use faces the wearer, a world-facing one is asked for by name. The capture carries on
+/// with what it has whenever this finds nothing.
+async fn seek_outward(cam: &Rc<RefCell<Cam>>, devices: &web_sys::MediaDevices) {
+    let mut ids = vec![];
+    let mut labels = vec![];
+    if let Ok(p) = devices.enumerate_devices() {
+        if let Ok(list) = JsFuture::from(p).await {
+            for d in Array::from(&list).iter() {
+                if get(&d, "kind").as_string().as_deref() == Some("videoinput") {
+                    ids.push(get(&d, "deviceId").as_string().unwrap_or_default());
+                    labels.push(get(&d, "label").as_string().unwrap_or_default());
+                }
+            }
+        }
+    }
+    let current = cam.borrow().label.clone();
+    cam.borrow_mut().listed = labels.clone();
+    let ask = match super::camera::better(&labels, &current) {
+        Some(i) if !ids[i].is_empty() => Some((labels[i].clone(), exact("deviceId", &ids[i]))),
+        _ if super::camera::faces_wearer(&current) => Some((
+            "a world-facing camera".to_string(),
+            exact("facingMode", "environment"),
+        )),
+        _ => None,
+    };
+    let Some((name, video)) = ask else { return };
+    let constraints = MediaStreamConstraints::new();
+    constraints.set_video(&video);
+    let opened = match devices.get_user_media_with_constraints(&constraints) {
+        Ok(p) => JsFuture::from(p).await,
+        Err(e) => Err(e),
+    };
+    let mut c = cam.borrow_mut();
+    match opened {
+        Err(e) => {
+            c.sought = Some(format!(
+                "Asked for {name} in place of \"{current}\"; the browser refused ({}).",
+                js_error(&e)
+            ));
+        }
+        Ok(s) => {
+            let stream: MediaStream = s.unchecked_into();
+            // the capture may have ended while this was being asked for
+            let Some(video) = c.video.clone() else {
+                for t in stream.get_tracks().iter() {
+                    t.unchecked_into::<MediaStreamTrack>().stop();
+                }
+                return;
+            };
+            if let Some(old) = c.stream.take() {
+                for t in old.get_tracks().iter() {
+                    t.unchecked_into::<MediaStreamTrack>().stop();
+                }
+            }
+            let _ = Reflect::set(&video, &"srcObject".into(), &stream);
+            let _ = call(&video, "play", &Array::new());
+            c.label = track_label(&stream);
+            c.sought = Some(format!(
+                "Switched from \"{current}\" to \"{}\", which sounds like it faces the room.",
+                c.label
+            ));
+            c.stream = Some(stream);
+        }
+    }
 }
 
 fn close_camera(cam: &Rc<RefCell<Cam>>) {

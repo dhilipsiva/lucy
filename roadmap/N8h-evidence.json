@@ -171,5 +171,14 @@
     },
     "reading": "A getUserMedia camera ('camera 0, facing front', 640x480) opened in the same press as an immersive-ar session and delivered real, non-black frames during it (mean brightness 187 of 255). The page's video element counted only 7 frames in about 7.7 s, so the rate the page saw was about one per second; whether the camera itself ran faster while the page was hidden behind the immersive view is not measured. WebXR camera access stayed off (no XRView.camera). The second session in this file repeats N8h's run with the same planes (23) and meshes (2).",
     "verdict": "Supported: a headset camera can feed the page during mixed reality, at a low rate as measured through a video element."
+  },
+  {
+    "item": "N8h",
+    "class": "correction",
+    "recorded": "2026-11-14",
+    "corrects": "The N8h.v2 verdict 'Supported: a headset camera can feed the page during mixed reality' and its reading that the frames were real.",
+    "reading": "The camera did deliver frames during mixed reality, and they were bright (187 of 255), but brightness does not make them a view of the room. His capture of 2026-11-14 (N8j-evidence.json) kept 57 pictures from that same camera and they are one stand-in picture. What holds: a getUserMedia stream keeps running beside an immersive-ar session. What does not: that the stream shows his room.",
+    "change": "roadmap/N8h.v3.md: 'Check camera (2D)' opens every camera by itself, looks twice, reports whether its picture moved, and shows a small picture on the page for him to judge.",
+    "open": "His run of the new check on the headset."
   }
 ]

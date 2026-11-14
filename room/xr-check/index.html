@@ -17,6 +17,10 @@
   .actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1.25rem 0; }
   button { font: inherit; font-size: 1.05rem; padding: .8rem 1.2rem; border-radius: .5rem; border: 1px solid var(--line); background: #1a1d22; color: var(--fg); cursor: pointer; }
   button.primary { background: #e8e6e1; color: #0d0f12; border-color: #e8e6e1; }
+  #thumbs { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }
+  #thumbs figure { margin: 0; }
+  #thumbs canvas { width: 240px; height: 180px; border: 1px solid var(--line); border-radius: .4rem; display: block; }
+  #thumbs figcaption { font-size: .9rem; max-width: 240px; margin-top: .3rem; }
   button:focus-visible { outline: 3px solid #8ab4f8; outline-offset: 2px; }
   #status { min-height: 1.5em; font-weight: 500; }
   table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .95rem; }
@@ -32,7 +36,7 @@
 <body>
 <main>
 <h1>What your headset grants</h1>
-<p class="dim">Lucy's check for roadmap N8h. It asks this browser which WebXR and camera features it gives a web page. Nothing leaves this page unless you copy or download it, and the report keeps only counts, labels and sizes: no picture, depth or shape of your room.</p>
+<p class="dim">Lucy's check for roadmap N8h. It asks this browser which WebXR and camera features it gives a web page. Nothing leaves this page unless you copy or download it, and the report keeps only counts, labels and sizes: no picture, depth or shape of your room. “Check camera (2D)” shows a small picture from each camera on this page so you can see what it gives; those pictures are never put in the report.</p>
 <div class="actions">
   <button id="check-ar" class="primary" type="button">Check mixed reality</button>
   <button id="retry-ar" type="button" hidden>Try again without camera</button>
@@ -46,6 +50,7 @@
   <thead><tr><th scope="col">Feature</th><th scope="col">Status</th><th scope="col">What I saw</th></tr></thead>
   <tbody id="rows"></tbody>
 </table>
+<div id="thumbs" aria-label="What each camera showed"></div>
 <pre id="json"></pre>
 </main>
 <script type="module">import init from './pkg/xr_check.js'; init().then(() => { const s = document.getElementById('status'); if (s.textContent === 'Loading…') s.textContent = 'Ready. Press “Check mixed reality”, then look around for a few seconds.'; }, (e) => { document.getElementById('status').textContent = 'The page could not start: ' + e; });</script>

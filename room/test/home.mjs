@@ -128,6 +128,9 @@ assert(file.planes.length === 1 && file.planes[0].label === 'wall' && file.meshe
 assert(file.photos.length >= 5 && file.photos.every((p) => p.jpeg_base64.startsWith('/9j/') && p.pose.length === 16 && p.faces_blurred === 0), 'pictures in the file');
 assert(file.stats.kept === file.photos.length && file.stats.kept + file.stats.dropped === file.stats.offered, `counts ${JSON.stringify(file.stats)}`);
 assert(file.detector.name === '' && file.stats.faces_blurred === 0, `a raw capture names no detector: ${JSON.stringify(file.detector)}`);
+// the notes name the camera that was used, and don't say it never started when it did
+assert(file.notes.some((n) => n.startsWith('Camera used: ') && n.includes('Cameras listed: ')), `no camera named in the notes: ${JSON.stringify(file.notes)}`);
+assert(!file.notes.some((n) => /never started|No camera/.test(n)), `a camera that gave pictures is noted as absent: ${JSON.stringify(file.notes)}`);
 const path = keep || join(profile, 'lucy-home-capture.json');
 writeFileSync(path, text);
 out.file = { bytes: text.length, photos: file.photos.length, stats: file.stats, pathPoints: file.path.length };

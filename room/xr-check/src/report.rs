@@ -107,6 +107,35 @@ pub struct Camera2d {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub frame_rate: Option<f64>,
+    /// N8h.v3: every camera this page could open, each tried by itself.
+    pub cameras: Vec<CameraTry>,
+}
+
+/// N8h.v3: one camera opened by itself and looked at twice, a moment apart. Numbers only;
+/// the small picture the page shows beside it is never part of the report.
+#[derive(Serialize, Default, Clone, Debug, PartialEq)]
+pub struct CameraTry {
+    /// How it was asked for: a listed device's label, or a facing mode.
+    pub asked: String,
+    pub label: String,
+    pub facing: Option<String>,
+    pub opened: bool,
+    pub error: Option<String>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    /// Mean of the picture, 0..255.
+    pub brightness: Option<f64>,
+    /// How much the picture varies across itself (standard deviation of its light, 0..255).
+    pub detail: Option<f64>,
+    /// How much it changed between the two looks (mean difference, 0..255).
+    pub change: Option<f64>,
+}
+
+impl CameraTry {
+    /// A picture that stays the same while the head moves is not a view of the room.
+    pub fn still(&self) -> bool {
+        self.opened && self.change.is_some_and(|c| c < 1.0)
+    }
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -254,7 +283,52 @@ impl Report {
                 detail: c.error.clone().unwrap_or_default(),
             },
         });
+        if let Some(c) = self.camera_2d.as_ref().filter(|c| !c.cameras.is_empty()) {
+            rows.push(cameras_row(&c.cameras));
+        }
         rows
+    }
+}
+
+/// Which cameras the page was offered, and whether any of them showed a picture that moved.
+/// I can't tell a room from a placeholder by numbers alone, so a moving picture is only
+/// "not ruled out": the small pictures on the page are for his eyes to decide.
+fn cameras_row(cameras: &[CameraTry]) -> Row {
+    let opened: Vec<&CameraTry> = cameras.iter().filter(|c| c.opened).collect();
+    let moving = opened.iter().filter(|c| !c.still()).count();
+    let each: Vec<String> = cameras
+        .iter()
+        .map(|c| {
+            let name = if c.label.is_empty() {
+                &c.asked
+            } else {
+                &c.label
+            };
+            if !c.opened {
+                format!("{name}: did not open")
+            } else if c.still() {
+                format!("{name}: its picture did not change")
+            } else {
+                format!("{name}: its picture changed")
+            }
+        })
+        .collect();
+    Row {
+        feature: "a camera that shows the room".into(),
+        status: if moving > 0 {
+            Status::Granted
+        } else {
+            Status::NotGranted
+        },
+        detail: format!(
+            "{}. {}",
+            each.join("; "),
+            if moving > 0 {
+                "Look at the small pictures: only you can say whether one is your room."
+            } else {
+                "No camera gave a picture that moved with your head, so none is a view of your room."
+            }
+        ),
     }
 }
 
@@ -616,6 +690,13 @@ mod tests {
             "camera_during",
             "frames_during",
             "mean_brightness",
+            // N8h.v3: numbers about each camera's picture, never the picture
+            "cameras",
+            "asked",
+            "facing",
+            "brightness",
+            "detail",
+            "change",
         ];
         fn keys(v: &serde_json::Value, out: &mut Vec<String>, label_maps: bool) {
             match v {
@@ -637,5 +718,68 @@ mod tests {
         for k in found {
             assert!(allowed.contains(&k.as_str()), "unexpected key {k}");
         }
+    }
+
+    fn cam(label: &str, opened: bool, change: Option<f64>) -> CameraTry {
+        CameraTry {
+            asked: label.into(),
+            label: label.into(),
+            opened,
+            change,
+            ..Default::default()
+        }
+    }
+    fn cameras(list: Vec<CameraTry>) -> Row {
+        let r = Report {
+            camera_2d: Some(Camera2d {
+                opened: true,
+                cameras: list,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        r.rows()
+            .into_iter()
+            .find(|row| row.feature == "a camera that shows the room")
+            .expect("the row")
+    }
+
+    #[test]
+    fn a_picture_that_never_changes_is_not_the_room() {
+        // his Quest, 2026-11-14: one camera, the same pastel picture 57 times
+        let row = cameras(vec![cam("camera 0, facing front", true, Some(0.2))]);
+        assert_eq!(row.status, Status::NotGranted);
+        assert!(row.detail.contains("did not change"), "{}", row.detail);
+    }
+
+    #[test]
+    fn a_moving_picture_is_left_for_his_eyes() {
+        let row = cameras(vec![
+            cam("camera 0, facing front", true, Some(0.2)),
+            cam("camera 1, facing back", true, Some(14.0)),
+            cam("facing environment", false, None),
+        ]);
+        assert_eq!(row.status, Status::Granted);
+        assert!(row.detail.contains("only you can say"), "{}", row.detail);
+        assert!(
+            row.detail.contains("facing environment: did not open"),
+            "{}",
+            row.detail
+        );
+    }
+
+    #[test]
+    fn no_camera_tried_adds_no_row() {
+        let r = Report {
+            camera_2d: Some(Camera2d {
+                opened: true,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert!(r
+            .rows()
+            .iter()
+            .all(|row| row.feature != "a camera that shows the room"));
     }
 }

@@ -6,6 +6,7 @@
 
 pub use lucy_room_memory::blur;
 
+pub mod camera;
 pub mod car;
 pub mod drive;
 pub mod launch;

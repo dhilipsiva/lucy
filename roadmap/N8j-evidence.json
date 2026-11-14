@@ -55,5 +55,43 @@
     "change": "Pictures are now encoded at once with canvas.toDataURL; each lost frame is counted with its reason and written into the file's notes; the board shows pictures kept of frames delivered.",
     "check": "room/test/home.mjs now starves canvas.toBlob for as long as the shimmed session runs: 114 of 114 frames kept, and the capture never called it. Orchestration only.",
     "open": "Whether this was the cause on his headset is unknown until he captures again; if pictures are still missing, the file's notes will say why."
+  },
+  {
+    "item": "N8j",
+    "class": "headset result and correction",
+    "recorded": "2026-11-14",
+    "report": {
+      "source": "his Meta Quest 3, OculusBrowser 156, build 16d1318; the file reached this desktop and was read for counts; one picture was looked at",
+      "seconds": 52,
+      "planes": 23,
+      "plane_labels": {
+        "wall": 20,
+        "floor": 1,
+        "ceiling": 1,
+        "shelf": 1
+      },
+      "meshes": 2,
+      "largest_mesh_vertices": 2469,
+      "path_points": 1306,
+      "frames_offered": 57,
+      "pictures_kept": 57,
+      "dropped": 0,
+      "picture_size": "640x480",
+      "picture_bytes": {
+        "min": 21151,
+        "median": 21171,
+        "max": 21183
+      },
+      "desktop_blur": {
+        "tool": "lucy-home-blur",
+        "pictures": 57,
+        "faces": 0
+      }
+    },
+    "reading": "The picture fix of 16d1318 held on his headset: every frame the camera delivered was kept. The geometry is his home. The pictures are not: they are one soft pastel picture with pink bubbles, nearly byte-identical 57 times, from the only camera the page was given ('camera 0, facing front'). The headset gave my page a stand-in, not its passthrough cameras.",
+    "also": "He first exported the conversation ('Export all') and found no pictures in it; the capture is a separate file. Fixed in 1d005d9: the button is 'Export conversation' and the capture is offered beside it. The file's note 'the camera never started' was wrong: it was written after the camera was stopped.",
+    "change": "roadmap/N8j.v3.md: the capture looks for a world-facing camera, names the camera it used, and says when its pictures all look the same; the wrong note is fixed.",
+    "check": "room/test/home.mjs asserts the camera is named in the notes and not noted absent; garage/camera.rs has native tests on his headset's label and his pictures' sizes. Orchestration only.",
+    "open": "Whether his Quest offers a web page any camera that sees the room. Not imported into my store: the pictures hold nothing of his home."
   }
 ]

@@ -4,7 +4,7 @@
 //! `Reflect`. Nothing read from a frame is kept beyond counts, labels and sizes.
 
 use crate::report::{
-    Camera2d, CameraDuring, Device, ModeSupport, Probe, Report, Seen, Session, FEATURES,
+    Camera2d, CameraDuring, CameraTry, Device, ModeSupport, Probe, Report, Seen, Session, FEATURES,
 };
 use js_sys::{Array, Function, Object, Reflect};
 use std::cell::{Cell, RefCell};
@@ -40,6 +40,15 @@ fn js_error(e: &JsValue) -> String {
             Reflect::get(e, &"message".into())
                 .ok()
                 .and_then(|m| m.as_string())
+        })
+        .filter(|m| !m.is_empty())
+        // an OverconstrainedError has no message: its name and the constraint it failed say it
+        .or_else(|| {
+            let name = get_str(e, "name")?;
+            Some(match get_str(e, "constraint") {
+                Some(c) if !c.is_empty() => format!("{name} ({c})"),
+                _ => name,
+            })
         })
         .unwrap_or_else(|| format!("{e:?}"))
 }
@@ -94,6 +103,146 @@ fn brightness(video: &JsValue) -> Option<f32> {
         n += 3;
     }
     (n > 0).then(|| sum as f32 / n as f32)
+}
+
+/// One frame drawn small: the canvas it was drawn on and its light, pixel by pixel.
+fn look(video: &JsValue) -> Option<(JsValue, Vec<f64>)> {
+    if get(video, "readyState").as_f64().unwrap_or(0.0) < 2.0 {
+        return None;
+    }
+    let (w, h) = (160, 120);
+    let canvas: JsValue = doc().create_element("canvas").ok()?.into();
+    let _ = Reflect::set(&canvas, &"width".into(), &w.into());
+    let _ = Reflect::set(&canvas, &"height".into(), &h.into());
+    let ctx = call1(&canvas, "getContext", &"2d".into()).ok()?;
+    let draw: Function = get(&ctx, "drawImage").dyn_into().ok()?;
+    let args = Array::of5(video, &0.into(), &0.into(), &w.into(), &h.into());
+    Reflect::apply(&draw, &ctx, &args).ok()?;
+    let read: Function = get(&ctx, "getImageData").dyn_into().ok()?;
+    let image = Reflect::apply(
+        &read,
+        &ctx,
+        &Array::of4(&0.into(), &0.into(), &w.into(), &h.into()),
+    )
+    .ok()?;
+    let data = js_sys::Uint8ClampedArray::new(&get(&image, "data")).to_vec();
+    let light = data
+        .chunks(4)
+        .map(|px| (px[0] as f64 + px[1] as f64 + px[2] as f64) / 3.0)
+        .collect();
+    Some((canvas, light))
+}
+
+async fn wait(ms: i32) {
+    let promise = js_sys::Promise::new(&mut |ok, _| {
+        if let Some(w) = web_sys::window() {
+            let _ = w.set_timeout_with_callback_and_timeout_and_arguments_0(&ok, ms);
+        }
+    });
+    let _ = JsFuture::from(promise).await;
+}
+
+/// N8h.v3: open one camera by itself, look at it twice, show the second look on the page and
+/// keep only numbers. `video` is the constraint: a device id or a facing mode.
+async fn try_camera(devices: &web_sys::MediaDevices, asked: &str, video: &JsValue) -> CameraTry {
+    let mut t = CameraTry {
+        asked: asked.into(),
+        ..Default::default()
+    };
+    let constraints = MediaStreamConstraints::new();
+    constraints.set_video(video);
+    let stream: MediaStream = match devices.get_user_media_with_constraints(&constraints) {
+        Err(e) => {
+            t.error = Some(js_error(&e));
+            return t;
+        }
+        Ok(p) => match JsFuture::from(p).await {
+            Err(e) => {
+                t.error = Some(js_error(&e));
+                return t;
+            }
+            Ok(s) => s.unchecked_into(),
+        },
+    };
+    t.opened = true;
+    if let Some(track) = stream.get_video_tracks().iter().next() {
+        t.label = get_str(&track, "label").unwrap_or_default();
+        if let Ok(settings) = call0(&track, "getSettings") {
+            t.width = get_u32(&settings, "width");
+            t.height = get_u32(&settings, "height");
+            t.facing = get_str(&settings, "facingMode");
+        }
+    }
+    if let Ok(el) = doc().create_element("video") {
+        let video: JsValue = el.into();
+        let _ = Reflect::set(&video, &"muted".into(), &JsValue::TRUE);
+        let _ = Reflect::set(&video, &"playsInline".into(), &JsValue::TRUE);
+        let _ = Reflect::set(&video, &"srcObject".into(), &stream);
+        let _ = call0(&video, "play");
+        let mut first = None;
+        for _ in 0..20 {
+            wait(150).await;
+            first = look(&video);
+            if first.is_some() {
+                break;
+            }
+        }
+        wait(1500).await;
+        let second = look(&video);
+        if let Some((canvas, light)) = second.or_else(|| first.clone()) {
+            let n = light.len().max(1) as f64;
+            let mean = light.iter().sum::<f64>() / n;
+            t.brightness = Some(mean);
+            t.detail = Some((light.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n).sqrt());
+            if let Some((_, before)) = &first {
+                if before.len() == light.len() {
+                    t.change = Some(
+                        before
+                            .iter()
+                            .zip(&light)
+                            .map(|(a, b)| (a - b).abs())
+                            .sum::<f64>()
+                            / n,
+                    );
+                }
+            }
+            show_thumb(&canvas, &t);
+        }
+        let _ = Reflect::set(&video, &"srcObject".into(), &JsValue::NULL);
+    }
+    for track in stream.get_tracks().iter() {
+        track.unchecked_into::<MediaStreamTrack>().stop();
+    }
+    t
+}
+
+/// The small picture goes on the page, for his eyes only: it is not in the report.
+fn show_thumb(canvas: &JsValue, t: &CameraTry) {
+    let (Some(thumbs), Ok(figure), Ok(caption)) = (
+        el("thumbs"),
+        doc().create_element("figure"),
+        doc().create_element("figcaption"),
+    ) else {
+        return;
+    };
+    caption.set_text_content(Some(&format!(
+        "{} · {}",
+        if t.label.is_empty() {
+            &t.asked
+        } else {
+            &t.label
+        },
+        if t.still() {
+            "did not change"
+        } else {
+            "changed while I looked"
+        }
+    )));
+    if let Some(node) = canvas.dyn_ref::<web_sys::Node>() {
+        let _ = figure.append_child(node);
+    }
+    let _ = figure.append_child(&caption);
+    let _ = thumbs.append_child(&figure);
 }
 
 fn doc() -> Document {
@@ -572,6 +721,14 @@ fn try_depth(p: &mut Probe, answer: Result<JsValue, String>) {
 }
 
 /// Open a camera in this 2D page, note its settings, and stop it at once. No frame is read.
+/// `{ name: { exact: value } }`, a camera constraint that fails instead of settling for less.
+fn exact(name: &str, value: &str) -> JsValue {
+    let (outer, inner) = (Object::new(), Object::new());
+    let _ = Reflect::set(&inner, &"exact".into(), &value.into());
+    let _ = Reflect::set(&outer, &name.into(), &inner);
+    outer.into()
+}
+
 fn check_camera(r: &Shared) {
     let Some(w) = web_sys::window() else {
         return;
@@ -617,21 +774,62 @@ fn check_camera(r: &Shared) {
                 }
             },
         }
+        // N8h.v3: every camera listed, each by itself, then the two facing modes by name, in
+        // case the headset keeps a camera off the list
+        let mut asks: Vec<(String, JsValue)> = vec![];
         if let Ok(p) = devices.enumerate_devices() {
             if let Ok(list) = JsFuture::from(p).await {
-                camera.devices = Array::from(&list)
+                let list = Array::from(&list);
+                camera.devices = list
                     .iter()
                     .map(|d| Device {
                         kind: get_str(&d, "kind").unwrap_or_default(),
                         label: get_str(&d, "label").unwrap_or_default(),
                     })
                     .collect();
+                for (i, d) in list
+                    .iter()
+                    .filter(|d| get_str(d, "kind").as_deref() == Some("videoinput"))
+                    .enumerate()
+                {
+                    let Some(id) = get_str(&d, "deviceId").filter(|id| !id.is_empty()) else {
+                        continue;
+                    };
+                    let label = get_str(&d, "label").filter(|l| !l.is_empty());
+                    asks.push((
+                        label.unwrap_or_else(|| format!("camera {i}")),
+                        exact("deviceId", &id),
+                    ));
+                }
+            }
+        }
+        asks.push((
+            "facing environment".into(),
+            exact("facingMode", "environment"),
+        ));
+        asks.push(("facing user".into(), exact("facingMode", "user")));
+        if camera.opened {
+            if let Some(t) = el("thumbs") {
+                t.set_inner_html("");
+            }
+            for (i, (asked, video)) in asks.iter().enumerate() {
+                set_text(
+                    "status",
+                    &format!(
+                        "Looking through camera {} of {}: move your head slowly…",
+                        i + 1,
+                        asks.len()
+                    ),
+                );
+                camera
+                    .cameras
+                    .push(try_camera(&devices, asked, video).await);
             }
         }
         set_text(
             "status",
             if camera.opened {
-                "A camera opened and was closed again at once."
+                "Every camera was opened, looked at and closed again. The small pictures below stay on this page."
             } else {
                 "No camera opened in this page."
             },
