@@ -1162,6 +1162,7 @@ pub fn start(app: Weak<RefCell<App>>, value: &str) {
                 match result {
                     Ok(_) => {
                         super::homecap::load();
+                        super::homecap::refresh(app.clone());
                         a.borrow_mut().garage_begin(Mode::Home, None, None, None);
                     }
                     Err(e) => a

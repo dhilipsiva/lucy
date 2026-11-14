@@ -443,7 +443,7 @@ impl Hud {
         );
         let actions = if tab == "journal" {
             vec![
-                ("Export all", Action::Export(false)),
+                ("Export chat", Action::Export(false)),
                 ("This visit", Action::Export(true)),
                 ("Restore", Action::Restore),
                 ("Keep storage", Action::Persist),

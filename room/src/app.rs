@@ -113,6 +113,8 @@ pub struct App {
     garage: Option<crate::garage::Garage>,
     #[cfg(target_arch = "wasm32")]
     garage_pending: bool,
+    /// The captured home kept in this browser, in a few words (roadmap/N8j.md).
+    capture_line: Option<String>,
     xr_supported: bool,
     #[cfg(target_arch = "wasm32")]
     xr: Option<crate::xr::Session>,
@@ -255,6 +257,7 @@ pub fn boot() -> Result<(), String> {
         garage: None,
         #[cfg(target_arch = "wasm32")]
         garage_pending: false,
+        capture_line: None,
         xr_supported: false,
         #[cfg(target_arch = "wasm32")]
         xr: None,
@@ -342,6 +345,8 @@ pub fn boot() -> Result<(), String> {
     #[cfg(target_arch = "wasm32")]
     crate::xr::probe(weak.clone());
     #[cfg(target_arch = "wasm32")]
+    crate::garage::refresh_capture(weak.clone());
+    #[cfg(target_arch = "wasm32")]
     {
         // the garage's buttons need the visitor's click to still count when they ask for XR
         let w = weak.clone();
@@ -420,6 +425,11 @@ impl App {
         self.version += 1;
     }
     #[cfg(target_arch = "wasm32")]
+    pub(crate) fn garage_capture(&mut self, line: Option<String>) {
+        self.capture_line = line;
+        self.version += 1;
+    }
+    #[cfg(target_arch = "wasm32")]
     pub(crate) fn garage_error(&mut self, error: &str) {
         self.garage_pending = false;
         self.notice = Some(error.to_string());
@@ -445,7 +455,7 @@ impl App {
         if let Some(mut g) = self.garage.take() {
             if let Some((capture, photos)) = g.finish_capture() {
                 self.notice = Some(format!(
-                    "Captured your home: {} surfaces, {} meshes, {} pictures ({} frames missed). The pictures are kept as taken, faces not blurred, in this browser only. Open Garage to download the file, then run lucy-home-blur on your desktop.",
+                    "Captured your home: {} surfaces, {} meshes, {} pictures ({} frames missed). Saved in this browser only, pictures as taken, faces not blurred. To take it with you: Garage → Download my capture. The conversation's Export does not include it. Then run lucy-home-blur on your desktop.",
                     capture.planes.len(),
                     capture.meshes.len(),
                     capture.stats.kept,
@@ -460,6 +470,7 @@ impl App {
                             ));
                         }
                     }
+                    crate::garage::refresh_capture(weak);
                 });
             }
             if let Some(n) = g.note.take() {
@@ -1497,7 +1508,12 @@ impl App {
             }
             Action::Export(current) => self.desk.export(current),
             Action::Restore => self.desk.restore(),
-            Action::Forget => self.desk.forget(),
+            Action::Forget => {
+                if self.desk.forget_confirm {
+                    self.capture_line = None;
+                }
+                self.desk.forget()
+            }
             Action::Persist => self.desk.persist(),
             Action::RetryStorage => self.desk.retry(),
             Action::Seat => self.desk.seat = !self.desk.seat,
@@ -2542,6 +2558,7 @@ impl App {
                 let confirming = self.desk.forget_confirm;
                 self.desk.forget();
                 if confirming {
+                    self.capture_line = None;
                     crate::settings::forget_all();
                     let view = self.settings.view.clone();
                     self.settings = Default::default();
@@ -2855,6 +2872,7 @@ impl App {
             words_busy: self.words.busy,
             peers: &self.desk.memory.status,
             journal: &self.desk.status,
+            capture: self.capture_line.as_deref(),
             notice: self.notice.as_deref(),
             forget_confirm: self.desk.forget_confirm,
         };

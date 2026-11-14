@@ -117,7 +117,7 @@ Mind opens standing, memory, journal, log and about. Every free-form question an
 is private in IndexedDB with exact text, original IDs, capture timestamps, speaker, room origin
 and path, and model revision and references when applicable. Visible streaming checkpoints
 recover as interrupted replies after reload. There is no journal count cap. Storage failures
-remain visible and retryable. Export all/current creates `lucy-room-memory.json`; Restore
+remain visible and retryable. Export conversation/this visit creates `lucy-room-memory.json` (a captured home is a separate file, from Garage); Restore
 validates the entire archive and rejects conflicting originals before writing. Browser storage
 can be cleared by the browser or user, so keep an exported copy.
 

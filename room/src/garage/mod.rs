@@ -19,7 +19,7 @@ mod homecap;
 #[cfg(target_arch = "wasm32")]
 pub use browser::*;
 #[cfg(target_arch = "wasm32")]
-pub use homecap::{store as store_capture, Capturing};
+pub use homecap::{refresh as refresh_capture, store as store_capture, Capturing};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {

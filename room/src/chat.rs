@@ -59,6 +59,8 @@ pub struct View<'a> {
     pub words_busy: bool,
     pub peers: &'a [String],
     pub journal: &'a str,
+    /// The captured home kept in this browser, in a few words, if there is one.
+    pub capture: Option<&'a str>,
     pub notice: Option<&'a str>,
     pub forget_confirm: bool,
 }
@@ -833,7 +835,7 @@ impl Chat {
                 .append_child(&make(d, "p", "ask-note", Some(v.journal)))
                 .ok();
             let row = make(d, "div", "ask-row", None);
-            row.append_child(&button(d, "q-btn", "Export all", "export", "all"))
+            row.append_child(&button(d, "q-btn", "Export conversation", "export", "all"))
                 .ok();
             row.append_child(&button(d, "q-btn", "Export this visit", "export", "visit"))
                 .ok();
@@ -858,7 +860,22 @@ impl Chat {
             ))
             .ok();
             self.panel.append_child(&row).ok();
-            self.panel.append_child(&make(d, "p", "ask-note", Some("This conversation stays in this browser. Export gives you a file; Import adds one back. Forget clears the conversation, your settings and any saved key."))).ok();
+            if let Some(capture) = v.capture {
+                // a captured home is a file of its own (roadmap/N8j.md): say so where he exports
+                let row = make(d, "div", "ask-row", None);
+                row.append_child(&make(d, "p", "ask-note", Some(&format!("Your captured home ({capture}) is separate: it is not in the conversation file."))))
+                    .ok();
+                row.append_child(&button(
+                    d,
+                    "q-btn primary",
+                    "Download my capture",
+                    "garage",
+                    "download",
+                ))
+                .ok();
+                self.panel.append_child(&row).ok();
+            }
+            self.panel.append_child(&make(d, "p", "ask-note", Some("This conversation stays in this browser. Export gives you a file of the conversation only; Import adds one back. Forget clears the conversation, your settings and any saved key."))).ok();
         }
     }
     fn field(&self, name: &str, label: &str, value: &str, kind: &str) -> Element {

@@ -109,6 +109,12 @@ assert(tracks.length > 0 && tracks.every((t) => t === 'ended'), `camera tracks a
 const peers = /^https:\/\/(api\.github\.com\/repos\/dhilipsiva\/|raw\.githubusercontent\.com\/dhilipsiva\/)[A-Za-z0-9_.\/-]+$/;
 const sent = requests.filter((r) => r.method !== 'GET' || r.body || !(r.url.startsWith(`http://127.0.0.1:${PORT}/`) || peers.test(r.url)));
 assert(sent.length === 0, `the capture reached the network: ${JSON.stringify(sent)}`);
+// he must be told where the file is: the notice names the button, and the place he exports
+// the conversation says the capture is separate and offers it
+const told = await evaluate("document.getElementById('ask-notice').textContent");
+assert(told.includes('Garage → Download my capture') && told.includes('does not include it'), `the notice doesn't say where the file is: ${told}`);
+await click('[data-action="panel"][data-value="more"]');
+await waitFor('the capture offered beside Export', `(()=>{const b=document.querySelector('.ask-row [data-action="garage"][data-value="download"]');return !!b&&/Your captured home \\(1 surfaces, \\d+ pictures\\) is separate/.test(b.parentElement.textContent)&&!!document.querySelector('[data-action="export"][data-value="all"]')?.textContent.includes('Export conversation');})()`, 10000);
 out.capture = { status: during, notice: await evaluate("document.getElementById('ask-notice').textContent"), tracks, requestsDuring: requests.length };
 
 // 3. download and read the file

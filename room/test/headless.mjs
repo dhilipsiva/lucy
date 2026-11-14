@@ -191,7 +191,7 @@ if (process.argv.includes('--controls') || process.argv.includes('--words') || p
     await evaluate(`(()=>{const i=document.getElementById('composer-input');i.focus();i.value='Explain everything you remember about your memory and the people in this room.';i.dispatchEvent(new Event('input',{bubbles:true}));})()`);await key('Enter');await key('Escape');
     await waitFor('generation can stop',"document.getElementById('words-status')?.textContent.includes('Reading context') || document.getElementById('words-status')?.textContent.includes('Writing')",20000);await click('Stop');await waitFor('stop acknowledgement',"document.getElementById('words-status')?.textContent.startsWith('Stopped')",120000);
     await key('m');await click('journal','My mind');
-    await send('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:'/tmp/lucy-room-exports'},undefined);await click('Export all','My mind');await sleep(1000);
+    await send('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:'/tmp/lucy-room-exports'},undefined);await click('Export chat','My mind');await sleep(1000);
     if(shotPath){const shot=await send('Page.captureScreenshot',{format:'png'},sessionId);writeFileSync(shotPath,Buffer.from(shot.data,'base64'));}
     assert(!consoleLines.some(l=>/panicked|exception:/.test(l)),'model worker exception');
     console.log(JSON.stringify({pass:true,turns,stop:true,export:'/tmp/lucy-room-exports/lucy-room-memory.json'},null,2));cleanup();process.exit(0);
@@ -230,7 +230,7 @@ if (process.argv.includes('--controls') || process.argv.includes('--words') || p
   if(shotPath){const shot=await send('Page.captureScreenshot',{format:'png'},sessionId);writeFileSync(shotPath,Buffer.from(shot.data,'base64'));}
 
   const beforeRestore=await records();
-  await send('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:profile},undefined);await click('Export all','My mind');
+  await send('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:profile},undefined);await click('Export chat','My mind');
   const exported=join(profile,'lucy-room-memory.json');for(let n=0;n<80&&!existsSync(exported);n++)await sleep(100);assert(existsSync(exported),'archive did not download');
   const archive=JSON.parse(readFileSync(exported,'utf8'));assert(archive.messages.length===beforeRestore.length,'export missing originals');
   await evaluate(`window.__inputClick=HTMLInputElement.prototype.click;HTMLInputElement.prototype.click=function(){if(this.type==='file'){window.__restoreInput=this;return;}return window.__inputClick.call(this);};`);

@@ -295,6 +295,7 @@ impl Capturing {
                     self.meshes.len()
                 ),
             ),
+            (34.0, "afterwards: Garage → Download my capture".into()),
         ]
     }
 
@@ -606,6 +607,21 @@ async fn bytes_of(blob: &Blob) -> Result<Vec<u8>, String> {
 /// Keep a finished capture in this browser, replacing the one before.
 pub async fn store(capture: &HomeCapture, photos: &[(u32, Blob)]) -> Result<(), String> {
     crate::journal::capture_put(&capture.without_pictures().json()?, photos).await
+}
+
+/// Tell the room what capture this browser keeps, so the panels can say where its file is.
+pub fn refresh(app: std::rc::Weak<std::cell::RefCell<crate::app::App>>) {
+    spawn_local(async move {
+        let line = crate::journal::capture_meta()
+            .await
+            .ok()
+            .flatten()
+            .and_then(|meta| HomeCapture::parse(&meta).ok())
+            .map(|c| format!("{} surfaces, {} pictures", c.planes.len(), c.photos.len()));
+        if let Some(a) = app.upgrade() {
+            a.borrow_mut().garage_capture(line);
+        }
+    });
 }
 
 async fn stored() -> Result<Option<(HomeCapture, Vec<(u32, Blob)>)>, String> {
