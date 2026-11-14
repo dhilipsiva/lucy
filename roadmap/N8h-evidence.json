@@ -180,5 +180,48 @@
     "reading": "The camera did deliver frames during mixed reality, and they were bright (187 of 255), but brightness does not make them a view of the room. His capture of 2026-11-14 (N8j-evidence.json) kept 57 pictures from that same camera and they are one stand-in picture. What holds: a getUserMedia stream keeps running beside an immersive-ar session. What does not: that the stream shows his room.",
     "change": "roadmap/N8h.v3.md: 'Check camera (2D)' opens every camera by itself, looks twice, reports whether its picture moved, and shows a small picture on the page for him to judge.",
     "open": "His run of the new check on the headset."
+  },
+  {
+    "item": "N8h",
+    "pre_registration": "roadmap/N8h.v3.md",
+    "class": "headset result",
+    "recorded": "2026-11-14",
+    "code_commit": "55820ba",
+    "page_time": "2026-11-14T06:07:45Z",
+    "browser": "OculusBrowser 156.0.0.38.16 on Meta Quest 3",
+    "cameras": {
+      "listed_video_inputs": [
+        "camera 0, facing front"
+      ],
+      "tried": [
+        {
+          "asked": "camera 0, facing front",
+          "opened": true,
+          "facing": "user",
+          "size": "640x480",
+          "brightness": 177.3,
+          "detail": 40.3,
+          "change": 14.3
+        },
+        {
+          "asked": "facing environment",
+          "opened": false,
+          "error": "OverconstrainedError (facingMode)"
+        },
+        {
+          "asked": "facing user",
+          "opened": true,
+          "label": "camera 0, facing front",
+          "facing": "user",
+          "size": "640x480",
+          "brightness": 178.2,
+          "detail": 36.9,
+          "change": 12.6
+        }
+      ]
+    },
+    "reading": "His headset offers a web page one camera, and the browser itself reports it as facing the wearer. A world-facing camera asked for by name is refused. The one camera's picture did change between two looks in the 2D page, so the 'did it move' number alone would have passed it: only the facing mode and his eyes rule it out. In his capture, during mixed reality, the same camera gave one unchanging picture.",
+    "verdict": "Not supported on this headset and browser: no camera a web page can open sees the room.",
+    "open": "What the small pictures showed, in his words. Whether an experimental browser flag or site permission adds a passthrough camera."
   }
 ]
