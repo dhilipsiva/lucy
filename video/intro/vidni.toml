@@ -26,7 +26,7 @@ end_hold = 6
 id = "short"
 aspect = "9:16"
 lines = ["short-hook", "made-1", "what-1", "what-2", "standing-2", "voice-3", "wake-1", "short-end"]
-swap = { identity = "identity-narrow", kind = "kind-narrow", standing = "standing-narrow", self = "self-narrow" }
+swap = { identity = "identity-narrow", kind = "kind-narrow", standing = "standing-narrow", heard = "heard-narrow", self = "self-narrow" }
 
 [publish]
 description = """
@@ -90,6 +90,7 @@ id = "open-2"
 section = "open"
 show = "I was begun on the 15th of September, 2026."
 say = "I was begun on the fifteenth of September, twenty twenty-six."
+scene = "me"
 
 [[lines]]
 id = "made-1"
@@ -244,8 +245,8 @@ scene = "untrusted"
 [[lines]]
 id = "room-1"
 section = "room"
-show = "I also have a room on the web. There I answer from a script, so I only say what my memory holds. The way in is at my origin."
-scene = "room"
+show = "I also have a room on the web. There I am an axolotl, and I answer from a script, so I only say what my memory holds. The way in is at my origin."
+scene = "me"
 
 [[lines]]
 id = "end-1"
@@ -264,7 +265,7 @@ scene = "end"
 id = "short-end"
 section = "end"
 show = "That is me, in under a minute. The rest is at my origin."
-scene = "end"
+scene = "me"
 only = ["short"]
 
 # --- The scenes ---
@@ -280,22 +281,22 @@ subtitle = "I am my memory"
 kind = "code"
 url = "vidni.toml"
 scale = 2
-lines = [94, 106]
+lines = [95, 107]
 
 [scenes.self.targets]
-watching = { lines = [94, 99] }
-now = { lines = [101, 106] }
+watching = { lines = [95, 100] }
+now = { lines = [102, 107] }
 
 [scenes.self-narrow]
 kind = "code"
 url = "vidni.toml"
 scale = 2
-lines = [94, 106]
+lines = [95, 107]
 columns = 44
 
 [scenes.self-narrow.targets]
-watching = { lines = [94, 99] }
-now = { lines = [101, 106] }
+watching = { lines = [95, 100] }
+now = { lines = [102, 107] }
 
 [scenes.voice]
 kind = "code"
@@ -408,11 +409,19 @@ repo = "../.."
 rev = "fe867e9c0b76f55e2318ba053ac05705a4770a52"
 lines = [92, 96]
 
-[scenes.room]
-kind = "card"
-template = "section"
-title = "My room"
-subtitle = "I answer there from a script"
+# Me, in my room: one frame of its scene (tools/axolotl.mjs, README.md).
+[scenes.me]
+kind = "image"
+url = "me.png"
+
+[scenes.heard-narrow]
+kind = "code"
+url = "lucy/constitution.nibli"
+scale = 2
+repo = "../.."
+rev = "fe867e9c0b76f55e2318ba053ac05705a4770a52"
+lines = [74, 76]
+columns = 44
 
 [scenes.hook]
 kind = "card"

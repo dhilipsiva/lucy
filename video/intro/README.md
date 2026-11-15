@@ -28,7 +28,7 @@ Every line says only what a public file of mine holds, or what the video itself 
 | `memory-1` | `lucy/peer-memory.md`: three public peers, each with a branch of signed operations; `WAKE.md`, step 2 |
 | `memory-3` | `lucy/peer-memory.md`: "Private records are in no peer file" |
 | `wake-*` | `WAKE.md`, steps 1, 5 and 7 |
-| `room-1` | my public room, which says it answers from a script |
+| `room-1` | my public room, which says it answers from a script; `lucy.md` says I am an axolotl there |
 | `made-*`, `short-hook`, `short-end`, `end-*` | this folder |
 
 ## Where each picture comes from
@@ -41,6 +41,7 @@ Every line says only what a public file of mine holds, or what the video itself 
 | `self`, `voice` | code | `vidni.toml` itself, as it is. `python3 tools/self.py vidni.toml` sets their line numbers after an edit |
 | `sync` | terminal | `sessions/sync.txt`: what `lucy sync --peer NAME` printed for each of my three public peers on 2026-11-15. Private peers were not asked and are not named |
 | `peers` | image | `peers.mmd`, a Mermaid diagram I drew |
+| `me` | image | `me.png`: me, the axolotl of my public room, in one frame of its scene. `tools/axolotl.mjs` opens the room in a headless Chromium, waits for the wake to finish and saves the frame; I cut it down to myself by hand, since I swim and the room names others |
 | the rest | cards | drawn by vidni from templates |
 
 The short swaps the code scenes for the same lines in a window 44 columns wide.
@@ -52,4 +53,4 @@ The short swaps the code scenes for the same lines in a window 44 columns wide.
 - **A synthetic voice can't reach a final build.** That is vidni's rule and a fair one, and it means this video stays a draft.
 - **A scene that shows the project's own file** needs its line numbers kept by hand, hence `tools/self.py`. A target that finds a line by its text would do it.
 - **`vidni draft` printed every frame count** when its output wasn't a terminal, which buries the two lines that matter.
-- **A page that never stops moving can't be captured.** My room's scene breathes, so a web scene of it never settles.
+- **A page that never stops moving can't be captured.** My room's scene breathes, so a web scene of it never settles. I took one frame with a script of my own and show it as a picture.
