@@ -15,6 +15,12 @@ path = sys.argv[1]
 text = open(path).read()
 lines = text.split("\n")
 
+# This introduction uses cards and the room image. Earlier scripts showed
+# their own source; keep this helper safe for either layout.
+if not re.search(r"^\[scenes\.(self|self-narrow|voice|voice-narrow)\]$", text, re.M):
+    print(f"{path}: no self-source scenes; nothing to update")
+    sys.exit(0)
+
 
 def table(start_pattern):
     """The first and last line (from 1) of the table that holds a line matching the pattern."""
@@ -38,6 +44,7 @@ wanted = {
     "self": {"lines": (watching[0], now[1]), "watching": watching, "now": now},
     "self-narrow": {"lines": (watching[0], now[1]), "watching": watching, "now": now},
     "voice": {"lines": voice, "draft": (said, said)},
+    "voice-narrow": {"lines": voice, "draft": (said, said)},
 }
 scene = None
 for i, line in enumerate(lines):

@@ -2,122 +2,98 @@
 # Commit it, so that a redraft gives the same audio. To hear another take of
 # a line, give it another seed (docs/spec.md, The draft voice).
 
-[lines.end-1]
-key = "e9d3588811a9a695"
-seed = 10529120
+[lines.how-1]
+key = "ef585430a00816ce"
+seed = 142034435
 
-[lines.end-2]
-key = "adbde8f79efcaf27"
-seed = 2049047923
+[lines.how-2]
+key = "834e5e6b4257968d"
+seed = 1252247960
 
-[lines.made-1]
-key = "5d6a178c2c4d4917"
-seed = 2136175767
+[lines.how-3]
+key = "151c5d20f822abcb"
+seed = 26529916
 
-[lines.made-2]
-key = "58fee098e5fd5bfc"
-seed = 1388723791
+[lines.how-4]
+key = "011933cc068dd06f"
+seed = 295369811
 
-[lines.made-3]
-key = "ff937aa0aee049fa"
-seed = 1740700102
-
-[lines.memory-1]
-key = "c0d82c55648007b5"
-seed = 152308028
-
-[lines.memory-3]
-key = "3fc4e0013929e981"
-seed = 655502439
+[lines.invite]
+key = "9c703633ce1eb090"
+seed = 1300242568
 
 [lines.open-1]
-key = "b021d95c3d65ae36"
-seed = 1248154602
+key = "c058f8a70717dca4"
+seed = 1424248171
 
-[lines.open-2]
-key = "6092fc99e650eaf4"
-seed = 1332067176
+[lines.problem]
+key = "0a75b657090b15b0"
+seed = 1703566624
 
-[lines.room-1]
-key = "ad7cf582bd60063f"
-seed = 1910828746
+[lines.short-save]
+key = "11baa00dc16eac8a"
+seed = 614405027
 
-[lines.room-2]
-key = "1e6e8b5bd7433ba1"
-seed = 1638611875
+[lines.short-uses]
+key = "b7f55ec1a6d9258f"
+seed = 1626616562
 
-[lines.short-end]
-key = "5b0d73cecfb3c135"
-seed = 257536492
+[lines.sleep]
+key = "fd92b294fdb3cbe2"
+seed = 234715723
 
-[lines.short-hook]
-key = "0158a98e0b2b84b2"
-seed = 1039358107
+[lines.trust-1]
+key = "4410edd579cb0561"
+seed = 527861385
 
-[lines.standing-2]
-key = "29d67c4f0f0ae919"
-seed = 644583930
+[lines.trust-2]
+key = "dee4390c8f9b9818"
+seed = 906690938
 
-[lines.standing-3]
-key = "85119f616c1c2565"
-seed = 1062501091
+[lines.trust-3]
+key = "9127debbc14fdc5d"
+seed = 1640006260
 
-[lines.standing-4]
-key = "795a194ca70bf72c"
-seed = 1184812605
+[lines.trust-4]
+key = "bc723470e00a974a"
+seed = 942318817
 
-[lines.standing-5]
-key = "63005a48d1e821a8"
-seed = 1607979835
+[lines.use-code]
+key = "cd596099a4aaecf3"
+seed = 128152013
 
-[lines.standing-6]
-key = "af0c8c898cd71378"
-seed = 1943948795
+[lines.use-handoff]
+key = "e44571444269fe17"
+seed = 890725223
 
-[lines.voice-1]
-key = "1ccb1097922651b9"
-seed = 1820642217
+[lines.use-learning]
+key = "c7216315909b262a"
+seed = 703479800
 
-[lines.voice-1b]
-key = "6180651529eff5f0"
-seed = 1202616947
+[lines.use-research]
+key = "3f660cec9349732e"
+seed = 1590272635
 
-[lines.voice-2]
-key = "1291bcba04184dc0"
-seed = 2094138891
-
-[lines.voice-3]
-key = "0f98718be5d39bc7"
-seed = 924397743
-
-[lines.voice-4]
-key = "0c13e213b0942034"
-seed = 1717933706
+[lines.value]
+key = "4f5fd06b8aad2c87"
+seed = 681639786
 
 [lines.wake-1]
-key = "0b2514a6cdb89a93"
-seed = 150135972
+key = "52244ca64e1ca22e"
+seed = 1711342371
 
 [lines.wake-2]
-key = "1940cd97f4852ac0"
-seed = 16070206
+key = "0fa9c3898e6f025e"
+seed = 1631990948
 
 [lines.wake-3]
-key = "5507ee2b51954905"
-seed = 589651432
+key = "b6871e536df96abf"
+seed = 1350089454
 
 [lines.wake-4]
-key = "366ada6eb1c32a11"
-seed = 1352636395
+key = "8f7ae1419447cb53"
+seed = 531547741
 
-[lines.what-1]
-key = "1c4430868c9d87bf"
-seed = 466291016
-
-[lines.what-2]
-key = "df739182984ed9b1"
-seed = 1113252156
-
-[lines.what-3]
-key = "a4e94ff00ccadd0f"
-seed = 713926987
+[lines.wake-open]
+key = "b142fe4728468ef7"
+seed = 1618525832
