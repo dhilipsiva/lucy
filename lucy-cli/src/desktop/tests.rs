@@ -1048,6 +1048,176 @@ fn local_chat_context_fits_its_budget_with_identity_whole() {
     assert_eq!(session.messages[1]["content"], question);
 }
 
+/// One record of an app conversation on this machine, as the store holds it.
+fn saved(root: &std::path::Path, id: &str, channel: &str, at: &str, text: &str) {
+    Store::open(root)
+        .unwrap()
+        .record(&crate::store::Record {
+            origin: "conversation:[\"codex\",\"earlier\"]".into(),
+            payload: json!({"id":id,"source":"codex","session":"earlier","role":"assistant",
+                "channel":channel,"private":true,"timestamp":at,"text":text}),
+        })
+        .unwrap();
+}
+
+/// The system message of a local chat that asks `question`.
+fn chat_context(service: &Service, workspace: &std::path::Path, question: &str) -> String {
+    service.scripted(vec![json!({"content":"Answered."})]);
+    let client = service.dispatch(json!({"op":"open"})).unwrap();
+    service
+        .dispatch(request(
+            &client,
+            json!({"op":"chat","text":question,"event":"ask","workspace":workspace}),
+        ))
+        .unwrap();
+    let session = service
+        .active("local", client["session"].as_str().unwrap())
+        .unwrap();
+    let session = session.lock().unwrap();
+    session.messages[0]["content"].as_str().unwrap().to_owned()
+}
+
+#[test]
+fn a_context_opens_with_my_newest_reviewed_records_whatever_the_prompt_matches() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("memory");
+    // Old turns that match the question's words, and newer reviewed records that don't.
+    heron_archive(&root);
+    saved(
+        &root,
+        "sum-old",
+        "summary",
+        "2026-10-19T08:00:00Z",
+        "The desktop integration was validated.",
+    );
+    saved(
+        &root,
+        "sum-new",
+        "summary",
+        "2026-11-16T00:30:00Z",
+        "Both intro videos were approved and ratified.",
+    );
+    saved(
+        &root,
+        "sum-mid",
+        "summary",
+        "2026-11-15T18:00:00Z",
+        "The encoder finding was noted.",
+    );
+    saved(
+        &root,
+        "sum-oldest",
+        "summary",
+        "2026-09-15T12:00:00Z",
+        "I was begun.",
+    );
+    // A raw turn, a harness notice and a private peer's summary are not reviewed records
+    // of this machine's conversations, however new they are.
+    saved(
+        &root,
+        "turn-newer",
+        "final",
+        "2026-11-16T09:00:00Z",
+        "A raw reply, newest of all.",
+    );
+    saved(
+        &root,
+        "notice",
+        "user",
+        "2026-11-16T09:01:00Z",
+        "<task-notification>done</task-notification>",
+    );
+    Store::open(&root)
+        .unwrap()
+        .record(&crate::store::Record {
+            origin: "peer:work/private-interactions.nibli".into(),
+            payload: json!({"id":"peer-sum","channel":"summary","private":true,
+                "timestamp":"2026-11-16T10:00:00Z","text":"A work peer's summary."}),
+        })
+        .unwrap();
+    let service = Service::new(root, None);
+    let system = chat_context(&service, temp.path(), "Tell me about heron feathers");
+    let at = |needle: &str| {
+        system
+            .find(needle)
+            .unwrap_or_else(|| panic!("{needle} is missing"))
+    };
+    // Today's date, then the three newest, newest first, each with its date.
+    assert!(system.contains("Today (data): 20"));
+    let section = at("My newest reviewed records (data, newest first)");
+    assert!(at("Today (data): ") < section && section < at("Public identity (data):"));
+    assert!(at("Both intro videos were approved") < at("The encoder finding was noted"));
+    assert!(at("The encoder finding was noted") < at("The desktop integration was validated"));
+    assert!(system.contains("\"timestamp\":\"2026-11-16T00:30:00Z\""));
+    for absent in [
+        "I was begun.",
+        "A raw reply",
+        "task-notification",
+        "A work peer's summary",
+    ] {
+        assert!(!system.contains(absent), "{absent} is in the context");
+    }
+    // The question's own excerpts are there too: the section takes nothing from them.
+    assert!(system.contains("heron report"));
+}
+
+#[test]
+fn the_newest_records_keep_to_their_bounds_and_say_when_there_are_none() {
+    use super::context;
+    let temp = tempfile::tempdir().unwrap();
+    // None saved: the context says so, and still gives the date.
+    let empty = Service::new(temp.path().join("empty"), None);
+    let system = chat_context(&empty, temp.path(), "What is the last thing you remember?");
+    assert!(system.contains("Today (data): 20"));
+    assert!(system.contains("My newest reviewed records (data): none are saved on this machine."));
+
+    // Long summaries are cut to the section's share of each context.
+    let root = temp.path().join("memory");
+    for number in 0..4 {
+        let text = format!(
+            "summary {number}: {}",
+            "a handoff that goes on. ".repeat(400)
+        );
+        saved(
+            &root,
+            &format!("long-{number}"),
+            "summary",
+            &format!("2026-11-1{number}T00:00:00Z"),
+            &text,
+        );
+    }
+    let service = Service::new(root, None);
+    let system = chat_context(
+        &service,
+        temp.path(),
+        "What is the last thing you remember?",
+    );
+    let line = system
+        .lines()
+        .find(|line| line.starts_with("My newest reviewed records"))
+        .unwrap();
+    assert!(line.len() <= 2_400, "{} bytes", line.len());
+    assert!(
+        line.contains("summary 3") && line.contains("summary 1") && !line.contains("summary 0")
+    );
+    // A record the lead shows is not repeated among the excerpts.
+    assert_eq!(system.matches("\"id\":\"long-3\"").count(), 1);
+    // A hosted app gets one, within its far smaller share, and its context keeps its limit.
+    let hosted = prompt(&service, temp.path(), "codex", "newest", "Lucy, wake");
+    let context = hosted["context"].as_str().unwrap();
+    let line = context
+        .lines()
+        .find(|line| line.starts_with("My newest reviewed records"))
+        .unwrap();
+    assert!(units(line) <= 700, "{} units", units(line));
+    assert!(line.contains("summary 3") && !line.contains("summary 2"));
+    assert!(
+        units(context) <= context::HOSTED_UNITS,
+        "{} units",
+        units(context)
+    );
+}
+
 #[test]
 fn study_context_keeps_the_shape_its_evidence_checker_parses() {
     let temp = tempfile::tempdir().unwrap();

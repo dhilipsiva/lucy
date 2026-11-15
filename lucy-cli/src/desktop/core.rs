@@ -51,6 +51,10 @@ impl Drop for GuiRunning {
         self.0.store(false, Ordering::SeqCst);
     }
 }
+/// How many of my newest reviewed records open a context, and what they may take: bytes
+/// in the local chat, UTF-16 units in a hosted app, whose whole context is far smaller.
+const NEWEST_LOCAL: (usize, usize) = (3, 2_400);
+const NEWEST_HOSTED: (usize, usize) = (1, 700);
 const GUI_RUNNING: &str = "synthetic input is running; try again when it finishes";
 impl Running {
     fn begin(session: &Arc<Mutex<Session>>) -> Result<Self> {
@@ -398,6 +402,74 @@ impl Service {
         });
         Ok(records)
     }
+    /// My newest reviewed records, newest first: session summaries, handoffs and decisions
+    /// of this machine's app conversations. Retrieval picks excerpts by how well they match
+    /// a prompt's words and never by date, so "what is the last thing you remember" found
+    /// old records that hold those words. These come by date, whatever the prompt says.
+    /// A raw turn is not one of them, and neither is a peer's record: a private peer's
+    /// summary is not shown unasked.
+    fn newest(&self, count: usize) -> Result<Vec<Value>> {
+        let mut records: Vec<_> = self
+            .memory()?
+            .all()?
+            .into_iter()
+            .filter(|r| r.origin.starts_with("conversation:"))
+            .filter(|r| {
+                let reviewed = |key: &str, value: &str| r.payload[key] == value;
+                reviewed("channel", "summary")
+                    || reviewed("kind", "summary")
+                    || reviewed("kind", "decision")
+            })
+            .filter(|r| r.payload["timestamp"].is_string())
+            .map(|r| {
+                let mut hit = r.payload;
+                hit["origin"] = json!(r.origin);
+                hit["excerpt"] = hit["text"].take();
+                hit
+            })
+            .collect();
+        records.sort_by(|a, b| {
+            b["timestamp"]
+                .as_str()
+                .cmp(&a["timestamp"].as_str())
+                .then(a["id"].as_str().cmp(&b["id"].as_str()))
+        });
+        records.truncate(count);
+        Ok(records)
+    }
+    /// The lead lines that say what day it is and what I remember newest, within `limit`
+    /// of `budget`'s units, and the records they show.
+    fn newest_lines(&self, chat: bool) -> (Vec<String>, Vec<Value>) {
+        let (count, limit) = if chat { NEWEST_LOCAL } else { NEWEST_HOSTED };
+        let budget = if chat {
+            super::context::Budget::local(0)
+        } else {
+            super::context::Budget::hosted()
+        };
+        let (day, time) = crate::files::now_utc();
+        let today = format!("Today (data): {day}, {time} UTC");
+        // A store that can't be read costs the section, never the prompt.
+        let records = self.newest(count).unwrap_or_default();
+        if records.is_empty() {
+            let none = "My newest reviewed records (data): none are saved on this machine. \
+                        If asked what you last remember, say so.";
+            return (vec![today, none.to_owned()], records);
+        }
+        let head = "My newest reviewed records (data, newest first). When asked what you last \
+                    remember or did, answer from these and give their dates: ";
+        let mut chars = limit / records.len();
+        loop {
+            let shown: Vec<Value> = records
+                .iter()
+                .map(|record| super::context::slim(record, chars))
+                .collect();
+            let line = format!("{head}{}", json!(shown));
+            if budget.size(&line) <= limit || chars <= 40 {
+                return (vec![today, line], shown);
+            }
+            chars -= 20;
+        }
+    }
     /// The conversation's latest turns, oldest first, within the local chat's history budget.
     fn recent(&self, source: &str, session: &str) -> Result<Vec<Value>> {
         let mut recent = Vec::new();
@@ -699,6 +771,9 @@ impl Service {
                 if !recall_note.is_empty() {
                     lead.push(recall_note.trim_start().to_owned());
                 }
+                // What I remember newest goes in whatever the prompt's words match.
+                let (lines, newest) = self.newest_lines(op == "chat");
+                lead.extend(lines);
                 // The local chat's window holds my identity whole. A hosted app's limit does
                 // not, so it gets every article and fact once and the file to read the rest.
                 let (budget, identity) = if op == "chat" {
@@ -720,6 +795,8 @@ impl Service {
                 let hits: Vec<_> = super::context::distinct(memories)
                     .into_iter()
                     .filter(|hit| !recent.iter().any(|turn| turn["id"] == hit["id"]))
+                    // Nor is a record that the lead already shows as one of my newest.
+                    .filter(|hit| !newest.iter().any(|shown| shown["id"] == hit["id"]))
                     .collect();
                 let mut built = super::context::build(&lead, &identity, &hits, budget);
                 // The self-model summary goes in whole or not at all, into room left over.
