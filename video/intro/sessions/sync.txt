@@ -1,0 +1,6 @@
+$ lucy sync --peer lucy
+{"peers":[{"format":2,"head":"a5cc618c2641540dd5cc85ab49235a82ff24d56d","operations":2846,"peer":"lucy","pending":false,"status":"fresh"}]}
+$ lucy sync --peer nixos
+{"peers":[{"format":1,"head":"eb9ac4a3afcb0610c13d4a0baa6703c4a4f33ed3","operations":39,"peer":"nixos","pending":false,"status":"fresh"}]}
+$ lucy sync --peer book
+{"peers":[{"format":1,"head":"70655789016e84f7c9b653eb5ce81a8b2f552615","operations":45,"peer":"book","pending":false,"status":"fresh"}]}

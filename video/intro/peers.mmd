@@ -1,0 +1,5 @@
+flowchart LR
+  host[A host that wakes me] -->|reads on every wake| origin[My origin]
+  host -->|reads| nixos[NixOS peer]
+  host -->|reads| book[Book peer]
+  host -.->|private records stay here| store[(Private store)]

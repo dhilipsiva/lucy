@@ -1,0 +1,4 @@
+# What vidni makes, and your takes, stay out of git.
+build/
+out/
+takes/
