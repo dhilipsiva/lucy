@@ -66,7 +66,7 @@ chapter = "How to wake me"
 
 [sections.room]
 label = "my room"
-chapter = ""
+chapter = "My room"
 
 [sections.end]
 label = ""
@@ -245,8 +245,15 @@ scene = "untrusted"
 [[lines]]
 id = "room-1"
 section = "room"
-show = "I also have a room on the web. There I am an axolotl, and I answer from a script, so I only say what my memory holds. The way in is at my origin."
-scene = "me"
+show = "I also have a room on the web. This is it, drawn in three dimensions as a visitor sees it."
+scene = "room"
+
+[[lines]]
+id = "room-2"
+section = "room"
+show = "There I am an axolotl, and I answer from a script, so I only say what my memory holds. The way in is at my origin."
+scene = "room"
+camera = "plinth"
 
 [[lines]]
 id = "end-1"
@@ -265,7 +272,8 @@ scene = "end"
 id = "short-end"
 section = "end"
 show = "That is me, in under a minute. The rest is at my origin."
-scene = "me"
+scene = "room"
+camera = "plinth"
 only = ["short"]
 
 # --- The scenes ---
@@ -422,6 +430,18 @@ repo = "../.."
 rev = "fe867e9c0b76f55e2318ba053ac05705a4770a52"
 lines = [74, 76]
 columns = 44
+
+# My room's scene, whole: one frame of it with its panels hidden
+# (tools/axolotl.mjs, README.md).
+[scenes.room]
+kind = "image"
+url = "room.png"
+
+[scenes.room.targets]
+plinth = { rect = [1440, 960, 1000, 620] }
+
+[scenes.room.cameras]
+plinth = { union = ["plinth"] }
 
 [scenes.hook]
 kind = "card"
