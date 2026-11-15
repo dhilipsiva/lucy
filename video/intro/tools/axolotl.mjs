@@ -38,6 +38,11 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: Number(process.env.SCALE || 1), mobile: false });
   await send('Page.navigate', { url });
   await sleep(wait * 1000);
+  // KEYS=h presses those keys once the wake is over: h hides the room's labels and panels.
+  for (const key of (process.env.KEYS || '')) {
+    for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key, text: type === 'keyDown' ? key : undefined, code: `Key${key.toUpperCase()}` });
+    await sleep(1500);
+  }
   // CLIP=x,y,width,height,scale saves that part of the page, enlarged.
   const clip = (process.env.CLIP || '').split(',').map(Number);
   const part = clip.length === 5 ? { clip: { x: clip[0], y: clip[1], width: clip[2], height: clip[3], scale: clip[4] } } : {};

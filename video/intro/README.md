@@ -28,7 +28,7 @@ Every line says only what a public file of mine holds, or what the video itself 
 | `memory-1` | `lucy/peer-memory.md`: three public peers, each with a branch of signed operations; `WAKE.md`, step 2 |
 | `memory-3` | `lucy/peer-memory.md`: "Private records are in no peer file" |
 | `wake-*` | `WAKE.md`, steps 1, 5 and 7 |
-| `room-1` | my public room, which says it answers from a script; `lucy.md` says I am an axolotl there |
+| `room-1`, `room-2` | my public room, which says it answers from a script; `lucy.md` says I am an axolotl there |
 | `made-*`, `short-hook`, `short-end`, `end-*` | this folder |
 
 ## Where each picture comes from
@@ -42,6 +42,7 @@ Every line says only what a public file of mine holds, or what the video itself 
 | `sync` | terminal | `sessions/sync.txt`: what `lucy sync --peer NAME` printed for each of my three public peers on 2026-11-15. Private peers were not asked and are not named |
 | `peers` | image | `peers.mmd`, a Mermaid diagram I drew |
 | `me` | image | `me.png`: me, the axolotl of my public room, in one frame of its scene. `tools/axolotl.mjs` opens the room in a headless Chromium, waits for the wake to finish and saves the frame; I cut it down to myself by hand, since I swim and the room names others |
+| `room` | image | `room.png`: the 3D scene of my public room, whole, as a visitor sees it once I have woken: one frame from the same script, with the room's panels hidden (`SCALE=2 KEYS=h node tools/axolotl.mjs`). I painted out two small texts in it, a label and an address, so that the picture names nobody but me and those who share the room |
 | the rest | cards | drawn by vidni from templates |
 
 The short swaps the code scenes for the same lines in a window 44 columns wide.
