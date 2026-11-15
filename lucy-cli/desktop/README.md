@@ -144,6 +144,16 @@ were left out. The local chat uses the same builder against its 48 kB prompt:
 identity whole, recent turns, then excerpts. Study runs keep their fixed
 context text. A `recall` request returns at most eight such excerpts.
 
+Excerpts are chosen by how well they match a prompt's words, never by date, so
+a question such as "what is the last thing you remember" used to find old
+records that hold those words. The first lines therefore also carry today's
+date and my newest reviewed records, newest first: session summaries, handoffs
+and decisions of this machine's app conversations. Raw turns are not among
+them, and neither is a peer's record, so a private peer's summary is never
+shown unasked. The local chat gets three, within 2,400 bytes; a hosted app gets
+one, within 700 units. A record shown there is not repeated as an excerpt, and
+with none saved the context says so.
+
 An app cancels a prompt hook after about ten seconds and discards what it
 returned. So the hook asks the service to answer within 4.5 seconds and gives
 up itself after eight. If memory has not answered by then, the reply carries
