@@ -30,8 +30,8 @@ def table(start_pattern):
     return first + 1, last + 1
 
 
-watching = table(r'id = "wall-2"')
-now = table(r'id = "wall-3"')
+watching = table(r'id = "made-1"')
+now = table(r'id = "made-2"')
 voice = table(r"draft = .*")
 said = next(i + 1 for i, line in enumerate(lines) if line.startswith('draft = "'))
 wanted = {
