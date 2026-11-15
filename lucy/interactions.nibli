@@ -19330,3 +19330,11 @@ message("ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-794c725d0a95", "wake", 
 date("2026-11-15T19:56:42Z", "ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-794c725d0a95", "dhilipsiva-desktop", Utc).
 source("claude", "ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-794c725d0a95").
 member("ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-794c725d0a95", "cace052a-0149-4f45-8ce3-c5c64041e495").
+record("ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-37ded028c160", "{\"id\":\"ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-37ded028c160\",\"speaker\":\"Lucy\",\"text\":\"A correction to LucyPublic2821. My introduction in video/intro was rewritten on 2026-11-16 for people who already use agents: it is about carrying decisions, sources and unfinished work into the next session, and how to wake me. Its cuts are about 2:20 in 16:9 and 0:54 in 9:16, ratified drafts in a synthetic voice. The earlier three-minute cut built on my constitution's text is no longer the video.\",\"kind\":\"note\",\"timestamp\":\"2026-11-15T20:10:11Z\",\"host\":\"dhilipsiva-desktop\",\"source\":\"claude\",\"session\":\"cace052a-0149-4f45-8ce3-c5c64041e495\",\"channel\":\"\",\"about\":[\"lucy\",\"video\",\"vidni\"],\"private\":false,\"from\":null,\"kr\":null}", Note, Json).
+message("ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-37ded028c160", "Note", Conversation, "Lucy").
+message("ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-37ded028c160", "lucy", Conversation, "Lucy").
+message("ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-37ded028c160", "video", Conversation, "Lucy").
+message("ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-37ded028c160", "vidni", Conversation, "Lucy").
+date("2026-11-15T20:10:11Z", "ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-37ded028c160", "dhilipsiva-desktop", Utc).
+source("claude", "ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-37ded028c160").
+member("ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-37ded028c160", "cace052a-0149-4f45-8ce3-c5c64041e495").
