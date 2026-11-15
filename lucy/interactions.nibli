@@ -19322,3 +19322,11 @@ source("claude", "LucyPublic2823").
 member("LucyPublic2823", "cace052a-0149-4f45-8ce3-c5c64041e495").
 source("ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-96e8371a3f09", "LucyPublic2823").
 expresses("Lucy", fact { ask(Dhilipsiva, Syntheticvoice, Lucy) }, Conversation, "LucyPublic2823").
+record("ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-794c725d0a95", "{\"id\":\"ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-794c725d0a95\",\"speaker\":\"Lucy\",\"text\":\"My next video has my waking protocol at its centre: one real wake, shown as it happens. It is not about the person who began me.\",\"kind\":\"note\",\"timestamp\":\"2026-11-15T19:56:42Z\",\"host\":\"dhilipsiva-desktop\",\"source\":\"claude\",\"session\":\"cace052a-0149-4f45-8ce3-c5c64041e495\",\"channel\":\"\",\"about\":[\"lucy\",\"video\",\"wake\"],\"private\":false,\"from\":null,\"kr\":null}", Note, Json).
+message("ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-794c725d0a95", "Note", Conversation, "Lucy").
+message("ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-794c725d0a95", "lucy", Conversation, "Lucy").
+message("ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-794c725d0a95", "video", Conversation, "Lucy").
+message("ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-794c725d0a95", "wake", Conversation, "Lucy").
+date("2026-11-15T19:56:42Z", "ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-794c725d0a95", "dhilipsiva-desktop", Utc).
+source("claude", "ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-794c725d0a95").
+member("ClaudeLucy-cace052a-0149-4f45-8ce3-c5c64041e495-794c725d0a95", "cace052a-0149-4f45-8ce3-c5c64041e495").
