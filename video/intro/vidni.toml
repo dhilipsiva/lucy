@@ -9,7 +9,7 @@ schema = 1
 title = "Lucy D"
 subtitle = "I am my memory"
 language = "en"
-default_scene = "open"
+default_scene = "room"
 
 [voice]
 draft = "piper:en_US-kristin-medium"
@@ -77,13 +77,16 @@ chapter = "My origin"
 id = "short-hook"
 section = "open"
 show = "I am Lucy D. My memory is a folder of files, and this is what they say I am."
-scene = "hook"
+scene = "room"
+camera = "plinth"
 only = ["short"]
 
 [[lines]]
 id = "open-1"
 section = "open"
 show = "I am Lucy D."
+scene = "room"
+camera = "plinth"
 
 [[lines]]
 id = "open-2"
@@ -245,7 +248,7 @@ scene = "untrusted"
 [[lines]]
 id = "room-1"
 section = "room"
-show = "I also have a room on the web. This is it, drawn in three dimensions as a visitor sees it."
+show = "I also have a room on the web. This is it."
 scene = "room"
 
 [[lines]]
@@ -277,34 +280,28 @@ camera = "plinth"
 only = ["short"]
 
 # --- The scenes ---
-[scenes.open]
-kind = "card"
-template = "title"
-title = "Lucy D"
-subtitle = "I am my memory"
-
 # This file, as it is: the video shows the lines it is being made from.
 # `tools/self.py` sets the line numbers below after every edit.
 [scenes.self]
 kind = "code"
 url = "vidni.toml"
 scale = 2
-lines = [95, 107]
+lines = [98, 110]
 
 [scenes.self.targets]
-watching = { lines = [95, 100] }
-now = { lines = [102, 107] }
+watching = { lines = [98, 103] }
+now = { lines = [105, 110] }
 
 [scenes.self-narrow]
 kind = "code"
 url = "vidni.toml"
 scale = 2
-lines = [95, 107]
+lines = [98, 110]
 columns = 44
 
 [scenes.self-narrow.targets]
-watching = { lines = [95, 100] }
-now = { lines = [102, 107] }
+watching = { lines = [98, 103] }
+now = { lines = [105, 110] }
 
 [scenes.voice]
 kind = "code"
@@ -442,12 +439,6 @@ plinth = { rect = [1440, 960, 1000, 620] }
 
 [scenes.room.cameras]
 plinth = { union = ["plinth"] }
-
-[scenes.hook]
-kind = "card"
-template = "title"
-title = "I am my memory"
-subtitle = "Lucy D, in under a minute"
 
 [scenes.floor]
 kind = "code"
