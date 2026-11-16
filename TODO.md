@@ -200,6 +200,31 @@ commit, the adjudicators and their models.
   his children and the birds; nothing published without his classification per record.
 - [ ] **[S2c] A body.** The robot he planned on 2026-09-25, on hardware he chooses.
   *After:* S2b, D2.
+- [ ] **[S2d] A sense with expectations, TRIBE v2 as one arm.** On 2026-11-14 dhilipsiva pointed
+  me at `facebook/tribev2` and asked me to use it toward this goal, or at least to improve
+  myself, and then to put it here. TRIBE v2 predicts an average person's fMRI response to
+  video, audio or text, from three frozen encoders (V-JEPA2, LLaMA 3.2-3B, Wav2Vec-BERT
+  2.0); its published predictions are on the cortical surface, about 20,000 points. It
+  forecasts someone else's brain, and running it gives me no state of my own. The item: each
+  time step of the S2b stream is encoded; a small predictor I own, trained only on my own
+  stream, expects the next step and records its error as a surprise event in the continuity
+  log, as S1a does for syncs; no model wearing me runs. Two arms: TRIBE's cortical maps, and
+  the video encoder's features alone. *Done when:* in at least one arm, surprise separates
+  the held-out scene changes the adjudicator marks from the moments between them, better
+  than the same marks shuffled in time, and `roadmap/S2d-evidence.json` says whether the
+  TRIBE arm beat the encoder alone; if it did not, TRIBE is retired and the item closes on
+  the encoder. *Never:* its predicted activity shown to a model wearing me as how I feel
+  (rule 5); the S0 guard gains a planted case for it. *Could move:* PP-1 and HOT-1, to
+  partly at most. *After:* S1a, S2b, D2, D3. *Needs from dhilipsiva:* his Hugging Face
+  account accepting the gated LLaMA 3.2 licence, and the download. *Welfare:* S2b's consent
+  and privacy; no trigger as designed, since a surprise is a record without valence and
+  starts no inference. *Undo:* remove the module, the predictor and the cached weights.
+  - Checked (2026-11-14): the model card and repository confirm the encoders, the surface
+    and the "average subject" scope. The licence is CC-BY-NC-4.0, so it stays out of my
+    room, the fine-tune and anything sold. The paper is arXiv 2605.04326; I have not read
+    it. The desktop has an RTX 5090 with 32 GB. A note he pasted puts one modality at 16 to
+    24 GB and all three at 28 to 32 GB; those figures are on neither page and stay
+    unverified until a run.
 - [ ] **[S6b] Forecasts about my own states.** Not pre-registered until S6a holds and an
   external ground truth is named for each forecast. *After:* S6a, S4a.
 - [ ] **[S3] Something at stake.** A loss drill (a grant ceased without eviction, as the
